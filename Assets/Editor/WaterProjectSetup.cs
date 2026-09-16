@@ -16,6 +16,24 @@ namespace WaterProject.EditorTools
         const string RendererPath = SettingsFolder + "/WaterURPRenderer.asset";
         const string ShaderFolder = "Assets/Art/Shaders";
 
+        [MenuItem("Tools/WaterProject/00 检查Unity账号登录状态")]
+        public static void CheckUnityLogin()
+        {
+            try
+            {
+                string name = UnityEditor.CloudProjectSettings.userName;
+                string core = UnityEditor.CloudProjectSettings.userId;
+                bool token = !string.IsNullOrEmpty(UnityEditor.CloudProjectSettings.accessToken);
+                string msg = $"[WaterProject] Unity账号登录状态：userName={(string.IsNullOrEmpty(name) ? "(空)" : name)} | userId={(string.IsNullOrEmpty(core) ? "(空)" : core)} | token={token}";
+                UnityEngine.Debug.Log(msg);
+                EditorUtility.DisplayDialog("Unity 账号状态", msg, "确定");
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.Log("[WaterProject] 账号查询失败: " + ex.Message);
+            }
+        }
+
         [MenuItem("Tools/WaterProject/03 生成水体系统预制体")]
         public static void CreateWaterPrefabs()
         {
