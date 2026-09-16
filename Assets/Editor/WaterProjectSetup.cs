@@ -1,6 +1,7 @@
 // WaterProjectSetup.cs — 编辑器一键设置（通过 MCP runMenuItem 调用）
 // 收录：URP 管线资产创建/默认规格设置、Opaque/Depth 纹理开启、水面材质创建
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -16,42 +17,59 @@ namespace WaterProject.EditorTools
         const string RendererPath = SettingsFolder + "/WaterURPRenderer.asset";
         const string ShaderFolder = "Assets/Art/Shaders";
 
-        [MenuItem("Tools/WaterProject/04 生成池塘网格(40m x 40m, 96x96)")]
+        [MenuItem("Tools/WaterProject/04 生成圆形池塘网格(半径20m)")]
         public static void CreateHighSegWaterMesh()
         {
-            const int SEG = 96;            // 段数：40m / 96 ≈ 0.42m/格
-            const float SIZE = 40f;        // 池塘边长（米）
+            // 圆形池塘圆盘：半径 20m（原 40m 见方改圆），48 环 × 96 径向
+            const int RINGS = 48;
+            const int RADIAL = 96;
+            const float RADIUS = 20f;
             string path = "Assets/Art/Meshes/LakeWaterMesh.asset";
             if (!Directory.Exists("Assets/Art/Meshes")) Directory.CreateDirectory("Assets/Art/Meshes");
 
-            var mesh = new Mesh { name = "LakeWater_HighSeg" };
-            int n = SEG + 1;
-            var verts = new Vector3[n * n];
-            var uvs = new Vector2[n * n];
-            var tris = new int[SEG * SEG * 6];
-            int vi = 0, ti = 0;
-            for (int y = 0; y < n; y++)
+            var mesh = new Mesh { name = "LakeWater_Disc" };
+            // 1 中心点 + RINGS × RADIAL 环顶点
+            var verts = new List<Vector3>(1 + RINGS * RADIAL);
+            var uvs = new List<Vector2>(1 + RINGS * RADIAL);
+            verts.Add(Vector3.zero);
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            for (int r = 1; r <= RINGS; r++)
             {
-                for (int x = 0; x < n; x++)
+                float radius = RADIUS * r / RINGS;
+                for (int j = 0; j < RADIAL; j++)
                 {
-                    // 平面位于 XZ，中心在原点
-                    verts[vi] = new Vector3((x / (float)SEG - 0.5f) * SIZE, 0f, (y / (float)SEG - 0.5f) * SIZE);
-                    uvs[vi] = new Vector2(x / (float)SEG, y / (float)SEG);
-                    vi++;
+                    float ang = (j / (float)RADIAL) * Mathf.PI * 2f;
+                    float x = Mathf.Cos(ang) * radius;
+                    float z = Mathf.Sin(ang) * radius;
+                    verts.Add(new Vector3(x, 0f, z));
+                    // UV 与世界 XZ 对齐（±20m → 0..1），与交互纹理 rect 严格一致
+                    uvs.Add(new Vector2((x + RADIUS) / (2f * RADIUS), (z + RADIUS) / (2f * RADIUS)));
                 }
             }
-            for (int y = 0; y < SEG; y++)
+            int nR = verts.Count;
+            var tris = new List<int>(RADIAL * 3 + (RINGS - 1) * RADIAL * 6);
+            // 内圈扇形：中心 + 第 1 环
+            for (int j = 0; j < RADIAL; j++)
             {
-                for (int x = 0; x < SEG; x++)
+                int b = 1 + ((j + 1) % RADIAL);
+                tris.Add(0); tris.Add(b); tris.Add(1 + j);
+            }
+            // 环间四边形拆两三角
+            for (int r = 1; r < RINGS; r++)
+            {
+                for (int j = 0; j < RADIAL; j++)
                 {
-                    int a = y * n + x, b = a + 1, c = a + n, d = c + 1;
-                    tris[ti++] = a; tris[ti++] = c; tris[ti++] = b;
-                    tris[ti++] = b; tris[ti++] = c; tris[ti++] = d;
+                    int a = 1 + (r - 1) * RADIAL + j;
+                    int b = 1 + (r - 1) * RADIAL + ((j + 1) % RADIAL);
+                    int c = 1 + r * RADIAL + j;
+                    int d = 1 + r * RADIAL + ((j + 1) % RADIAL);
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(b); tris.Add(c); tris.Add(d);
                 }
             }
-            mesh.vertices = verts;
-            mesh.uv = uvs;
-            mesh.triangles = tris;
+            mesh.SetVertices(verts);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(tris, 0);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -73,7 +91,7 @@ namespace WaterProject.EditorTools
                         // 池塘模式下网格即真实尺寸，取消 60x 缩放（旧大湖缩放）
                         water.transform.localScale = Vector3.one;
                         AssetDatabase.SaveAssets();
-                        Debug.Log($"[WaterProject] 池塘网格已应用到 Water：{SEG}x{SEG} 段，{mesh.vertexCount} 顶点，{SIZE}m 见方（资产引用: {path}）");
+                        Debug.Log($"[WaterProject] 圆形池塘网格已应用：半径{RADIUS}m，{RINGS}环x{RADIAL}径向={mesh.vertexCount}顶点/{mesh.triangles.Length/3}三角（资产引用: {path}）");
                     }
                     else
                     {
@@ -89,6 +107,7 @@ namespace WaterProject.EditorTools
             AssetDatabase.Refresh();
         }
 
+        [MenuItem("Tools/WaterProject/05 近距离特写")]
         [MenuItem("Tools/WaterProject/05 近距离特写水景视角 (Scene View)")]
         public static void FrameSceneViewClose()
         {
@@ -193,6 +212,7 @@ namespace WaterProject.EditorTools
             Debug.Log($"[WaterProject] 预制体: {prefabPath} -> {(saved != null ? "OK" : "失败")}");
         }
 
+        [MenuItem("Tools/WaterProject/02 全景取景")]
         [MenuItem("Tools/WaterProject/02 对齐水景视角 (Scene View)")]
         public static void FrameSceneView()
         {
