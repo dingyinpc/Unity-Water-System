@@ -52,6 +52,7 @@ Material:
     - _SunStrength: 0.5
     - _TessFar: 60
     - _TessNear: 6
+    - _TessTargetSize: 0.25
     - _WaveCount: 4
     - _WaveTimeScale: 1
     m_Colors:

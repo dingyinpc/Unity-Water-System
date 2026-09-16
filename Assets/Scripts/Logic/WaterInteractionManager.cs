@@ -55,6 +55,10 @@ namespace WaterProject.Logic
 
         float _nextDemoTime;
 
+        // 帧耗时诊断
+        int _diagFrames;
+        float _diagAccum;
+
         void Awake()
         {
             Instance = this;
@@ -119,6 +123,17 @@ namespace WaterProject.Logic
         void Update()
         {
             EnsureRT();
+
+            // 帧耗时诊断：每 60 帧打印一次真实 ms/帧
+            _diagFrames++;
+            _diagAccum += Time.unscaledDeltaTime;
+            if (_diagFrames >= 60)
+            {
+                float ms = _diagAccum / _diagFrames * 1000f;
+                Debug.Log($"[WaterProject] FRAME {ms:F1} ms ({1000f / Mathf.Max(ms, 0.001f):F0} FPS)");
+                _diagFrames = 0;
+                _diagAccum = 0f;
+            }
 
             // 演示模式：随机落点（以交互中心为圆心）
             if (autoDemo && Time.time >= _nextDemoTime)

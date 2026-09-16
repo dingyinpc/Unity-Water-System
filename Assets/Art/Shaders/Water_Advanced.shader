@@ -33,6 +33,7 @@ Shader "WaterProject/Water_Advanced"
 
         // ── 曲面细分 [1] ──
         _MaxTess          ("最大细分因子", Float) = 12
+        _TessTargetSize   ("细分目标尺寸(米)", Float) = 0.25
         _TessNear         ("细分近距", Float) = 6.0
         _TessFar          ("细分远距", Float) = 60.0
 
@@ -104,7 +105,7 @@ Shader "WaterProject/Water_Advanced"
                 float  _WaveCount, _WaveTimeScale;
                 float4 _Waves[MAX_WAVES];
                 float4 _WaveDirs[MAX_WAVES];
-                float  _MaxTess, _TessNear, _TessFar;
+                float  _MaxTess, _TessTargetSize, _TessNear, _TessFar;
                 float  _RefractStrength, _Eta, _DepthSharp, _MaxUVOffset;
                 float  _DetailStrength, _DetailScale, _DetailStart, _DetailEnd;
                 float  _InteractionAmp, _InteractionNorm, _InteractionFoam;
@@ -270,12 +271,15 @@ Shader "WaterProject/Water_Advanced"
                 return o;
             }
 
-            // 近密远疏的自适应细分因子 [1]
+            // 近密远疏 + 按基边长度自适应的细分因子 [1]
+            // factor ≈ (基边长度 / 目标尺寸)，近处满级、远处衰减到 1——任何网格分辨率都收敛到 ~_TessTargetSize。
             float TessFactorForEdge(float3 a, float3 b, float3 cam)
             {
                 float d = distance((a + b) * 0.5, cam);
                 float k = saturate((d - _TessNear) / max(_TessFar - _TessNear, 1e-4));
-                return max(1.0, ceil(_MaxTess * (1.0 - k)));
+                float sizeFactor = distance(a, b) / max(_TessTargetSize, 1e-4);
+                float f = sizeFactor * (1.0 - k);
+                return max(1.0, ceil(min(f, _MaxTess)));
             }
 
             TessFactors hullConstant(InputPatch<TessControlPoint, 3> patch, uint pid : SV_PrimitiveID)

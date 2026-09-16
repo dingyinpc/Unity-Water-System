@@ -16,11 +16,11 @@ namespace WaterProject.EditorTools
         const string RendererPath = SettingsFolder + "/WaterURPRenderer.asset";
         const string ShaderFolder = "Assets/Art/Shaders";
 
-        [MenuItem("Tools/WaterProject/04 生成高细分水体网格(160x160)")]
+        [MenuItem("Tools/WaterProject/04 生成池塘网格(40m x 40m, 96x96)")]
         public static void CreateHighSegWaterMesh()
         {
-            const int SEG = 160;          // 段数：600m / 160 = 3.75m/格
-            const float SIZE = 600f;
+            const int SEG = 96;            // 段数：40m / 96 ≈ 0.42m/格
+            const float SIZE = 40f;        // 池塘边长（米）
             string path = "Assets/Art/Meshes/LakeWaterMesh.asset";
             if (!Directory.Exists("Assets/Art/Meshes")) Directory.CreateDirectory("Assets/Art/Meshes");
 
@@ -63,8 +63,23 @@ namespace WaterProject.EditorTools
             if (water != null)
             {
                 var mf = water.GetComponent<MeshFilter>();
-                if (mf != null) { mf.sharedMesh = mesh; AssetDatabase.SaveAssets(); }
-                Debug.Log($"[WaterProject] 高细分网格已应用到 Water：{SEG}x{SEG} 段，{mesh.vertexCount} 顶点");
+                if (mf != null)
+                {
+                    // 关键：从磁盘加载资产引用再赋值（内存 Mesh 对象无法序列化，保存后引用会丢失）
+                    var assetMesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+                    if (assetMesh != null)
+                    {
+                        mf.sharedMesh = assetMesh;
+                        // 池塘模式下网格即真实尺寸，取消 60x 缩放（旧大湖缩放）
+                        water.transform.localScale = Vector3.one;
+                        AssetDatabase.SaveAssets();
+                        Debug.Log($"[WaterProject] 池塘网格已应用到 Water：{SEG}x{SEG} 段，{mesh.vertexCount} 顶点，{SIZE}m 见方（资产引用: {path}）");
+                    }
+                    else
+                    {
+                        Debug.LogError("[WaterProject] 网格资产加载失败：" + path);
+                    }
+                }
             }
             else
             {
@@ -80,10 +95,44 @@ namespace WaterProject.EditorTools
             var sv = SceneView.lastActiveSceneView;
             if (sv == null) return;
             sv.orthographic = false;
-            // 贴近水面低角度，展现波浪/曲面细分级配与日光闪烁
-            sv.LookAt(new Vector3(0f, 0.6f, 0f), Quaternion.Euler(-2f, 180f, 0f), 6f);
+            // 贴近水面低角度，展现波浪/曲面细分级配与日光闪烁（池塘特写）
+            sv.LookAt(new Vector3(0f, 0.6f, 0f), Quaternion.Euler(-2f, 180f, 0f), 4.5f);
             sv.Repaint();
             Debug.Log("[WaterProject] SceneView framed close-up.");
+        }
+
+        [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
+        public static void ProbeWaterColor()
+        {
+            string matPath = "Assets/Art/Materials/Water_Advanced.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null) { UnityEngine.Debug.LogError("[WaterProject] 材质不存在：" + matPath); return; }
+            if (System.IO.File.Exists(matPath + ".probe"))
+            {
+                mat.SetColor("_ShallowColor", new Color(0.14f, 0.50f, 0.42f, 1f));
+                mat.SetColor("_DeepColor", new Color(0.03f, 0.18f, 0.19f, 1f));
+                mat.SetFloat("_Opacity", 0.97f);
+                System.IO.File.Delete(matPath + ".probe");
+                UnityEngine.Debug.Log("[WaterProject] PROBE restored pond colors");
+            }
+            else
+            {
+                mat.SetColor("_ShallowColor", new Color(1f, 0f, 1f, 1f));
+                mat.SetColor("_DeepColor", new Color(1f, 0f, 1f, 1f));
+                mat.SetFloat("_Opacity", 1f);
+                System.IO.File.WriteAllText(matPath + ".probe", "1");
+                UnityEngine.Debug.Log("[WaterProject] PROBE magenta on");
+            }
+            EditorUtility.SetDirty(mat);
+        }
+
+        [MenuItem("Tools/WaterProject/08 查询主相机状态")]
+        public static void DumpCameraState()
+        {
+            var cam = Camera.main;
+            if (cam == null) { UnityEngine.Debug.Log("[WaterProject] CAM No Camera.main!"); return; }
+            var t = cam.transform;
+            UnityEngine.Debug.Log($"[WaterProject] CAM pos={t.position} rot={t.eulerAngles} fov={cam.fieldOfView} near={cam.nearClipPlane} far={cam.farClipPlane} cull={cam.cullingMask} clear={cam.clearFlags} targetTex={(cam.targetTexture != null ? cam.targetTexture.name : "null")} active={cam.enabled} gameView?={cam.isActiveAndEnabled}");
         }
 
         [MenuItem("Tools/WaterProject/07 读取演示FPS (Play中)")]
@@ -150,8 +199,8 @@ namespace WaterProject.EditorTools
             var sv = SceneView.lastActiveSceneView;
             if (sv == null) return;
             sv.orthographic = false;
-            // 相机对准湖面原点：从 -Z 侧高处俯瞰
-            sv.LookAt(new Vector3(0f, 1f, 0f), Quaternion.Euler(16f, 180f, 0f), 26f);
+            // 相机对准池塘中心：从 -Z 侧高处俯瞰（距离收紧适配小池塘）
+            sv.LookAt(new Vector3(0f, 0.5f, 0f), Quaternion.Euler(16f, 180f, 0f), 13f);
             sv.FrameSelected(false);
             sv.Repaint();
             Debug.Log("[WaterProject] SceneView framed to water.");

@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   texSize: 256
-  halfExtent: 12
+  halfExtent: 20
   interactionLife: 1.8
   interactionCenter: {x: 0, y: 0, z: 0}
   autoDemo: 1
