@@ -86,6 +86,14 @@ namespace WaterProject.EditorTools
             Debug.Log("[WaterProject] SceneView framed close-up.");
         }
 
+        [MenuItem("Tools/WaterProject/07 读取演示FPS (Play中)")]
+        public static void ReadDemoFps()
+        {
+            var ui = UnityEngine.Object.FindFirstObjectByType<WaterProject.Presentation.WaterDemoUI>();
+            float fps = WaterProject.Presentation.WaterDemoUI.LastFps;
+            UnityEngine.Debug.Log($"[WaterProject] FPS={fps:F1} | uiFound={(ui != null)} | isPlaying={Application.isPlaying}");
+        }
+
         [MenuItem("Tools/WaterProject/06 查询编辑器/播放状态")]
         public static void QueryState()
         {

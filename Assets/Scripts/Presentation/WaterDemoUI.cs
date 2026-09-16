@@ -14,6 +14,9 @@ namespace WaterProject.Presentation
         int _fpsFrames;
         float _fpsTick;
 
+        /// <summary>最近一次统计的 FPS（供编辑器工具/性能记录读取）。</summary>
+        public static float LastFps { get; private set; } = -1f;
+
         void Start()
         {
             _mgr = FindFirstObjectByType<WaterInteractionManager>();
@@ -64,6 +67,7 @@ namespace WaterProject.Presentation
             if (Time.unscaledTime - _fpsTick >= 0.5f)
             {
                 float fps = _fpsFrames / Mathf.Max(Time.unscaledTime - _fpsTick, 1e-4f);
+                LastFps = fps;
                 _fpsTick = Time.unscaledTime;
                 _fpsFrames = 0;
                 if (_info != null)

@@ -47,6 +47,7 @@ MonoBehaviour:
   texSize: 256
   halfExtent: 12
   interactionLife: 1.8
+  interactionCenter: {x: 0, y: 0, z: 0}
   autoDemo: 1
   demoInterval: 0.45
   maxRipples: 8
