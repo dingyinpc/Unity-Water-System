@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -192,7 +193,8 @@ namespace UnityCopilot
             EnsureAssetsFolder(savePath);
             string scenePath = $"Assets/{savePath}/{name}.unity";
 
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Additive);
+            // 用 Single 模式替换当前场景：可正确处理"未命名未保存场景"的情况
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             scene.name = name;
             EditorSceneManager.SaveScene(scene, scenePath);
 
@@ -987,6 +989,26 @@ public class {className} : MonoBehaviour
 
                 t = asm.GetType($"UnityEngine.{name}", false, true);
                 if (t != null && typeof(Component).IsAssignableFrom(t)) { return t; }
+            }
+
+            // 增强：按"类名（不含命名空间）"模糊匹配，支持带命名空间的用户脚本
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (asm.FullName.StartsWith("UnityEditor", StringComparison.OrdinalIgnoreCase) &&
+                    asm.FullName.Contains("Editor")) continue;
+                try
+                {
+                    var candidates = asm.GetTypes();
+                    foreach (var cand in candidates)
+                    {
+                        if (cand.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                            typeof(Component).IsAssignableFrom(cand) && !cand.IsAbstract)
+                        {
+                            return cand;
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException) { /* 程序集部分类型加载失败，跳过 */ }
             }
 
             return null;

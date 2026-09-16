@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Water_Advanced
+  m_Shader: {fileID: 4800000, guid: 6205a42561b9bde41aa56b446be605b3, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _Absorb: 0.9
+    - _AmbientStrength: 0.35
+    - _CrestFoam: 1
+    - _CrestJ: 0.6
+    - _CrestSoft: 0.35
+    - _DepthSharp: 3
+    - _DetailEnd: 40
+    - _DetailScale: 1.6
+    - _DetailStart: 2
+    - _DetailStrength: 3
+    - _Eta: 1.33
+    - _FoamLift: 0.03
+    - _FresnelPow: 4
+    - _InteractionAmp: 0.35
+    - _InteractionFoam: 0.9
+    - _InteractionNorm: 1.4
+    - _MaxTess: 12
+    - _MaxUVOffset: 0.12
+    - _Opacity: 0.97
+    - _RefractStrength: 0.9
+    - _ShoreFoam: 0.8
+    - _SpecPower: 180
+    - _SpecStrength: 0.55
+    - _SunGloss: 400
+    - _SunStrength: 0.35
+    - _TessFar: 60
+    - _TessNear: 6
+    - _WaveCount: 4
+    - _WaveTimeScale: 1
+    m_Colors:
+    - _DeepColor: {r: 0.02, g: 0.12, b: 0.16, a: 1}
+    - _FoamColor: {r: 0.95, g: 0.97, b: 0.98, a: 1}
+    - _ShallowColor: {r: 0.1, g: 0.38, b: 0.34, a: 1}
+    - _SkyHorizon: {r: 0.72, g: 0.83, b: 0.9, a: 1}
+    - _SkyZenith: {r: 0.32, g: 0.55, b: 0.8, a: 1}
+    - _SunColor: {r: 1, g: 0.93, b: 0.75, a: 1}
+    - _WaveDirs: {r: 0, g: 0, b: 0, a: 0}
+    - _Waves: {r: 0, g: 0, b: 0, a: 0}
+  m_BuildTextureStacks: []
