@@ -16,6 +16,82 @@ namespace WaterProject.EditorTools
         const string RendererPath = SettingsFolder + "/WaterURPRenderer.asset";
         const string ShaderFolder = "Assets/Art/Shaders";
 
+        [MenuItem("Tools/WaterProject/04 生成高细分水体网格(160x160)")]
+        public static void CreateHighSegWaterMesh()
+        {
+            const int SEG = 160;          // 段数：600m / 160 = 3.75m/格
+            const float SIZE = 600f;
+            string path = "Assets/Art/Meshes/LakeWaterMesh.asset";
+            if (!Directory.Exists("Assets/Art/Meshes")) Directory.CreateDirectory("Assets/Art/Meshes");
+
+            var mesh = new Mesh { name = "LakeWater_HighSeg" };
+            int n = SEG + 1;
+            var verts = new Vector3[n * n];
+            var uvs = new Vector2[n * n];
+            var tris = new int[SEG * SEG * 6];
+            int vi = 0, ti = 0;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    // 平面位于 XZ，中心在原点
+                    verts[vi] = new Vector3((x / (float)SEG - 0.5f) * SIZE, 0f, (y / (float)SEG - 0.5f) * SIZE);
+                    uvs[vi] = new Vector2(x / (float)SEG, y / (float)SEG);
+                    vi++;
+                }
+            }
+            for (int y = 0; y < SEG; y++)
+            {
+                for (int x = 0; x < SEG; x++)
+                {
+                    int a = y * n + x, b = a + 1, c = a + n, d = c + 1;
+                    tris[ti++] = a; tris[ti++] = c; tris[ti++] = b;
+                    tris[ti++] = b; tris[ti++] = c; tris[ti++] = d;
+                }
+            }
+            mesh.vertices = verts;
+            mesh.uv = uvs;
+            mesh.triangles = tris;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            var old = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (old != null) AssetDatabase.DeleteAsset(path);
+            AssetDatabase.CreateAsset(mesh, path);
+
+            var water = GameObject.Find("Water");
+            if (water != null)
+            {
+                var mf = water.GetComponent<MeshFilter>();
+                if (mf != null) { mf.sharedMesh = mesh; AssetDatabase.SaveAssets(); }
+                Debug.Log($"[WaterProject] 高细分网格已应用到 Water：{SEG}x{SEG} 段，{mesh.vertexCount} 顶点");
+            }
+            else
+            {
+                Debug.Log($"[WaterProject] 网格已生成 {path}（未找到 Water 对象，未应用）");
+                AssetDatabase.SaveAssets();
+            }
+            AssetDatabase.Refresh();
+        }
+
+        [MenuItem("Tools/WaterProject/05 近距离特写水景视角 (Scene View)")]
+        public static void FrameSceneViewClose()
+        {
+            var sv = SceneView.lastActiveSceneView;
+            if (sv == null) return;
+            sv.orthographic = false;
+            // 贴近水面低角度，展现波浪/曲面细分级配与日光闪烁
+            sv.LookAt(new Vector3(0f, 0.6f, 0f), Quaternion.Euler(-2f, 180f, 0f), 6f);
+            sv.Repaint();
+            Debug.Log("[WaterProject] SceneView framed close-up.");
+        }
+
+        [MenuItem("Tools/WaterProject/06 查询编辑器/播放状态")]
+        public static void QueryState()
+        {
+            UnityEngine.Debug.Log($"[WaterProject] STATE isPlaying={Application.isPlaying} | isEditor={Application.isEditor} | timeScale={Time.timeScale}");
+        }
+
         [MenuItem("Tools/WaterProject/00 检查Unity账号登录状态")]
         public static void CheckUnityLogin()
         {
@@ -127,6 +203,10 @@ namespace WaterProject.EditorTools
             if (mat != null)
             {
                 mat.SetFloat("_WaveCount", 4);
+                // 翡翠-青绿色调（对照目标视频观感）
+                mat.SetColor("_ShallowColor", new Color(0.14f, 0.50f, 0.42f, 1f));
+                mat.SetColor("_DeepColor", new Color(0.03f, 0.18f, 0.19f, 1f));
+                mat.SetFloat("_SunStrength", 0.5f);
                 // (振幅 A, 角频率 ω, 陡度 Q, -)
                 mat.SetVectorArray("_Waves", new Vector4[]
                 {
@@ -146,7 +226,7 @@ namespace WaterProject.EditorTools
                 EditorUtility.SetDirty(mat);
             }
 
-            // ── 6) 地面/湖底深色材质（URP Lit）─────────────────────
+            // ── 6) 地面/湖底沙色材质（URP Lit；存在时也强制应用标准色）──
             string groundMatPath = "Assets/Art/Materials/Ground_Lake.mat";
             var groundMat = AssetDatabase.LoadAssetAtPath<Material>(groundMatPath);
             if (groundMat == null)
@@ -155,9 +235,13 @@ namespace WaterProject.EditorTools
                 if (lit != null)
                 {
                     groundMat = new Material(lit);
-                    groundMat.SetColor("_BaseColor", new Color(0.30f, 0.33f, 0.22f, 1f)); // 湖底泥绿色
                     AssetDatabase.CreateAsset(groundMat, groundMatPath);
                 }
+            }
+            if (groundMat != null)
+            {
+                groundMat.SetColor("_BaseColor", new Color(0.64f, 0.54f, 0.40f, 1f)); // 中等棕褐沙地
+                EditorUtility.SetDirty(groundMat);
             }
 
             AssetDatabase.SaveAssets();

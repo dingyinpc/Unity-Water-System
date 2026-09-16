@@ -49,15 +49,15 @@ Material:
     - _SpecPower: 180
     - _SpecStrength: 0.55
     - _SunGloss: 400
-    - _SunStrength: 0.35
+    - _SunStrength: 0.5
     - _TessFar: 60
     - _TessNear: 6
     - _WaveCount: 4
     - _WaveTimeScale: 1
     m_Colors:
-    - _DeepColor: {r: 0.02, g: 0.12, b: 0.16, a: 1}
+    - _DeepColor: {r: 0.03, g: 0.18, b: 0.19, a: 1}
     - _FoamColor: {r: 0.95, g: 0.97, b: 0.98, a: 1}
-    - _ShallowColor: {r: 0.1, g: 0.38, b: 0.34, a: 1}
+    - _ShallowColor: {r: 0.14, g: 0.5, b: 0.42, a: 1}
     - _SkyHorizon: {r: 0.72, g: 0.83, b: 0.9, a: 1}
     - _SkyZenith: {r: 0.32, g: 0.55, b: 0.8, a: 1}
     - _SunColor: {r: 1, g: 0.93, b: 0.75, a: 1}

@@ -16,6 +16,10 @@ namespace WaterProject.Logic
         public float halfExtent = 12f;          // RT 覆盖半径（米）
         public float interactionLife = 1.8f;
 
+        [Header("交互中心（演示/RT 采样中心）")]
+        [Tooltip("演示用默认以水面原点为中心；真实玩法可将此绑定到玩家位置。")]
+        public Vector3 interactionCenter = Vector3.zero;
+
         [Header("演示")]
         public bool autoDemo = true;
         public float demoInterval = 0.45f;
@@ -116,14 +120,13 @@ namespace WaterProject.Logic
         {
             EnsureRT();
 
-            // 演示模式：随机落点
+            // 演示模式：随机落点（以交互中心为圆心）
             if (autoDemo && Time.time >= _nextDemoTime)
             {
-                Vector3 camPos = Camera.main ? Camera.main.transform.position : Vector3.zero;
                 Vector3 p = new Vector3(
-                    camPos.x + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f),
+                    interactionCenter.x + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f),
                     0,
-                    camPos.z + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f));
+                    interactionCenter.z + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f));
                 SpawnInteraction(p, Random.Range(0.5f, 1f));
                 SpawnRipple(p);
                 _nextDemoTime = Time.time + demoInterval;
@@ -131,10 +134,8 @@ namespace WaterProject.Logic
 
             if (_blit == null) return;
 
-            // ── 1) 交互 RT 更新 ──
-            Vector3 center = Camera.main
-                ? new Vector3(Camera.main.transform.position.x, 0, Camera.main.transform.position.z)
-                : Vector3.zero;
+            // ── 1) 交互 RT 更新（以交互中心为采样中心）──
+            Vector3 center = new Vector3(interactionCenter.x, 0, interactionCenter.z);
 
             _blit.SetVectorArray(P_Interactions, _interactionBuf);
             _blit.SetInt(P_Count, _interactionCount);

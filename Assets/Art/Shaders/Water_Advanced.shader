@@ -398,15 +398,17 @@ Shader "WaterProject/Water_Advanced"
                 // ── 天空反射（菲涅尔）[3] ──
                 float3 reflDir = reflect(-V, N);
                 float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y * 0.5 + 0.5));
-                skyCol += _SunColor * pow(saturate(dot(reflDir, normalize(float3(0.5, 0.75, 0.4)))), _SunGloss) * _SunStrength;
+                // 太阳闪烁与场景主光方向对齐（不硬编码方向）
+                skyCol += _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += skyCol * fres * (1.0 - interA * 0.4);
 
                 // ── 高光 ──
                 float3 H = normalize(mainLight.direction + V);
                 col += mainLight.color * pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength * (1.0 - fres * 0.5);
 
-                // ── 折射层混合 ──
-                col = lerp(col, refrCol, (1.0 - fres) * _Opacity * 0.6);
+                // ── 折射层混合：浅水看湖底（沙色），深水收敛到深水色 ──
+                float depthMix = 1.0 - exp(-max(gap, 0.0) * _Absorb);   // 0浅→1深
+                col = lerp(col, refrCol, (1.0 - fres) * (1.0 - depthMix) * 0.58);
                 col = lerp(col, sceneCol, (1.0 - fres) * (1.0 - _Opacity));
 
                 // ── 泡沫 [8]：浪尖(J) + 岸边(深度差) + 交互 ──

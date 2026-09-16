@@ -91,8 +91,9 @@ namespace WaterProject.Presentation
 
         Vector3 RandomAroundCamera()
         {
-            Vector3 cam = Camera.main ? Camera.main.transform.position : Vector3.zero;
-            return new Vector3(cam.x + Random.Range(-6f, 6f), 0, cam.z + Random.Range(-6f, 6f));
+            // 环绕交互中心（与交互 RT 覆盖一致），默认水面原点
+            Vector3 c = _mgr != null ? _mgr.interactionCenter : Vector3.zero;
+            return new Vector3(c.x + Random.Range(-6f, 6f), 0, c.z + Random.Range(-6f, 6f));
         }
     }
 }

@@ -860,12 +860,47 @@ public class {className} : MonoBehaviour
         // Renders the active Scene view to a PNG and returns it as base64.
         private static string CaptureScreenshot(SimpleJson p, out object data)
         {
-            SceneView sv = SceneView.lastActiveSceneView;
-            if (sv == null) { throw new InvalidOperationException("No active Scene view found. Open the Scene view tab in the Unity Editor first."); }
+            // game=true 时抓取游戏主相机（Play 模式的真实画面）；否则抓 SceneView
+            bool useGame = p.GetBool("game");
+            Camera cam = null;
+            if (useGame)
+            {
+                cam = Camera.main;
+                if (cam == null)
+                {
+                    var cams = UnityEngine.Object.FindObjectsOfType<Camera>();
+                    if (cams != null && cams.Length > 0) cam = cams[0];
+                }
+                if (cam == null) { throw new InvalidOperationException("No Camera found for game view capture."); }
+            }
 
-            Camera cam    = sv.camera;
-            int    width  = Mathf.Max(1, (int)sv.position.width);
-            int    height = Mathf.Max(1, (int)sv.position.height);
+            int width, height;
+            if (useGame)
+            {
+                width  = Mathf.Max(1, cam.pixelWidth);
+                height = Mathf.Max(1, cam.pixelHeight);
+            }
+            else
+            {
+                SceneView sv = SceneView.lastActiveSceneView;
+                if (sv == null) { throw new InvalidOperationException("No active Scene view found. Open the Scene view tab in the Unity Editor first."); }
+
+                cam    = sv.camera;
+                width  = Mathf.Max(1, (int)sv.position.width);
+                height = Mathf.Max(1, (int)sv.position.height);
+
+                // 显式将 SceneView 取景姿态应用到相机：
+                // LookAt/Frame 只更新轨道控制器(pivot/rotation/size)，若编辑器未触发重绘，
+                // 相机组件变换会保持陈旧，导致 cam.Render() 拍到旧画面（尤其 Play 模式下）。
+                Vector3 svPos = sv.pivot - sv.rotation * Vector3.forward * sv.size;
+                cam.transform.position       = svPos;
+                cam.transform.rotation       = sv.rotation;
+                if (!Application.isPlaying)
+                {
+                    // 编辑器模式下再请求一次重绘，保证水面 _Time/网格状态与显示一致
+                    sv.Repaint();
+                }
+            }
 
             var rt   = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
             var prev = cam.targetTexture;
