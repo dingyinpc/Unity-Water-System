@@ -24,6 +24,11 @@ Shader "WaterProject/Water_Advanced"
         _SunColor         ("太阳高光色", Color) = (1.0, 0.93, 0.75, 1)
         _Absorb           ("吸收系数（越深越暗）", Float) = 0.9
         _Opacity          ("整体不透明度", Float) = 0.97
+        // ── 透光感（Beer–Lambert 透射 + 阳光穿透 + 体积散射）──
+        _WaterScatter     ("水体散射色", Color) = (0.42, 0.75, 0.88, 1)
+        _ScatterStrength  ("体积散射强度", Float) = 0.45
+        _SunTransmission  ("阳光透射强度", Float) = 0.9
+        _TransGloss       ("透射高光锐度", Float) = 48.0
 
         // ── 格斯特纳波 [2] ──
         _WaveCount        ("波数量", Float) = 4
@@ -101,6 +106,8 @@ Shader "WaterProject/Water_Advanced"
             // ============================ 属性 ============================
             CBUFFER_START(UnityPerMaterial)
                 float4 _DeepColor, _ShallowColor, _FoamColor, _SkyZenith, _SkyHorizon, _SunColor;
+            float4 _WaterScatter;
+            float _ScatterStrength, _SunTransmission, _TransGloss;
                 float  _Absorb, _Opacity;
                 float  _WaveCount, _WaveTimeScale;
                 float4 _Waves[MAX_WAVES];
@@ -228,11 +235,12 @@ Shader "WaterProject/Water_Advanced"
             float3 DetailNormal(float3 worldPos, float t)
             {
                 float2 p = worldPos.xz * _DetailScale;
-                p += float2(t * 0.12, t * 0.09);
+                // 流动感：细节法线以 ~0.35-0.45 m/s 世界速度平移（原 0.12 几乎静止）
+                p += float2(t * 0.42, t * 0.33);
                 float2 g;
                 GradientNoise(p, g);
-                // 反向抖动细节，制造流动感
-                float2 p2 = worldPos.xz * _DetailScale * 2.1 - float2(t * 0.09, t * 0.12);
+                // 反向抖动细节，制造多向流动
+                float2 p2 = worldPos.xz * _DetailScale * 2.1 - float2(t * 0.33, t * 0.42);
                 float2 g2;
                 GradientNoise(p2, g2);
                 float2 total = g * 0.7 + g2 * 0.5;
@@ -405,6 +413,18 @@ Shader "WaterProject/Water_Advanced"
                 // 太阳闪烁与场景主光方向对齐（不硬编码方向）
                 skyCol += _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += skyCol * fres * (1.0 - interA * 0.4);
+
+                // ── 透光感 [Beer–Lambert]：阳光沿反射反方向穿透水体，随深度指数衰减 ──
+                float trans = exp(-max(gap, 0.0) * _Absorb * 0.6);          // 透射率 0浅→1深
+                float sunTrans = pow(saturate(dot(reflDir, mainLight.direction)), _TransGloss);
+                col += _SunColor * _SunTransmission * sunTrans * (0.2 + 0.8 * trans);
+
+                // ── 透光感：体积散射（水体自身泛光，视向朝向太阳更亮，深水衰减）──
+                float viewSun = saturate(dot(V, mainLight.direction)) * 0.5 + 0.5;
+                col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * _ScatterStrength * (0.35 + 0.65 * trans);
+
+                // 浅滩（gap 小）额外泛光，光能透到底的提亮
+                col += _ShallowColor * _ScatterStrength * 0.28 * (1.0 - trans);
 
                 // ── 高光 ──
                 float3 H = normalize(mainLight.direction + V);

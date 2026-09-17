@@ -50,11 +50,14 @@ Material:
     - _SpecStrength: 0.5
     - _SunGloss: 500
     - _SunStrength: 0.3
+    - _ScatterStrength: 0.38
+    - _SunTransmission: 0.7
+    - _TransGloss: 48
     - _TessFar: 32
     - _TessNear: 6
     - _TessTargetSize: 0.35
     - _WaveCount: 4
-    - _WaveTimeScale: 1
+    - _WaveTimeScale: 1.8
     m_Colors:
     - _DeepColor: {r: 0.09, g: 0.38, b: 0.47, a: 1}
     - _FoamColor: {r: 0.95, g: 0.97, b: 0.98, a: 1}
@@ -62,6 +65,7 @@ Material:
     - _SkyHorizon: {r: 0.8, g: 0.92, b: 1, a: 1}
     - _SkyZenith: {r: 0.42, g: 0.7, b: 1, a: 1}
     - _SunColor: {r: 1, g: 0.93, b: 0.75, a: 1}
+    - _WaterScatter: {r: 0.42, g: 0.75, b: 0.88, a: 1}
     - _WaveDirs: {r: 0, g: 0, b: 0, a: 0}
     - _Waves: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

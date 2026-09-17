@@ -446,9 +446,15 @@ namespace WaterProject.EditorTools
             {
                 mat.SetFloat("_WaveCount", 4);
                 // 翡翠-青绿色调（对照目标视频观感）
-                mat.SetColor("_ShallowColor", new Color(0.14f, 0.50f, 0.42f, 1f));
-                mat.SetColor("_DeepColor", new Color(0.03f, 0.18f, 0.19f, 1f));
-                mat.SetFloat("_SunStrength", 0.5f);
+                mat.SetColor("_ShallowColor", new Color(0.20f, 0.72f, 0.82f, 1f));
+                mat.SetColor("_DeepColor", new Color(0.09f, 0.38f, 0.47f, 1f));
+                mat.SetFloat("_SunStrength", 0.3f);
+                // 透光感参数（阳光透射 + 体积散射）
+                mat.SetColor("_WaterScatter", new Color(0.42f, 0.75f, 0.88f, 1f));
+                mat.SetFloat("_ScatterStrength", 0.38f);
+                mat.SetFloat("_SunTransmission", 0.7f);
+                mat.SetFloat("_TransGloss", 48f);
+                mat.SetFloat("_WaveTimeScale", 1.8f);
                 // (振幅 A, 角频率 ω, 陡度 Q, -)
                 mat.SetVectorArray("_Waves", new Vector4[]
                 {
