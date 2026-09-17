@@ -306,6 +306,258 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log($"[WaterProject] 标量旋钮落盘: _WaveAmpScale={mat.GetFloat("_WaveAmpScale")} _WaveTimeScale={mat.GetFloat("_WaveTimeScale")} _InteractionAmp={mat.GetFloat("_InteractionAmp")} _InteractionFoam={mat.GetFloat("_InteractionFoam")}");
         }
 
+        [MenuItem("Tools/WaterProject/17 沙滩与缓坡池底(浅水见沙)")]
+        public static void BuildShoreBeach()
+        {
+            // —— 1) 缓坡池底：中心 -1.03m 深 → 岸边 -0.06m 极浅（浅水见沙，对标视频沙滩岸） ——
+            string floorPath = "Assets/Art/Meshes/PondFloorShore.asset";
+            {
+                int seg = 96, rings = 30;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float r = 20f * gr / rings;
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float shore = Mathf.SmoothStep(10f, 17.8f, r);
+                        float y = Mathf.Lerp(-1.03f, -0.06f, shore);
+                        float bump = (Mathf.PerlinNoise(r * 0.22f * Mathf.Cos(th) + 41.7f, r * 0.22f * Mathf.Sin(th) + 13.3f) - 0.5f) * 0.22f;
+                        y += bump;
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2(r / 20f, (float)gs / seg));
+                    }
+                }
+                for (int gr = 0; gr < rings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        tris.Add(a); tris.Add(c); tris.Add(b);
+                        tris.Add(b); tris.Add(c); tris.Add(d);
+                    }
+                var m = new Mesh { name = "PondFloorShore" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, floorPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+                var floor = UnityEngine.GameObject.Find("PondFloor");
+                if (floor != null)
+                {
+                    var mf = floor.GetComponent<MeshFilter>();
+                    if (mf != null) mf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
+                    floor.transform.position = new Vector3(0, 0, 0);
+                    EditorUtility.SetDirty(floor);
+                }
+            }
+
+            // —— 2) 沙滩环带：r17.2→20.8，内缘水下 -0.04 → 外缘岸上 +0.14（覆盖原池壁顶，形成缓坡） ——
+            string sandRingPath = "Assets/Art/Meshes/ShoreSandRing.asset";
+            {
+                int seg = 96;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= 1; gr++)
+                {
+                    float tt = gr;
+                    float r = Mathf.Lerp(17.2f, 20.8f, tt);
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float yEdge = Mathf.Lerp(-0.04f, 0.14f, tt);
+                        float wob = (Mathf.PerlinNoise(th * 2.1f + 5f, tt * 7f) - 0.5f) * 0.06f;
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, yEdge + wob, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2((float)gs / seg, tt));
+                    }
+                }
+                for (int gs = 0; gs < seg; gs++)
+                {
+                    int a = gs, b = gs + 1;
+                    int c = seg + 1 + gs, d = seg + 2 + gs;
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(b); tris.Add(c); tris.Add(d);
+                }
+                var m = new Mesh { name = "ShoreSandRing" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(sandRingPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, sandRingPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+
+                var ring = UnityEngine.GameObject.Find("ShoreSandRing");
+                if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
+                var mr = ring.GetComponent<MeshRenderer>();
+                if (mr == null) mr = ring.AddComponent<MeshRenderer>();
+                var mf = ring.GetComponent<MeshFilter>();
+                if (mf == null) mf = ring.AddComponent<MeshFilter>();
+                mf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(sandRingPath);
+                // 沙材质（亮暖沙）
+                string sandMatPath = "Assets/Art/Materials/Sand_Shore.mat";
+                var sand = AssetDatabase.LoadAssetAtPath<Material>(sandMatPath);
+                if (sand == null)
+                {
+                    var lit = Shader.Find("Universal Render Pipeline/Lit");
+                    if (lit != null) { sand = new Material(lit); AssetDatabase.CreateAsset(sand, sandMatPath); }
+                }
+                if (sand != null)
+                {
+                    sand.SetColor("_BaseColor", new Color(0.82f, 0.73f, 0.55f, 1f));
+                    sand.SetFloat("_Smoothness", 0.3f);
+                    EditorUtility.SetDirty(sand);
+                }
+                mr.sharedMaterial = sand;
+                ring.transform.position = Vector3.zero;
+            }
+
+            // —— 3) 池壁改沙色（近岸一体） ——
+            var wallMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/PondWall.mat");
+            if (wallMat != null) { wallMat.SetColor("_BaseColor", new Color(0.68f, 0.58f, 0.44f, 1f)); EditorUtility.SetDirty(wallMat); }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 沙滩完成：缓坡池底(岸边-0.06浅水见沙) + 沙滩环带(内水下-0.04→外岸上+0.14) + 池壁沙色。");
+        }
+
+        [MenuItem("Tools/WaterProject/18 岸边与水中卵石")]
+        public static void BuildPebbles()
+        {
+            // 卵石 mesh ×3（Perlin 变形 + 压扁），资产化便于调色
+            string[] stonePaths = { "Assets/Art/Meshes/Stone_01.asset", "Assets/Art/Meshes/Stone_02.asset", "Assets/Art/Meshes/Stone_03.asset" };
+            int[] stoneSeeds = { 20260901, 20260902, 20260903 };
+            var stoneMesh = new Mesh[3];
+            for (int s = 0; s < 3; s++)
+            {
+                int phi = 7, theta = 8;
+                var verts = new List<Vector3>();
+                var tris = new List<int>();
+                for (int p = 0; p <= phi; p++)
+                {
+                    float pa = Mathf.PI * p / phi;
+                    for (int t = 0; t <= theta; t++)
+                    {
+                        float ta = Mathf.PI * 2f * t / theta;
+                        float x = Mathf.Sin(pa) * Mathf.Cos(ta);
+                        float y = Mathf.Cos(pa);
+                        float z = Mathf.Sin(pa) * Mathf.Sin(ta);
+                        float n = Mathf.PerlinNoise(x * 2.2f + stoneSeeds[s] * 0.0037f, z * 2.2f + stoneSeeds[s] * 0.0091f);
+                        float rr = 0.82f + 0.38f * n;
+                        verts.Add(new Vector3(x * rr, y * rr * 0.62f, z * rr));
+                        if (p < phi && t < theta)
+                        {
+                            int a = p * (theta + 1) + t, b = a + 1;
+                            int c = (p + 1) * (theta + 1) + t, d = c + 1;
+                            tris.Add(a); tris.Add(c); tris.Add(b);
+                            tris.Add(b); tris.Add(c); tris.Add(d);
+                        }
+                    }
+                }
+                var m = new Mesh { name = "Stone_" + (s + 1) };
+                m.SetVertices(verts); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(stonePaths[s]);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, stonePaths[s]);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                stoneMesh[s] = AssetDatabase.LoadAssetAtPath<Mesh>(stonePaths[s]);
+            }
+            AssetDatabase.SaveAssets();
+
+            // 石材质（中性灰）
+            string stoneMatPath = "Assets/Art/Materials/Stone.mat";
+            var stoneMat = AssetDatabase.LoadAssetAtPath<Material>(stoneMatPath);
+            if (stoneMat == null)
+            {
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                if (lit != null) { stoneMat = new Material(lit); AssetDatabase.CreateAsset(stoneMat, stoneMatPath); }
+            }
+            if (stoneMat != null)
+            {
+                stoneMat.SetColor("_BaseColor", new Color(0.52f, 0.53f, 0.55f, 1f));
+                stoneMat.SetFloat("_Smoothness", 0.35f);
+                EditorUtility.SetDirty(stoneMat);
+            }
+
+            var rng = new System.Random(20260918);
+            // 组：沙滩 4 / 水陆交界 3 / 水中浅滩 3
+            for (int g = 0; g < 3; g++)
+            {
+                int count = g == 0 ? 4 : (g == 1 ? 3 : 3);
+                float rMin = g == 0 ? 18.4f : (g == 1 ? 17.2f : 13.0f);
+                float rMax = g == 0 ? 20.4f : (g == 1 ? 18.8f : 16.8f);
+                float yBase = g == 0 ? 0.16f : (g == 1 ? 0.035f : -0.012f);
+                float scMin = g == 0 ? 0.45f : (g == 1 ? 0.3f : 0.24f);
+                float scMax = g == 0 ? 0.85f : (g == 1 ? 0.6f : 0.5f);
+                for (int i = 0; i < count; i++)
+                {
+                    float th = (float)(rng.NextDouble() * 2.0 * System.Math.PI);
+                    float r = rMin + (float)rng.NextDouble() * (rMax - rMin);
+                    float sc = scMin + (float)rng.NextDouble() * (scMax - scMin);
+                    var go = new UnityEngine.GameObject("Pebble_" + g + "_" + i);
+                    var mf = go.AddComponent<MeshFilter>();
+                    mf.sharedMesh = stoneMesh[rng.Next(stoneMesh.Length)];
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = stoneMat;
+                    go.transform.position = new Vector3(Mathf.Cos(th) * r, yBase + (float)rng.NextDouble() * 0.02f, Mathf.Sin(th) * r);
+                    go.transform.localScale = new Vector3(sc, sc * 0.7f, sc);
+                    go.transform.rotation = Quaternion.Euler(rng.Next(0, 15), rng.Next(0, 360), rng.Next(-12, 12));
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 卵石完成：沙滩4 + 水陆交界3 + 水中浅滩3（seed 20260918）。");
+        }
+
+        [MenuItem("Tools/WaterProject/19 小荷叶群落(小而美)")]
+        public static void BuildSmallLilies()
+        {
+            string lilyPath = "Assets/Art/StylePacks/正式素材/Lotus/WaterLilies_GooglePoly.glb";
+            string lotusPath = "Assets/Art/StylePacks/正式素材/Lotus/LotusFlower_SeanTarrant.glb";
+            var lily = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lilyPath);
+            var lotus = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lotusPath);
+            if (lily == null) { UnityEngine.Debug.LogWarning("[WaterProject] 找不到荷叶预制体: " + lilyPath); return; }
+
+            var rng = new System.Random(20260919);
+            // 12 片小荷叶：r 2~16m 散布，避开中央视口正前近景
+            for (int i = 0; i < 12; i++)
+            {
+                float th = (float)(rng.NextDouble() * 2.0 * System.Math.PI);
+                float r = 2.5f + (float)rng.NextDouble() * 13.5f;
+                float sc = 0.26f + (float)rng.NextDouble() * 0.24f;
+                var inst = PrefabUtility.InstantiatePrefab(lily) as UnityEngine.GameObject;
+                if (inst == null) continue;
+                inst.name = "SmallLily_" + i.ToString("00");
+                inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0.04f, Mathf.Sin(th) * r);
+                inst.transform.localScale = new Vector3(sc, sc, sc);
+                inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+            }
+            // 3 株小荷花
+            if (lotus != null)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    float th = (float)(rng.NextDouble() * 2.0 * System.Math.PI);
+                    float r = 4f + (float)rng.NextDouble() * 11f;
+                    float sc = 0.28f + (float)rng.NextDouble() * 0.14f;
+                    var inst = PrefabUtility.InstantiatePrefab(lotus) as UnityEngine.GameObject;
+                    if (inst == null) continue;
+                    inst.name = "SmallLotus_" + i.ToString("00");
+                    inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0.04f, Mathf.Sin(th) * r);
+                    inst.transform.localScale = new Vector3(sc, sc, sc);
+                    inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 小荷叶完成：12 片小荷叶 + 3 株小荷花（seed 20260919）。");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
