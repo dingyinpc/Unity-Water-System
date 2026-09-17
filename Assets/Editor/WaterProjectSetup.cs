@@ -1027,6 +1027,186 @@ namespace WaterProject.EditorTools
             Debug.Log("[WaterProject] URP 设置完成: " + PipelinePath + " (Opaque=" + pipeline.supportsCameraOpaqueTexture
                 + ", Depth=" + pipeline.supportsCameraDepthTexture + ", 默认管线=" + (GraphicsSettings.defaultRenderPipeline != null) + ")");
         }
+
+        [MenuItem("Tools/WaterProject/21 立体沙坑+远景完善(沙丘环湖)")]
+        public static void BuildDuneHollowScape()
+        {
+            System.Random rng = new System.Random(20260921);
+            float S(float th) => ShoreR(th) * 0.6f;   // 与菜单20一致的缩小0.6岸线
+
+            // —— 1) 立体沙盘：水边(-0.005) → 坑壁缓升 → 沙脊(+1.25,Perlin) → 背坡回落草地 ——
+            string ringPath = "Assets/Art/Meshes/ShoreSandRing.asset";
+            {
+                int seg = 120, rings = 14;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float rr = (float)gr / rings;   // 0=水边, 1=外缘26m
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float rIn = Mathf.Max(7f, S(th) - 0.72f);
+                        float r = Mathf.Lerp(rIn, 26f, rr);
+                        float y;
+                        if (r < 13.5f)
+                        {
+                            y = -0.005f + Mathf.InverseLerp(rIn, 13.5f, r) * 0.035f;          // 水边缓沙微露
+                        }
+                        else if (r < 17.5f)
+                        {
+                            y = 0.03f + Mathf.InverseLerp(13.5f, 17.5f, r) * 1.22f;           // 坑壁：0.03→1.25
+                        }
+                        else if (r < 21.5f)
+                        {
+                            y = 1.25f + (Mathf.PerlinNoise(th * 1.3f + 3.0f, 1.7f) - 0.5f) * 0.35f; // 沙脊
+                        }
+                        else
+                        {
+                            y = 1.25f + (Mathf.PerlinNoise(th * 1.3f + 3.0f, 1.7f) - 0.5f) * 0.35f
+                                - Mathf.InverseLerp(21.5f, 26f, r) * 1.13f;                   // 背坡→草地 0.12
+                        }
+                        // 全局低频起伏（坑壁以上渐强）
+                        float w = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(13f, 18f, r));
+                        y += (Mathf.PerlinNoise(Mathf.Cos(th) * 1.8f + 8f, Mathf.Sin(th) * 1.8f + 2f) - 0.5f) * 0.28f * w;
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2((float)gs / seg, rr));
+                    }
+                }
+                for (int gr = 0; gr < rings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        tris.Add(a); tris.Add(c); tris.Add(b);
+                        tris.Add(b); tris.Add(c); tris.Add(d);
+                    }
+                var m = new Mesh { name = "ShoreSandRing" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, ringPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+                var ring = UnityEngine.GameObject.Find("ShoreSandRing");
+                if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
+                var rmf = ring.GetComponent<MeshFilter>();
+                if (rmf == null) rmf = ring.AddComponent<MeshFilter>();
+                var rmr = ring.GetComponent<MeshRenderer>();
+                if (rmr == null) rmr = ring.AddComponent<MeshRenderer>();
+                rmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
+                var sand = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sand_Shore.mat");
+                rmr.sharedMaterial = sand;
+                ring.transform.position = Vector3.zero;
+            }
+
+            // —— 2) 远山（程序生成圆顶山 ×8，沙丘带外一圈，背景层次） ——
+            string hillPath = "Assets/Art/Meshes/DistantHill.asset";
+            {
+                int seg = 40, rings = 7;
+                var verts = new List<Vector3>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float rr = (float)gr / rings;
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float x = Mathf.Cos(th) * rr, z = Mathf.Sin(th) * rr;
+                        float y = (1f - rr) * (1f - rr);
+                        y += (Mathf.PerlinNoise(x * 1.5f + 5f, z * 1.5f + 9f) - 0.5f) * 0.18f;
+                        verts.Add(new Vector3(x, Mathf.Max(0f, y), z));
+                        if (gr < rings && gs < seg)
+                        {
+                            int a = gr * (seg + 1) + gs, b = a + 1;
+                            int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                            tris.Add(a); tris.Add(c); tris.Add(b);
+                            tris.Add(b); tris.Add(c); tris.Add(d);
+                        }
+                    }
+                }
+                var hm = new Mesh { name = "DistantHill" };
+                hm.SetVertices(verts); hm.SetTriangles(tris, 0);
+                hm.RecalculateNormals(); hm.RecalculateBounds();
+                var oldH = AssetDatabase.LoadAssetAtPath<Mesh>(hillPath);
+                if (oldH == null) AssetDatabase.CreateAsset(hm, hillPath);
+                else { EditorUtility.CopySerialized(hm, oldH); EditorUtility.SetDirty(oldH); }
+                AssetDatabase.SaveAssets();
+
+                string hillMatPath = "Assets/Art/Materials/Hill_Distant.mat";
+                var hillMat = AssetDatabase.LoadAssetAtPath<Material>(hillMatPath);
+                if (hillMat == null)
+                {
+                    var lit = Shader.Find("Universal Render Pipeline/Lit");
+                    if (lit != null) { hillMat = new Material(lit); AssetDatabase.CreateAsset(hillMat, hillMatPath); }
+                }
+                if (hillMat != null)
+                {
+                    hillMat.SetColor("_BaseColor", new Color(0.30f, 0.42f, 0.46f, 1f)); // 雾蓝苍绿远山
+                    hillMat.SetFloat("_Smoothness", 0.25f);
+                    EditorUtility.SetDirty(hillMat);
+                }
+                var hillMesh = AssetDatabase.LoadAssetAtPath<Mesh>(hillPath);
+                var oldHills = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+                foreach (var go in oldHills)
+                    if (go != null && go.name.StartsWith("DistantHill_")) UnityEngine.Object.DestroyImmediate(go);
+                for (int i = 0; i < 8; i++)
+                {
+                    float th = i * (Mathf.PI * 2f / 8f) + (float)rng.NextDouble() * 0.5f - 0.25f;
+                    float r = 26.5f + (float)rng.NextDouble() * 3.5f;
+                    float h = 6f + (float)rng.NextDouble() * 8f;
+                    float w = 9f + (float)rng.NextDouble() * 6f;
+                    var go = new UnityEngine.GameObject("DistantHill_" + i.ToString("00"));
+                    var mf = go.AddComponent<MeshFilter>();
+                    mf.sharedMesh = hillMesh;
+                    var mr = go.AddComponent<MeshRenderer>();
+                    mr.sharedMaterial = hillMat;
+                    go.transform.position = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
+                    go.transform.localScale = new Vector3(w, h, w);
+                    go.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                }
+            }
+
+            // —— 3) 远树带重建：内圈10(沙脊外缘) + 外圈20(山脚前)，删旧 ——
+            var allObjs = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            foreach (var go in allObjs)
+                if (go != null && (go.name.StartsWith("Trees_") || go.name.StartsWith("Tree_")))
+                    UnityEngine.Object.DestroyImmediate(go);
+            string treePath = "Assets/Art/StylePacks/正式素材/Trees/Trees_Quaternius.glb";
+            var treePrefab = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(treePath);
+            if (treePrefab != null)
+            {
+                for (int ring = 0; ring < 2; ring++)
+                {
+                    int n = ring == 0 ? 10 : 20;
+                    for (int i = 0; i < n; i++)
+                    {
+                        float th = (float)rng.NextDouble() * Mathf.PI * 2f;
+                        float r = ring == 0 ? (22f + (float)rng.NextDouble() * 2.5f) : (25f + (float)rng.NextDouble() * 4f);
+                        float sc = ring == 0 ? (0.9f + (float)rng.NextDouble() * 0.3f) : (1.2f + (float)rng.NextDouble() * 0.7f);
+                        var inst = PrefabUtility.InstantiatePrefab(treePrefab) as UnityEngine.GameObject;
+                        if (inst == null) continue;
+                        inst.name = "Tree_" + ring + "_" + i.ToString("00");
+                        inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
+                        inst.transform.localScale = new Vector3(sc, sc * (0.9f + (float)rng.NextDouble() * 0.3f), sc);
+                        inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                    }
+                }
+            }
+
+            // —— 4) 主相机微调：略高远俯视（看到沙丘环绕的水洼全景） ——
+            var cam = UnityEngine.GameObject.Find("Main Camera");
+            if (cam != null)
+            {
+                cam.transform.localPosition = new Vector3(0f, 2.2f, -17f);
+                cam.transform.localRotation = Quaternion.Euler(-4f, 0f, 0f);
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 立体沙坑完成：水边缓沙→坑壁1.25m→沙脊→背坡回落；远山8座+树带重建(10+20)+相机(0,2.2,-17)。");
+        }
     }
 }
 #endif
