@@ -32,6 +32,7 @@ Shader "WaterProject/Water_Advanced"
 
         // ── 格斯特纳波 [2] ──
         _WaveCount        ("波数量", Float) = 4
+        _WaveAmpScale     ("波浪幅度倍率", Float) = 1.0
         _Waves            ("波参数 (A, ω, Q, -)", Vector) = (0,0,0,0)
         _WaveDirs         ("波方向 (dx, dz, 相位, -)", Vector) = (0,0,0,0)
         _WaveTimeScale    ("波速倍率", Float) = 1.0
@@ -55,9 +56,9 @@ Shader "WaterProject/Water_Advanced"
         _DetailEnd        ("细节混合终点(距相机)", Float) = 40.0
 
         // ── 交互 [5] ──
-        _InteractionAmp   ("交互位移幅度", Float) = 0.35
+        _InteractionAmp   ("交互位移幅度", Float) = 0.22
         _InteractionNorm  ("交互法线强度", Float) = 1.4
-        _InteractionFoam  ("交互泡沫强度", Float) = 0.9
+        _InteractionFoam  ("交互泡沫强度", Float) = 0.45
 
         // ── 浪尖/泡沫 [8] ──
         _CrestJ           ("浪尖压缩阈值 J", Float) = 0.6
@@ -109,7 +110,7 @@ Shader "WaterProject/Water_Advanced"
             float4 _WaterScatter;
             float _ScatterStrength, _SunTransmission, _TransGloss;
                 float  _Absorb, _Opacity;
-                float  _WaveCount, _WaveTimeScale;
+                float  _WaveCount, _WaveTimeScale, _WaveAmpScale;
                 float4 _Waves[MAX_WAVES];
                 float4 _WaveDirs[MAX_WAVES];
                 float  _MaxTess, _TessTargetSize, _TessNear, _TessFar;
@@ -166,16 +167,18 @@ Shader "WaterProject/Water_Advanced"
                 float3 P = worldPos;
                 float dPxdx = 1, dPxdz = 0, dPzdx = 0, dPzdz = 1, dPydx = 0, dPydz = 0;
 
-                int n = (int)_WaveCount;
-                UNITY_UNROLL for (int i = 0; i < MAX_WAVES; i++)
+                // 固定四波：微微荡漾的长波主波 + 短波细节（不依赖材质数组序列化，重启不丢）
+                // (A, ω, Q)：Σ(Q·ω·A)=0.635 < 1 无卷浪；φ 为固定相位；_WaveAmpScale 整体调节幅度
+                UNITY_UNROLL for (int i = 0; i < 4; i++)
                 {
-                    if (i >= n) break;
-                    float  A = _Waves[i].x;
-                    float  w = _Waves[i].y;
-                    float  Q = _Waves[i].z;
-                    float2 d = normalize(_WaveDirs[i].xy);
-                    if (length(_WaveDirs[i].xy) < 1e-4) d = float2(1, 0);
-                    float phase = dot(float2(worldPos.x, worldPos.z), d) * w + _WaveDirs[i].z - t * w * _WaveTimeScale;
+                    float A, w, Q; float2 d; float phase0;
+                    if (i == 0) { A = 0.55f; w = 0.55f; Q = 0.45f; d = normalize(float2(1.00f, 0.18f)); phase0 = 0.6f; }
+                    else if (i == 1) { A = 0.30f; w = 1.30f; Q = 0.50f; d = normalize(float2(-0.35f, 0.94f)); phase0 = 2.1f; }
+                    else if (i == 2) { A = 0.12f; w = 2.60f; Q = 0.55f; d = normalize(float2(0.88f, -0.47f)); phase0 = 3.5f; }
+                    else            { A = 0.05f; w = 4.40f; Q = 0.60f; d = normalize(float2(-0.55f, -0.83f)); phase0 = 5.0f; }
+
+                    A *= max(_WaveAmpScale, 0.0f);
+                    float phase = dot(float2(worldPos.x, worldPos.z), d) * w + phase0 - t * w * _WaveTimeScale;
                     float c = cos(phase), s = sin(phase);
 
                     P.x -= Q * A * d.x * c;
@@ -447,7 +450,7 @@ Shader "WaterProject/Water_Advanced"
 
                 // 浪尖几何增强：在顶点处已由 Gerstner 水平位移自然卷曲 [8]
                 float alpha = saturate(_Opacity + fres * 0.1 - foam * 0.2);
-                return half4(col + _FoamColor * interFoam * 0.4, alpha);
+                return half4(col + _FoamColor * interFoam * 0.12, alpha);   // 交互泡沫收敛，避免突兀白圈
             }
             ENDHLSL
         }

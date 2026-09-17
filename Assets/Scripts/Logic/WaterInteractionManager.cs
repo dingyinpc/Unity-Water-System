@@ -22,7 +22,7 @@ namespace WaterProject.Logic
 
         [Header("演示")]
         public bool autoDemo = true;
-        public float demoInterval = 0.45f;
+        public float demoInterval = 4.0f;      // 演示涟漪间隔：0.45s 太频繁（白圈突兀），放宽到 4s 偶发点缀
 
         [Header("程序化 Ripple")]
         public int maxRipples = 8;
@@ -135,14 +135,14 @@ namespace WaterProject.Logic
                 _diagAccum = 0f;
             }
 
-            // 演示模式：随机落点（以交互中心为圆心）
+            // 演示模式：随机落点（以交互中心为圆心），低频低强度——避免"白色大圈"突兀
             if (autoDemo && Time.time >= _nextDemoTime)
             {
                 Vector3 p = new Vector3(
                     interactionCenter.x + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f),
                     0,
                     interactionCenter.z + Random.Range(-halfExtent * 0.7f, halfExtent * 0.7f));
-                SpawnInteraction(p, Random.Range(0.5f, 1f));
+                SpawnInteraction(p, Random.Range(0.18f, 0.42f));
                 SpawnRipple(p);
                 _nextDemoTime = Time.time + demoInterval;
             }

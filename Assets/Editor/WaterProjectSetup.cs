@@ -285,6 +285,27 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log("[WaterProject] 水面 y=0.02（脱离地面共面）；主相机 (0,1.8,-15) 俯角-1.5° 对准池塘。");
         }
 
+        [MenuItem("Tools/WaterProject/16 波浪幅度/流速(诊断+落盘)")]
+        public static void ForcePersistWaves()
+        {
+            string matPath = "Assets/Art/Materials/Water_Advanced.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (mat == null) { UnityEngine.Debug.LogWarning("[WaterProject] 材质不存在"); return; }
+
+            // 波浪已内置 shader 固定四波（不依赖数组序列化），此处只落盘标量旋钮
+            mat.SetFloat("_WaveCount", 4);
+            mat.SetFloat("_WaveAmpScale", 1.0f);
+            mat.SetFloat("_WaveTimeScale", 1.8f);
+            mat.SetFloat("_InteractionAmp", 0.22f);
+            mat.SetFloat("_InteractionFoam", 0.45f);
+
+            EditorUtility.SetDirty(mat);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            UnityEngine.Debug.Log($"[WaterProject] 标量旋钮落盘: _WaveAmpScale={mat.GetFloat("_WaveAmpScale")} _WaveTimeScale={mat.GetFloat("_WaveTimeScale")} _InteractionAmp={mat.GetFloat("_InteractionAmp")} _InteractionFoam={mat.GetFloat("_InteractionFoam")}");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
@@ -455,13 +476,17 @@ namespace WaterProject.EditorTools
                 mat.SetFloat("_SunTransmission", 0.7f);
                 mat.SetFloat("_TransGloss", 48f);
                 mat.SetFloat("_WaveTimeScale", 1.8f);
-                // (振幅 A, 角频率 ω, 陡度 Q, -)
+                mat.SetFloat("_WaveAmpScale", 1.0f);
+                // 交互项收敛：低强度涟漪 → 白色大圈减弱（配合演示低频 + shader 泡沫权重）
+                mat.SetFloat("_InteractionAmp", 0.22f);
+                mat.SetFloat("_InteractionFoam", 0.45f);
+                // (振幅 A, 角频率 ω, 陡度 Q, -) —— 微微荡漾：主波加长波长 11.4m，全谱 Σ(Q·ω·A)=0.635<1 无卷浪
                 mat.SetVectorArray("_Waves", new Vector4[]
                 {
-                    new Vector4(0.55f, 0.85f, 0.80f, 0),
-                    new Vector4(0.24f, 1.90f, 0.85f, 0),
-                    new Vector4(0.10f, 3.40f, 0.90f, 0),
-                    new Vector4(0.045f, 5.60f, 0.95f, 0),
+                    new Vector4(0.55f, 0.55f, 0.45f, 0),
+                    new Vector4(0.30f, 1.30f, 0.50f, 0),
+                    new Vector4(0.12f, 2.60f, 0.55f, 0),
+                    new Vector4(0.05f, 4.40f, 0.60f, 0),
                 });
                 // (方向 dx, dz, 相位, -)
                 mat.SetVectorArray("_WaveDirs", new Vector4[]
