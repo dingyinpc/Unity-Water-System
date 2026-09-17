@@ -120,6 +120,19 @@ namespace WaterProject.EditorTools
             Debug.Log("[WaterProject] SceneView framed close-up.");
         }
 
+        [MenuItem("Tools/WaterProject/10 导入外部unitypackage(读Logs/import_path.txt)")]
+        public static void ImportExternalPackage()
+        {
+            string pf = Path.Combine(Application.dataPath, "../Logs/import_path.txt");
+            pf = Path.GetFullPath(pf);
+            if (!File.Exists(pf)) { UnityEngine.Debug.LogWarning($"[WaterProject] 未找到 {pf}，请先写入要导入的 unitypackage 完整路径。"); return; }
+            string pkgPath = File.ReadAllText(pf).Trim().Trim('"');
+            if (!File.Exists(pkgPath)) { UnityEngine.Debug.LogError($"[WaterProject] 包文件不存在：{pkgPath}"); return; }
+            // false = 不弹对话框直接导入到当前项目
+            AssetDatabase.ImportPackage(pkgPath, false);
+            UnityEngine.Debug.Log($"[WaterProject] 已触发导入：{pkgPath}（导入完成后请运行 03 或手动检查 Assets/ 下新目录）");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
