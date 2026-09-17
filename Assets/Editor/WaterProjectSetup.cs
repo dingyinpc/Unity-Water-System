@@ -245,6 +245,46 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log("[WaterProject] 环池绿化完成：34 株树木双环(1.1~2.8x)环绕半径20.8~26m + 草地地面（湖底仍沙色）。");
         }
 
+        [MenuItem("Tools/WaterProject/14 太阳升高至正午视角(收树影)")]
+        public static void RaiseSunNoon()
+        {
+            var sun = UnityEngine.GameObject.Find("Directional Light");
+            if (sun == null) { UnityEngine.Debug.LogWarning("[WaterProject] 未找到 Directional Light"); return; }
+            // 抬高仰角缩短环树投影（原 42°→65°），池塘内侧得以全亮，走镜视频整体受光效果
+            sun.transform.rotation = Quaternion.Euler(65f, -90f, 0f);
+            var light = sun.GetComponent<Light>();
+            if (light != null) light.intensity = 1.4f;
+            EditorUtility.SetDirty(sun);
+            UnityEngine.Debug.Log("[WaterProject] 太阳仰角→65°，强度→1.4（树影收短，水面全亮）。");
+        }
+
+        [MenuItem("Tools/WaterProject/15 水面上浮2cm+主相机对准(修复共面)")]
+        public static void FixWaterCoplanarAndFrameCam()
+        {
+            // 1) 水面与 60×60 草地地面共面 y=0 → z-fighting（陡视角下草地吃掉水面）
+            //    水上浮 2cm 彻底分离（荷叶/交互对象原样，相对厚度无感）
+            var water = GameObject.Find("Water");
+            if (water != null)
+            {
+                var p = water.transform.position;
+                water.transform.position = new Vector3(p.x, 0.02f, p.z);
+            }
+
+            // 2) 主相机：原俯角 -24° 拍的全是近岸草地 → 改为视频式低机位横贯池塘
+            //    (0, 1.8, -15) 微微下俯 -1.5°，16:9 下水面占下部、远岸绿带在上 1/3
+            var cam = GameObject.Find("Main Camera");
+            if (cam != null)
+            {
+                cam.transform.position = new Vector3(0f, 1.8f, -15f);
+                cam.transform.rotation = Quaternion.Euler(-1.5f, 0f, 0f);
+            }
+
+            EditorUtility.SetDirty(water);
+            EditorUtility.SetDirty(cam);
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 水面 y=0.02（脱离地面共面）；主相机 (0,1.8,-15) 俯角-1.5° 对准池塘。");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
