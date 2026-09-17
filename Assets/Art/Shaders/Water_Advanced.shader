@@ -435,7 +435,7 @@ Shader "WaterProject/Water_Advanced"
                 col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * _ScatterStrength * (0.35 + 0.65 * trans);
 
                 // 浅滩（gap 小）额外泛光，光能透到底的提亮
-                col += _ShallowColor * _ScatterStrength * 0.28 * (1.0 - trans);
+                col += _ShallowColor * _ScatterStrength * 0.18 * (1.0 - trans);
 
                 // ── 高光 ──
                 float3 H = normalize(mainLight.direction + V);

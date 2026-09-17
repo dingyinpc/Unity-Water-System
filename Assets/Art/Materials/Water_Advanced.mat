@@ -45,28 +45,28 @@ Material:
     - _MaxUVOffset: 0.12
     - _Opacity: 0.95
     - _RefractStrength: 0.9
-    - _ScatterStrength: 0.38
+    - _ScatterStrength: 0.55
     - _ShoreFoam: 0.8
     - _SpecPower: 180
-    - _SpecStrength: 0.5
+    - _SpecStrength: 0.3
     - _SunGloss: 500
-    - _SunStrength: 0.3
+    - _SunStrength: 0.18
     - _SunTransmission: 0.7
     - _TessFar: 32
     - _TessNear: 6
     - _TessTargetSize: 0.35
     - _TransGloss: 48
-    - _WaveCount: 4
     - _WaveAmpScale: 0.5
+    - _WaveCount: 4
     - _WaveTimeScale: 1.8
     m_Colors:
-    - _DeepColor: {r: 0.09, g: 0.38, b: 0.47, a: 1}
+    - _DeepColor: {r: 0.12, g: 0.4, b: 0.48, a: 1}
     - _FoamColor: {r: 0.95, g: 0.97, b: 0.98, a: 1}
-    - _ShallowColor: {r: 0.2, g: 0.72, b: 0.82, a: 1}
-    - _SkyHorizon: {r: 0.8, g: 0.92, b: 1, a: 1}
-    - _SkyZenith: {r: 0.42, g: 0.7, b: 1, a: 1}
+    - _ShallowColor: {r: 0.18, g: 0.64, b: 0.72, a: 1}
+    - _SkyHorizon: {r: 0.62, g: 0.84, b: 0.88, a: 1}
+    - _SkyZenith: {r: 0.42, g: 0.95, b: 1, a: 1}
     - _SunColor: {r: 1, g: 0.93, b: 0.75, a: 1}
-    - _WaterScatter: {r: 0.42, g: 0.75, b: 0.88, a: 1}
+    - _WaterScatter: {r: 0.38, g: 0.95, b: 1, a: 1}
     - _WaveDirs: {r: 0, g: 0, b: 0, a: 0}
     - _Waves: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
