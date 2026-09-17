@@ -57,7 +57,7 @@ Material:
     - _TessTargetSize: 0.35
     - _TransGloss: 48
     - _WaveCount: 4
-    - _WaveAmpScale: 1
+    - _WaveAmpScale: 0.5
     - _WaveTimeScale: 1.8
     m_Colors:
     - _DeepColor: {r: 0.09, g: 0.38, b: 0.47, a: 1}

@@ -167,18 +167,26 @@ Shader "WaterProject/Water_Advanced"
                 float3 P = worldPos;
                 float dPxdx = 1, dPxdz = 0, dPzdx = 0, dPzdz = 1, dPydx = 0, dPydz = 0;
 
-                // 固定四波：微微荡漾的长波主波 + 短波细节（不依赖材质数组序列化，重启不丢）
-                // (A, ω, Q)：Σ(Q·ω·A)=0.635 < 1 无卷浪；φ 为固定相位；_WaveAmpScale 整体调节幅度
-                UNITY_UNROLL for (int i = 0; i < 4; i++)
+                // 不规则感：跨池低频幅值调制（约 57m/34m 两种波长的正弦叠加），
+                // 使波形在空间上忽强忽弱、随时间缓慢漂移，避免固定波叠加的"整齐重复"感
+                float phaseM = dot(worldPos.xz * 0.11, float2(0.7, 0.3)) + t * 0.11;
+                float ampMod = 0.72 + 0.28 * (sin(phaseM) * 0.6 + sin(phaseM * 1.7 + 2.1) * 0.4);
+
+                // 六波叠加（互不调和的频率/方向/相位 → 不规则）：Σ(Q·ω·A·mod) < 1 无卷浪
+                UNITY_UNROLL for (int i = 0; i < 6; i++)
                 {
                     float A, w, Q; float2 d; float phase0;
-                    if (i == 0) { A = 0.55f; w = 0.55f; Q = 0.45f; d = normalize(float2(1.00f, 0.18f)); phase0 = 0.6f; }
-                    else if (i == 1) { A = 0.30f; w = 1.30f; Q = 0.50f; d = normalize(float2(-0.35f, 0.94f)); phase0 = 2.1f; }
-                    else if (i == 2) { A = 0.12f; w = 2.60f; Q = 0.55f; d = normalize(float2(0.88f, -0.47f)); phase0 = 3.5f; }
-                    else            { A = 0.05f; w = 4.40f; Q = 0.60f; d = normalize(float2(-0.55f, -0.83f)); phase0 = 5.0f; }
+                    if (i == 0) { A = 0.55f; w = 0.50f; Q = 0.40f; d = normalize(float2(1.00f, 0.18f)); phase0 = 0.9f; }
+                    else if (i == 1) { A = 0.30f; w = 1.25f; Q = 0.45f; d = normalize(float2(-0.30f, 0.95f)); phase0 = 1.7f; }
+                    else if (i == 2) { A = 0.13f; w = 2.40f; Q = 0.50f; d = normalize(float2(0.85f, -0.53f)); phase0 = 3.1f; }
+                    else if (i == 3) { A = 0.06f; w = 4.20f; Q = 0.55f; d = normalize(float2(-0.60f, -0.80f)); phase0 = 4.2f; }
+                    else if (i == 4) { A = 0.09f; w = 3.05f; Q = 0.50f; d = normalize(float2(0.62f, 0.78f)); phase0 = 5.3f; }
+                    else            { A = 0.04f; w = 5.30f; Q = 0.55f; d = normalize(float2(-0.95f, 0.31f)); phase0 = 2.8f; }
 
-                    A *= max(_WaveAmpScale, 0.0f);
-                    float phase = dot(float2(worldPos.x, worldPos.z), d) * w + phase0 - t * w * _WaveTimeScale;
+                    A *= max(_WaveAmpScale, 0.0f) * ampMod;
+                    // 相位速度微漂移（±10%）：波族相对滑动，进一步打散规律性
+                    float speed = _WaveTimeScale * (1.0f + 0.10f * sin(phase0 * 7.0f + t * 0.05f));
+                    float phase = dot(float2(worldPos.x, worldPos.z), d) * w + phase0 - t * w * speed;
                     float c = cos(phase), s = sin(phase);
 
                     P.x -= Q * A * d.x * c;
