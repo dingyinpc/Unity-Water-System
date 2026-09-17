@@ -186,6 +186,65 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log("[WaterProject] 外场景重建完成：Ground 60×60m 顶面0；PondFloor(-1.0)；PondWall(0..-1m)。");
         }
 
+        [MenuItem("Tools/WaterProject/13 对标视频外景绿化(环池树木+草地)")]
+        public static void BuildSceneVegetation()
+        {
+            string treePath = "Assets/Art/StylePacks/正式素材/Trees/Trees_Quaternius.glb";
+            var treePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(treePath);
+            if (treePrefab == null) { UnityEngine.Debug.LogError("[WaterProject] 未找到树木预制体：" + treePath + "（请先导入 GLB）"); return; }
+
+            // 1) 草地地面：Ground 换草绿；PondFloor 湖底仍用沙色（折射湖底质感）
+            string grassPath = "Assets/Art/Materials/GrassGround.mat";
+            var grass = AssetDatabase.LoadAssetAtPath<Material>(grassPath);
+            if (grass == null)
+            {
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                if (lit != null)
+                {
+                    if (!System.IO.Directory.Exists("Assets/Art/Materials")) System.IO.Directory.CreateDirectory("Assets/Art/Materials");
+                    grass = new Material(lit);
+                    grass.SetColor("_BaseColor", new Color(0.42f, 0.55f, 0.30f, 1f)); // 草绿（对标视频远岸植被色）
+                    AssetDatabase.CreateAsset(grass, grassPath);
+                }
+            }
+            var ground = UnityEngine.GameObject.Find("Ground");
+            if (ground != null && grass != null) ground.GetComponent<MeshRenderer>().sharedMaterial = grass;
+
+            // 2) 环池绿植：清理旧树，重建双环密度（主环 20.5~25m + 内环 21~22.5m 错位插空），高低错落成"绿墙"
+            var all = UnityEngine.Object.FindObjectsOfType<UnityEngine.Transform>();
+            foreach (var tr in all) if (tr != null && tr.name != null && tr.name.StartsWith("TreeRing_")) UnityEngine.Object.DestroyImmediate(tr.gameObject);
+
+            var rnd = new System.Random(20260917);
+            int count = 0;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int n = (pass == 0) ? 22 : 12;   // 主环22株 + 内环12株插空
+                for (int i = 0; i < n; i++)
+                {
+                    float ang = ((i + (pass == 1 ? 0.5f : 0f)) / n) * Mathf.PI * 2f;
+                    float radius = (pass == 0)
+                        ? 20.8f + (float)rnd.NextDouble() * 4.2f
+                        : 22.2f + (float)rnd.NextDouble() * 1.2f;
+                    float x = Mathf.Cos(ang) * radius;
+                    float z = Mathf.Sin(ang) * radius;
+                    var inst = PrefabUtility.InstantiatePrefab(treePrefab) as GameObject;
+                    if (inst == null) continue;
+                    inst.name = string.Format("TreeRing_{0:00}", count++);
+                    inst.transform.position = new Vector3(x, 0f, z);
+                    inst.transform.rotation = Quaternion.Euler(0f, (float)rnd.NextDouble() * 360f, 0f);
+                    float s = 1.1f + (float)rnd.NextDouble() * 1.7f;  // 1.1~2.8（视频远岸树带较高较密）
+                    inst.transform.localScale = new Vector3(s, s, s);
+                    if (i % 5 == 2) // 近岸小灌丛：贴水线、更小更矮
+                    {
+                        inst.transform.position = new Vector3(x * 0.8f, 0f, z * 0.8f);
+                        inst.transform.localScale = inst.transform.localScale * 0.6f;
+                    }
+                }
+            }
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 环池绿化完成：34 株树木双环(1.1~2.8x)环绕半径20.8~26m + 草地地面（湖底仍沙色）。");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
@@ -286,7 +345,7 @@ namespace WaterProject.EditorTools
             if (sv == null) return;
             sv.orthographic = false;
             // 相机对准池塘中心：从 -Z 侧高处俯瞰（距离收紧适配小池塘）
-            sv.LookAt(new Vector3(0f, 0.5f, 0f), Quaternion.Euler(16f, 180f, 0f), 13f);
+            sv.LookAt(new Vector3(0f, 1.2f, 21f), Quaternion.Euler(-1.5f, 180f, 0f), 38f);
             sv.FrameSelected(false);
             sv.Repaint();
             Debug.Log("[WaterProject] SceneView framed to water.");
