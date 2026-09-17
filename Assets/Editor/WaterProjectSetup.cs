@@ -558,6 +558,259 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log("[WaterProject] 小荷叶完成：12 片小荷叶 + 3 株小荷花（seed 20260919）。");
         }
 
+        // 不规则岸线函数：水盘/沙洲/池底共用（多波瓣 + 破碎感；基准 20.5 保持 20m 级水面）
+        static float ShoreR(float th)
+        {
+            float w1 = 0.88f + 0.12f * Mathf.Sin(th * 2f + 1.3f);
+            float w2 = 0.09f * Mathf.Sin(th * 4f + 0.6f);
+            float w3 = 0.07f * Mathf.Sin(th * 7f + 2.4f);
+            return Mathf.Max(14f, 20.5f * (w1 + w2 + w3));
+        }
+
+        [MenuItem("Tools/WaterProject/20 沙滩+不规则水域重组(沙洲含水·小池0.6)")]
+        public static void RebuildSandscapeWithWater()
+        {
+            System.Random rng = new System.Random(20260920);
+            // 池塘整体缩小 0.6：水/沙/石/荷叶全部乘 0.6（水面 r≈12.3m 级）
+            float S(float th) => ShoreR(th) * 0.6f;
+            // 先清旧拼形物与荷叶（幂等）
+            var oldAll = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            foreach (var go in oldAll)
+            {
+                if (go != null && (go.name.StartsWith("SmallLily_") || go.name.StartsWith("SmallLotus_")
+                    || go.name.StartsWith("WaterLilies") || go.name.StartsWith("LotusFlower")
+                    || go.name.StartsWith("Pebble_") || go.name.StartsWith("SandBlob_")))
+                { UnityEngine.Object.DestroyImmediate(go); }
+            }
+
+            // —— 1) 不规则水域盘（替换 Water 圆盘：岸线多波瓣自然弯曲） ——
+            string waterPath = "Assets/Art/Meshes/LakeWaterIrregular.asset";
+            {
+                int seg = 120, rings = 24;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float rr = (float)gr / rings;
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float r = Mathf.Lerp(0.4f, S(th), rr);
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2((float)gs / seg, rr));
+                    }
+                }
+                for (int gr = 0; gr < rings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        tris.Add(a); tris.Add(c); tris.Add(b);
+                        tris.Add(b); tris.Add(c); tris.Add(d);
+                    }
+                var m = new Mesh { name = "LakeWaterIrregular" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, waterPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+                var water = UnityEngine.GameObject.Find("Water");
+                if (water != null)
+                {
+                    var wmf = water.GetComponent<MeshFilter>();
+                    if (wmf != null) wmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath);
+                    EditorUtility.SetDirty(water);
+                }
+            }
+
+            // —— 2) 池底同岸线缓坡（中心 -1.03 → 岸边 -0.06，浅水见沙） ——
+            string floorPath = "Assets/Art/Meshes/PondFloorShore.asset";
+            {
+                int seg = 120, rings = 30;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float rr = (float)gr / rings;
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float r = Mathf.Lerp(0.4f, S(th) + 0.72f, rr);
+                        float shore = Mathf.SmoothStep(6f, 10.5f, r);
+                        float y = Mathf.Lerp(-1.03f, -0.06f, shore);
+                        float bump = (Mathf.PerlinNoise(r * 0.22f * Mathf.Cos(th) + 41.7f, r * 0.22f * Mathf.Sin(th) + 13.3f) - 0.5f) * 0.22f;
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, y + bump, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2((float)gs / seg, rr));
+                    }
+                }
+                for (int gr = 0; gr < rings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        tris.Add(a); tris.Add(c); tris.Add(b);
+                        tris.Add(b); tris.Add(c); tris.Add(d);
+                    }
+                var m = new Mesh { name = "PondFloorShore" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, floorPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+                var floor = UnityEngine.GameObject.Find("PondFloor");
+                if (floor != null)
+                {
+                    var fmf = floor.GetComponent<MeshFilter>();
+                    if (fmf != null) fmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
+                    floor.transform.position = new Vector3(0, 0, 0);
+                    EditorUtility.SetDirty(floor);
+                }
+            }
+
+            // —— 3) 沙洲主体：岸线内收 0.72m 藏水沙嘴(-0.005 微露，波浪下时隐时现) → 外缘 14.2m 岸上沙丘(+0.10)，Perlin 丘 ——
+            string ringPath = "Assets/Art/Meshes/ShoreSandRing.asset";
+            {
+                int seg = 120, rings = 10;
+                var verts = new List<Vector3>();
+                var uvs = new List<Vector2>();
+                var tris = new List<int>();
+                for (int gr = 0; gr <= rings; gr++)
+                {
+                    float tt = (float)gr / rings;
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float rIn = Mathf.Max(7f, S(th) - 0.72f);
+                        float r = Mathf.Lerp(rIn, 14.2f, tt);
+                        float y = Mathf.Lerp(-0.005f, 0.10f, tt);
+                        float bn = Mathf.PerlinNoise(Mathf.Cos(th) * 2.0f + 8.0f, Mathf.Sin(th) * 2.0f + tt * 3.0f);
+                        y += (bn - 0.5f) * 0.08f * (0.4f + tt);
+                        verts.Add(new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r));
+                        uvs.Add(new Vector2((float)gs / seg, tt));
+                    }
+                }
+                for (int gr = 0; gr < rings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        tris.Add(a); tris.Add(c); tris.Add(b);
+                        tris.Add(b); tris.Add(c); tris.Add(d);
+                    }
+                var m = new Mesh { name = "ShoreSandRing" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
+                if (oldAsset == null) AssetDatabase.CreateAsset(m, ringPath);
+                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                AssetDatabase.SaveAssets();
+                var ring = UnityEngine.GameObject.Find("ShoreSandRing");
+                if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
+                var rmf = ring.GetComponent<MeshFilter>();
+                if (rmf == null) rmf = ring.AddComponent<MeshFilter>();
+                var rmr = ring.GetComponent<MeshRenderer>();
+                if (rmr == null) rmr = ring.AddComponent<MeshRenderer>();
+                rmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
+                var sand = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sand_Shore.mat");
+                rmr.sharedMaterial = sand;
+                ring.transform.position = Vector3.zero;
+            }
+
+            // —— 4) 拼形沙洲：1 半岛沙嘴 + 2 离岸小沙洲（压扁圆柱碟；旧 SandBlob_ 已在开头清除） ——
+            var sand2 = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sand_Shore.mat");
+            for (int i = 0; i < 3; i++)
+            {
+                var disk = UnityEngine.GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                UnityEngine.Object.DestroyImmediate(disk.GetComponent<Collider>());
+                disk.name = "SandBlob_" + i;
+                float th = i == 0 ? -1.1f : (i == 1 ? 2.3f : -2.6f);
+                float r = i == 0 ? 10.5f : (i == 1 ? 11.5f : 12.2f);
+                float rr = i == 0 ? 3.3f : (i == 1 ? 2.4f : 1.8f);
+                float sc = 1.0f + (float)rng.NextDouble() * 0.35f;
+                disk.transform.position = new Vector3(Mathf.Cos(th) * r, i == 0 ? 0.02f : 0.03f, Mathf.Sin(th) * r);
+                disk.transform.localScale = new Vector3(rr * sc, 0.10f, rr * sc * 0.8f);
+                disk.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                var dmr = disk.GetComponent<MeshRenderer>();
+                dmr.sharedMaterial = sand2;
+            }
+
+            // —— 4b) 石头铺边：沿岸线一圈 32 块卵石（半浸水边微露，替代旧 Pebble 点缀） ——
+            var stoneMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Stone.mat");
+            var stones = new[] {
+                AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Meshes/Stone_01.asset"),
+                AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Meshes/Stone_02.asset"),
+                AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Meshes/Stone_03.asset") };
+            for (int i = 0; i < 32; i++)
+            {
+                float th = i * (Mathf.PI * 2f / 32f) + (float)rng.NextDouble() * 0.2f;
+                float rr = S(th) - 0.55f - (float)rng.NextDouble() * 0.4f;
+                float sc = 0.34f + (float)rng.NextDouble() * 0.26f;
+                var go = new UnityEngine.GameObject("EdgeStone_" + i.ToString("00"));
+                var mf = go.AddComponent<MeshFilter>();
+                mf.sharedMesh = stones[rng.Next(stones.Length)];
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = stoneMat;
+                go.transform.position = new Vector3(Mathf.Cos(th) * rr, 0.004f + (float)rng.NextDouble() * 0.024f, Mathf.Sin(th) * rr);
+                go.transform.localScale = new Vector3(sc, sc * 0.78f, sc);
+                go.transform.rotation = Quaternion.Euler(rng.Next(0, 18), rng.Next(0, 360), rng.Next(-14, 14));
+            }
+
+            // —— 4c) 池壁跟随缩小（r20 → r12，被沙洲盖住不外露） ——
+            var wallObj = UnityEngine.GameObject.Find("PondWall");
+            if (wallObj != null) wallObj.transform.localScale = new Vector3(24f, 0.5f, 24f);
+
+            // —— 5) 小荷叶全部重建：删旧（含 1/10 前的大荷叶） → 24 片 scale 0.026-0.05 + 6 株小荷花 ——
+            var all = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            foreach (var go in all)
+            {
+                if (go != null && (go.name.StartsWith("SmallLily_") || go.name.StartsWith("SmallLotus_")
+                    || go.name.StartsWith("WaterLilies") || go.name.StartsWith("LotusFlower")))
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                }
+            }
+            string lilyPath = "Assets/Art/StylePacks/正式素材/Lotus/WaterLilies_GooglePoly.glb";
+            string lotusPath = "Assets/Art/StylePacks/正式素材/Lotus/LotusFlower_SeanTarrant.glb";
+            var lily = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lilyPath);
+            if (lily == null) { UnityEngine.Debug.LogWarning("[WaterProject] 找不到荷叶预制体"); return; }
+            for (int i = 0; i < 24; i++)
+            {
+                float th = (float)(rng.NextDouble() * 2.0 * System.Math.PI);
+                float r = 0.8f + (float)rng.NextDouble() * 7.0f;        // 重摆：适配缩小后的水面（r0.8-7.8）
+                float sc = 0.05f + (float)rng.NextDouble() * 0.03f;    // 幼荷叶 ≈5-8cm（1920p 约 6-10px 可见的小点簇）
+                var inst = PrefabUtility.InstantiatePrefab(lily) as UnityEngine.GameObject;
+                if (inst == null) continue;
+                inst.name = "SmallLily_" + i.ToString("00");
+                inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0.012f, Mathf.Sin(th) * r);
+                inst.transform.localScale = new Vector3(sc, sc, sc);
+                inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+            }
+            var lotus = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lotusPath);
+            if (lotus != null)
+            {
+                for (int i = 0; i < 6; i++)
+                {
+                    float th = (float)(rng.NextDouble() * 2.0 * System.Math.PI);
+                    float r = 1.2f + (float)rng.NextDouble() * 6.0f;
+                    float sc = 0.06f + (float)rng.NextDouble() * 0.03f;
+                    var inst = PrefabUtility.InstantiatePrefab(lotus) as UnityEngine.GameObject;
+                    if (inst == null) continue;
+                    inst.name = "SmallLotus_" + i.ToString("00");
+                    inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0.012f, Mathf.Sin(th) * r);
+                    inst.transform.localScale = new Vector3(sc, sc, sc);
+                    inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 沙洲重组完成(小池0.6)：不规则水域 r≈12.3m + 沙洲含水(沙嘴-0.005微露) + 半岛/离岸沙洲 + 石头铺边32块 + 小荷叶重摆24片(5-8cm)。");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
