@@ -133,6 +133,59 @@ namespace WaterProject.EditorTools
             UnityEngine.Debug.Log($"[WaterProject] 已触发导入：{pkgPath}（导入完成后请运行 03 或手动检查 Assets/ 下新目录）");
         }
 
+        [MenuItem("Tools/WaterProject/12 一键外场景与水体厚度(池壁+池底)")]
+        public static void BuildOuterScene()
+        {
+            // 1) 地面：60×60m、顶面抬到水线 y=0（沙岸与水齐平，消除"水面悬空"）
+            var ground = UnityEngine.GameObject.Find("Ground");
+            if (ground != null)
+            {
+                ground.transform.position = new Vector3(0f, -0.5f, 0f);
+                ground.transform.localScale = new Vector3(6f, 1f, 6f); // Cube 底高1m → 顶面 y=0
+            }
+
+            string groundMatPath = "Assets/Art/Materials/Ground_Lake.mat";
+            var sandMat = AssetDatabase.LoadAssetAtPath<Material>(groundMatPath);
+
+            // 2) 池底（湖床）：半径20m 圆盘，顶面 y=-1.0（水深 1m，折射深度感）
+            var oldFloor = UnityEngine.GameObject.Find("PondFloor");
+            if (oldFloor != null) UnityEngine.Object.DestroyImmediate(oldFloor);
+            var floor = UnityEngine.GameObject.CreatePrimitive(UnityEngine.PrimitiveType.Cylinder);
+            floor.name = "PondFloor";
+            floor.transform.position = new Vector3(0f, -1.05f, 0f);    // 缩放后顶盖 y≈-1.0
+            floor.transform.localScale = new Vector3(40f, 0.05f, 40f);  // 半径 20m
+            if (sandMat != null) floor.GetComponent<MeshRenderer>().sharedMaterial = sandMat;
+            var floorCol = floor.GetComponent<Collider>();
+            if (floorCol != null) UnityEngine.Object.DestroyImmediate(floorCol);
+
+            // 3) 池壁（水体厚度侧壁）：半径20m 竖壁 y∈[-1.02,-0.02]（顶盖藏于水面下 2cm 防 Z 冲）
+            var oldWall = UnityEngine.GameObject.Find("PondWall");
+            if (oldWall != null) UnityEngine.Object.DestroyImmediate(oldWall);
+            string wallMatPath = "Assets/Art/Materials/PondWall.mat";
+            var wallMat = AssetDatabase.LoadAssetAtPath<Material>(wallMatPath);
+            if (wallMat == null)
+            {
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                if (lit != null)
+                {
+                    if (!System.IO.Directory.Exists("Assets/Art/Materials")) System.IO.Directory.CreateDirectory("Assets/Art/Materials");
+                    wallMat = new Material(lit);
+                    wallMat.SetColor("_BaseColor", new Color(0.10f, 0.36f, 0.34f, 1f)); // 水体侧壁青色
+                    AssetDatabase.CreateAsset(wallMat, wallMatPath);
+                }
+            }
+            var wall = UnityEngine.GameObject.CreatePrimitive(UnityEngine.PrimitiveType.Cylinder);
+            wall.name = "PondWall";
+            wall.transform.position = new Vector3(0f, -0.52f, 0f);      // 跨度 -1.02..-0.02
+            wall.transform.localScale = new Vector3(40f, 0.5f, 40f);     // 高 1.02m
+            if (wallMat != null) wall.GetComponent<MeshRenderer>().sharedMaterial = wallMat;
+            var wallCol = wall.GetComponent<Collider>();
+            if (wallCol != null) UnityEngine.Object.DestroyImmediate(wallCol);
+
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] 外场景重建完成：Ground 60×60m 顶面0；PondFloor(-1.0)；PondWall(0..-1m)。");
+        }
+
         [MenuItem("Tools/WaterProject/09 水体颜色探针(洋红/恢复)")]
         public static void ProbeWaterColor()
         {
