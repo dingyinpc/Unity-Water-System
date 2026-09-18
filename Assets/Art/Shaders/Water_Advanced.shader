@@ -74,6 +74,8 @@ Shader "WaterProject/Water_Advanced"
         _SunStrength      ("太阳反光强度", Float) = 0.35
         _FresnelPow       ("菲涅尔指数", Float) = 4.0
         _AmbientStrength  ("环境光强度", Float) = 0.35
+        _DepthDebug       ("深度调试输出 1:R=gap G=depthMix B=fres 2:rawDepth/scene/eye 3:screenUV", Range(0,3)) = 0
+        _SkyReflect       ("天空反射权重", Range(0,2)) = 1
     }
 
     SubShader
@@ -118,7 +120,7 @@ Shader "WaterProject/Water_Advanced"
                 float  _DetailStrength, _DetailScale, _DetailStart, _DetailEnd;
                 float  _InteractionAmp, _InteractionNorm, _InteractionFoam;
                 float  _CrestJ, _CrestSoft, _CrestFoam, _ShoreFoam, _FoamLift;
-                float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength, _FresnelPow, _AmbientStrength;
+                float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength, _FresnelPow, _AmbientStrength, _DepthDebug, _SkyReflect;
             CBUFFER_END
 
             // 全局（交互系统每帧提供）
@@ -149,6 +151,8 @@ Shader "WaterProject/Water_Advanced"
             struct WaterVaryings
             {
                 float4 positionCS : SV_POSITION;
+                // SV_Position 在片元阶段是像素坐标而非裁剪空间，屏幕空间折射/深度必须另带一份裁剪坐标
+                float4 clipPos    : TEXCOORD3;
                 float2 uv         : TEXCOORD0;
                 float3 worldPos   : TEXCOORD1;
                 float3 viewDir    : TEXCOORD2;
@@ -220,8 +224,8 @@ Shader "WaterProject/Water_Advanced"
                 return frac((p3.x + p3.y) * p3.z);
             }
 
-            // IQ 梯度噪声（带回解析导数）
-            float GradientNoise(float2 p, out float2 grad)
+            // 连续值噪声（Perlin 插值本体）；梯度改由差分求，保证跨格边界连续
+            float ValueNoise(float2 p)
             {
                 float2 i = floor(p), f = frac(p);
                 float2 u = f * f * (3.0 - 2.0 * f);
@@ -236,25 +240,25 @@ Shader "WaterProject/Water_Advanced"
                 float vc = dot(float2(cos(gc * 6.28318), sin(gc * 6.28318)), f - float2(0, 1));
                 float vd = dot(float2(cos(gd * 6.28318), sin(gd * 6.28318)), f - float2(1, 1));
 
-                float2 du = 6.0 * f * (1.0 - f);
-                float n = lerp(lerp(va, vb, u.x), lerp(vc, vd, u.x), u.y);
-                grad = float2(du.x * (vb - va) + du.y * (vd - vc),
-                              du.y * (vc - va) + du.x * (vd - vb));
-                return n;
+                return lerp(lerp(va, vb, u.x), lerp(vc, vd, u.x), u.y);
+            }
+
+            // 噪声空间前向差分斜率（原解析 grad 在格边界归零 → 每格一个朝向 = 棋盘格）
+            float2 NoiseSlope(float2 worldXZ, float scale, float2 flow)
+            {
+                float2 q = worldXZ * scale + flow;
+                const float eps = 0.25;
+                float n0 = ValueNoise(q);
+                float nx = ValueNoise(q + float2(eps, 0.0));
+                float nz = ValueNoise(q + float2(0.0, eps));
+                return float2(nx - n0, nz - n0) / eps;
             }
 
             float3 DetailNormal(float3 worldPos, float t)
             {
-                float2 p = worldPos.xz * _DetailScale;
-                // 流动感：细节法线以 ~0.35-0.45 m/s 世界速度平移（原 0.12 几乎静止）
-                p += float2(t * 0.42, t * 0.33);
-                float2 g;
-                GradientNoise(p, g);
-                // 反向抖动细节，制造多向流动
-                float2 p2 = worldPos.xz * _DetailScale * 2.1 - float2(t * 0.33, t * 0.42);
-                float2 g2;
-                GradientNoise(p2, g2);
-                float2 total = g * 0.7 + g2 * 0.5;
+                // 流动感：细节法线以 ~0.35-0.45 m/s 世界速度平移；第二层反向抖动制造多向流动
+                float2 total = NoiseSlope(worldPos.xz, _DetailScale,        float2(t * 0.42, t * 0.33)) * 0.7
+                             + NoiseSlope(worldPos.xz, _DetailScale * 2.1f, -float2(t * 0.33, t * 0.42)) * 0.5;
                 float3 n = float3(-total.x * _DetailStrength, 1.0, -total.y * _DetailStrength);
                 return normalize(n);
             }
@@ -354,6 +358,7 @@ Shader "WaterProject/Water_Advanced"
                 gr.pos.x += interN.x * _InteractionAmp * interA * 0.4 * 0.5;
 
                 o.positionCS = TransformWorldToHClip(gr.pos);
+                o.clipPos = o.positionCS;
                 o.uv = uv;
                 o.worldPos = gr.pos;
                 o.viewDir = _WorldSpaceCameraPos - gr.pos;
@@ -386,7 +391,7 @@ Shader "WaterProject/Water_Advanced"
                 N = normalize(N + interNWorld * interN.x * _InteractionNorm * interA + float3(0,0,interN.y) * _InteractionNorm * interA);
 
                 // ── 屏幕空间折射 [3] ──
-                float4 posCS = IN.positionCS;
+                float4 posCS = IN.clipPos;
                 float4 sp = posCS * 0.5;
                 sp.xy = float2(sp.x, sp.y * _ProjectionParams.x) + sp.w;
                 float2 screenUV = sp.xy / sp.w;
@@ -423,7 +428,7 @@ Shader "WaterProject/Water_Advanced"
                 float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y * 0.5 + 0.5));
                 // 太阳闪烁与场景主光方向对齐（不硬编码方向）
                 skyCol += _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
-                col += skyCol * fres * (1.0 - interA * 0.4);
+                col += skyCol * fres * _SkyReflect * (1.0 - interA * 0.4);
 
                 // ── 透光感 [Beer–Lambert]：阳光沿反射反方向穿透水体，随深度指数衰减 ──
                 float trans = exp(-max(gap, 0.0) * _Absorb * 0.6);          // 透射率 0浅→1深
@@ -435,7 +440,7 @@ Shader "WaterProject/Water_Advanced"
                 col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * _ScatterStrength * (0.35 + 0.65 * trans);
 
                 // 浅滩（gap 小）额外泛光，光能透到底的提亮
-                col += _ShallowColor * _ScatterStrength * 0.18 * (1.0 - trans);
+                col += _ShallowColor * _ScatterStrength * 0.28 * (1.0 - trans);
 
                 // ── 高光 ──
                 float3 H = normalize(mainLight.direction + V);
@@ -457,6 +462,14 @@ Shader "WaterProject/Water_Advanced"
                 col = lerp(col, foamCol, foam);
 
                 // 浪尖几何增强：在顶点处已由 Gerstner 水平位移自然卷曲 [8]
+                // 调试1：R=gap/4  G=depthMix  B=fres —— 红绿全黑只有蓝 ⇒ 深度取不到（gap=0）
+                if (_DepthDebug > 2.5)
+                    return half4(saturate(screenUV.x), saturate(screenUV.y), saturate(SampleSceneDepth(screenUV)), 1.0);
+                if (_DepthDebug > 1.5)
+                    return half4(saturate(SampleSceneDepth(screenUV)), saturate(sceneDepth * 0.04), saturate(waterDepth * 0.04), 1.0);
+                if (_DepthDebug > 0.5)
+                    return half4(saturate(gap * 0.25), saturate(depthMix), saturate(fres), 1.0);
+
                 float alpha = saturate(_Opacity + fres * 0.1 - foam * 0.2);
                 return half4(col + _FoamColor * interFoam * 0.12, alpha);   // 交互泡沫收敛，避免突兀白圈
             }

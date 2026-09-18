@@ -25,16 +25,17 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.9
-    - _AmbientStrength: 0.5
-    - _CrestFoam: 1
-    - _CrestJ: 0.6
-    - _CrestSoft: 0.35
-    - _DepthSharp: 3
+    - _Absorb: 1.9
+    - _AmbientStrength: 0.35
+    - _CrestFoam: 0.22
+    - _CrestJ: 0.28
+    - _CrestSoft: 0.22
+    - _DepthDebug: 0
+    - _DepthSharp: 5
     - _DetailEnd: 40
-    - _DetailScale: 1.6
+    - _DetailScale: 2.6
     - _DetailStart: 2
-    - _DetailStrength: 3
+    - _DetailStrength: 1.2
     - _Eta: 1.33
     - _FoamLift: 0.03
     - _FresnelPow: 6
@@ -44,14 +45,15 @@ Material:
     - _MaxTess: 6
     - _MaxUVOffset: 0.12
     - _Opacity: 0.95
-    - _RefractStrength: 0.9
+    - _RefractStrength: 0.55
     - _ScatterStrength: 0.55
-    - _ShoreFoam: 0.8
-    - _SpecPower: 180
-    - _SpecStrength: 0.3
-    - _SunGloss: 500
-    - _SunStrength: 0.18
-    - _SunTransmission: 0.7
+    - _ShoreFoam: 0.3
+    - _SkyReflect: 0.55
+    - _SpecPower: 150
+    - _SpecStrength: 0.8
+    - _SunGloss: 250
+    - _SunStrength: 0.85
+    - _SunTransmission: 0.45
     - _TessFar: 32
     - _TessNear: 6
     - _TessTargetSize: 0.35
@@ -60,13 +62,13 @@ Material:
     - _WaveCount: 4
     - _WaveTimeScale: 1.8
     m_Colors:
-    - _DeepColor: {r: 0.12, g: 0.4, b: 0.48, a: 1}
-    - _FoamColor: {r: 0.95, g: 0.97, b: 0.98, a: 1}
-    - _ShallowColor: {r: 0.18, g: 0.64, b: 0.72, a: 1}
-    - _SkyHorizon: {r: 0.62, g: 0.84, b: 0.88, a: 1}
-    - _SkyZenith: {r: 0.42, g: 0.95, b: 1, a: 1}
-    - _SunColor: {r: 1, g: 0.93, b: 0.75, a: 1}
-    - _WaterScatter: {r: 0.38, g: 0.95, b: 1, a: 1}
+    - _DeepColor: {r: 0.03, g: 0.245, b: 0.305, a: 1}
+    - _FoamColor: {r: 0.88, g: 0.96, b: 0.96, a: 1}
+    - _ShallowColor: {r: 0.16, g: 0.55, b: 0.52, a: 1}
+    - _SkyHorizon: {r: 0.3, g: 0.44, b: 0.5, a: 1}
+    - _SkyZenith: {r: 0.1, g: 0.28, b: 0.4, a: 1}
+    - _SunColor: {r: 1, g: 0.95, b: 0.82, a: 1}
+    - _WaterScatter: {r: 0.25, g: 0.7, b: 0.72, a: 1}
     - _WaveDirs: {r: 0, g: 0, b: 0, a: 0}
     - _Waves: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

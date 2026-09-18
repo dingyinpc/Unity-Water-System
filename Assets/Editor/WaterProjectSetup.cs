@@ -343,7 +343,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, floorPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
                 var floor = UnityEngine.GameObject.Find("PondFloor");
                 if (floor != null)
@@ -387,7 +387,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(sandRingPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, sandRingPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
 
                 var ring = UnityEngine.GameObject.Find("ShoreSandRing");
@@ -462,7 +462,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(stonePaths[s]);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, stonePaths[s]);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 stoneMesh[s] = AssetDatabase.LoadAssetAtPath<Mesh>(stonePaths[s]);
             }
             AssetDatabase.SaveAssets();
@@ -614,7 +614,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, waterPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
                 var water = UnityEngine.GameObject.Find("Water");
                 if (water != null)
@@ -659,7 +659,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, floorPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
                 var floor = UnityEngine.GameObject.Find("PondFloor");
                 if (floor != null)
@@ -706,7 +706,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, ringPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
                 var ring = UnityEngine.GameObject.Find("ShoreSandRing");
                 if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
@@ -1087,7 +1087,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldAsset = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
                 if (oldAsset == null) AssetDatabase.CreateAsset(m, ringPath);
-                else { EditorUtility.CopySerialized(m, oldAsset); EditorUtility.SetDirty(oldAsset); }
+                else { WriteMeshFrom(oldAsset, m); }
                 AssetDatabase.SaveAssets();
                 var ring = UnityEngine.GameObject.Find("ShoreSandRing");
                 if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
@@ -1121,8 +1121,9 @@ namespace WaterProject.EditorTools
                         {
                             int a = gr * (seg + 1) + gs, b = a + 1;
                             int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
-                            tris.Add(a); tris.Add(c); tris.Add(b);
-                            tris.Add(b); tris.Add(c); tris.Add(d);
+                            // 镜像绕序：闭合圆顶需要朝外法线，否则 avgNrmY 为负、远山渲染成黑锥
+                            tris.Add(a); tris.Add(b); tris.Add(c);
+                            tris.Add(b); tris.Add(d); tris.Add(c);
                         }
                     }
                 }
@@ -1131,7 +1132,7 @@ namespace WaterProject.EditorTools
                 hm.RecalculateNormals(); hm.RecalculateBounds();
                 var oldH = AssetDatabase.LoadAssetAtPath<Mesh>(hillPath);
                 if (oldH == null) AssetDatabase.CreateAsset(hm, hillPath);
-                else { EditorUtility.CopySerialized(hm, oldH); EditorUtility.SetDirty(oldH); }
+                else { WriteMeshFrom(oldH, hm); }
                 AssetDatabase.SaveAssets();
 
                 string hillMatPath = "Assets/Art/Materials/Hill_Distant.mat";
@@ -1188,9 +1189,21 @@ namespace WaterProject.EditorTools
                         var inst = PrefabUtility.InstantiatePrefab(treePrefab) as UnityEngine.GameObject;
                         if (inst == null) continue;
                         inst.name = "Tree_" + ring + "_" + i.ToString("00");
-                        inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
-                        inst.transform.localScale = new Vector3(sc, sc * (0.9f + (float)rng.NextDouble() * 0.3f), sc);
+                        var tPos = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
                         inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                        inst.transform.localScale = new Vector3(sc, sc * (0.9f + (float)rng.NextDouble() * 0.3f), sc);
+                        if (inst.transform.childCount > 0)
+                        {
+                            var keep = inst.transform.GetChild(rng.Next(inst.transform.childCount));
+                            for (int c = inst.transform.childCount - 1; c >= 0; c--)
+                            {
+                                var ch = inst.transform.GetChild(c);
+                                if (ch != keep) UnityEngine.Object.DestroyImmediate(ch.gameObject);
+                            }
+                            inst.transform.position = Vector3.zero;
+                            inst.transform.position = tPos - keep.position;
+                        }
+                        else inst.transform.position = tPos;
                     }
                 }
             }
@@ -1210,6 +1223,7 @@ namespace WaterProject.EditorTools
     [MenuItem("Tools/WaterProject/22 对标视频修正(低机位/绿墙远岸/灰青水面/稀疏石/近滩)")]
         public static void AlignToVideo()
         {
+            KillVolumes();
             System.Random rng = new System.Random(20260922);
             float S(float th) => ShoreR(th) * 0.6f;
 
@@ -1279,7 +1293,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldA = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
                 if (oldA == null) AssetDatabase.CreateAsset(m, ringPath);
-                else { EditorUtility.CopySerialized(m, oldA); EditorUtility.SetDirty(oldA); }
+                else { WriteMeshFrom(oldA, m); }
                 AssetDatabase.SaveAssets();
                 var ring = UnityEngine.GameObject.Find("ShoreSandRing");
                 if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
@@ -1309,7 +1323,9 @@ namespace WaterProject.EditorTools
                         float th = Mathf.PI * 2f * gs / segW;
                         float rBase = Mathf.Max(12f, 20.5f * (0.88f + 0.12f * Mathf.Sin(th * 2f + 1.3f)
                                   + 0.09f * Mathf.Sin(th * 4f + 0.6f) + 0.07f * Mathf.Sin(th * 7f + 2.4f))) * 0.6f;
-                        float r = rBase + 2.0f * Mathf.SmoothStep(0.55f, 1.0f, Mathf.Cos(th)); // +z 相机侧凸出 2m
+                        // 半径必须随圈插值，否则 27 圈重合在同一岸线上 → 所有 quad 面积为 0（只剩轮廓）
+                        float rEdge = rBase + 2.0f * Mathf.SmoothStep(0.55f, 1.0f, Mathf.Cos(th)); // +z 相机侧凸出 2m
+                        float r = Mathf.Lerp(0.4f, rEdge, rr);
                         verts.Add(new Vector3(Mathf.Cos(th) * r, 0.02f, Mathf.Sin(th) * r));
                         uvs.Add(new Vector2((float)gs / segW, rr));
                     }
@@ -1327,7 +1343,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldW = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath2);
                 if (oldW == null) AssetDatabase.CreateAsset(m, waterPath2);
-                else { EditorUtility.CopySerialized(m, oldW); EditorUtility.SetDirty(oldW); }
+                else { WriteMeshFrom(oldW, m); }
                 AssetDatabase.SaveAssets();
                 var wgo = UnityEngine.GameObject.Find("Water");
                 if (wgo != null)
@@ -1373,7 +1389,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldA = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath2);
                 if (oldA == null) AssetDatabase.CreateAsset(m, floorPath2);
-                else { EditorUtility.CopySerialized(m, oldA); EditorUtility.SetDirty(oldA); }
+                else { WriteMeshFrom(oldA, m); }
                 AssetDatabase.SaveAssets();
                 var floor = UnityEngine.GameObject.Find("PondFloor");
                 if (floor != null)
@@ -1423,10 +1439,19 @@ namespace WaterProject.EditorTools
                 }
                 var m = new Mesh { name = "GreenWall" };
                 m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
-                m.RecalculateNormals(); m.RecalculateBounds();
+                // 该网格有重合顶点→退化三角→RecalculateNormals 留下零法线（实测 294/582），故显式给外向法线
+                var gn = new List<Vector3>(verts.Count);
+                for (int i = 0; i < verts.Count; i++)
+                {
+                    var dir = new Vector3(verts[i].x, 0f, verts[i].z);
+                    dir = dir.sqrMagnitude > 1e-8f ? dir.normalized : Vector3.right;
+                    gn.Add((dir * 0.55f + Vector3.up * 0.835f).normalized);
+                }
+                m.SetNormals(gn);
+                m.RecalculateBounds();
                 var oldG = AssetDatabase.LoadAssetAtPath<Mesh>(wallPath);
                 if (oldG == null) AssetDatabase.CreateAsset(m, wallPath);
-                else { EditorUtility.CopySerialized(m, oldG); EditorUtility.SetDirty(oldG); }
+                else { WriteMeshFrom(oldG, m); }
                 AssetDatabase.SaveAssets();
                 string greenMatPath = "Assets/Art/Materials/GreenWall_Distant.mat";
                 var greenMat = AssetDatabase.LoadAssetAtPath<Material>(greenMatPath);
@@ -1452,18 +1477,20 @@ namespace WaterProject.EditorTools
                 wall.transform.position = Vector3.zero;
             }
 
-            // —— 3) 水面色调朝视频灰青(R118 G149 B151)拉近（材质直接改，重启后生效） ——
+            // —— 3) 水面色调朝亮蓝（用户要求：水必须是蓝色的，别再灰青） ——
             var wmat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
             if (wmat != null)
             {
-                wmat.SetColor("_ShallowColor", new Color(0.18f, 0.64f, 0.72f, 1f));
-                wmat.SetColor("_DeepColor", new Color(0.12f, 0.40f, 0.48f, 1f));
-                wmat.SetColor("_WaterScatter", new Color(0.38f, 0.95f, 1.00f, 1f));
-                wmat.SetFloat("_ScatterStrength", 0.55f);
-                wmat.SetFloat("_SpecStrength", 0.30f);   // 波光细碎回流（视频特征）
-                wmat.SetFloat("_SunStrength", 0.18f);
-                wmat.SetColor("_SkyZenith", new Color(0.42f, 0.95f, 1.00f, 1f));       // 反射天顶饱和青
-                wmat.SetColor("_SkyHorizon", new Color(0.62f, 0.84f, 0.88f, 1f));      // 反射地平青灰
+                wmat.SetColor("_ShallowColor", new Color(0.05f, 0.35f, 1.00f, 1f));   // 亮蓝（用户要求水是蓝色的）
+                wmat.SetColor("_DeepColor", new Color(0.04f, 0.20f, 0.70f, 1f));
+                wmat.SetColor("_WaterScatter", new Color(0.10f, 0.50f, 1.00f, 1f));
+                wmat.SetFloat("_ScatterStrength", 0.65f);
+                wmat.SetFloat("_SpecStrength", 0.38f);   // 波光冷白（不稀释蓝色）
+                wmat.SetFloat("_SunStrength", 0.28f);
+                wmat.SetFloat("_WaveAmpScale", 0.65f);   // 波浪幅度回升（波动明显）
+                wmat.SetColor("_SkyZenith", new Color(0.12f, 0.55f, 1.00f, 1f));       // 反射天顶蓝
+                wmat.SetColor("_SkyHorizon", new Color(0.44f, 0.70f, 0.96f, 1f));      // 反射地平蓝
+                wmat.SetColor("_SunColor", new Color(0.92f, 0.97f, 1.00f, 1f));        // 高光冷白
                 EditorUtility.SetDirty(wmat);
 
                 // Water 渲染器强制挂载最新 Water_Advanced 资产（消除实例快照漂移）
@@ -1475,14 +1502,14 @@ namespace WaterProject.EditorTools
                     EditorUtility.SetDirty(waterGo);
                 }
 
-                // 全局调光：视频=低亮灰蓝低饱和（天空74,76,81 / 水面114,149,153）
+                // 全局亮化：水要显蓝（去灰雾暗调，天空提亮偏白）
                 var sunL = sun != null ? sun.GetComponent<Light>() : null;
-                if (sunL != null) { sunL.intensity = 0.85f; EditorUtility.SetDirty(sun); }
-                RenderSettings.ambientIntensity = 0.9f;
+                if (sunL != null) { sunL.intensity = 1.0f; EditorUtility.SetDirty(sun); }
+                RenderSettings.ambientIntensity = 1.0f;
                 if (RenderSettings.skybox != null)
                 {
-                    RenderSettings.skybox.SetFloat("_Exposure", 0.78f);
-                    RenderSettings.skybox.SetColor("_Tint", new Color(0.95f, 0.95f, 0.97f, 1f));   // 灰雾天空
+                    RenderSettings.skybox.SetFloat("_Exposure", 0.9f);
+                    RenderSettings.skybox.SetColor("_Tint", new Color(0.96f, 0.97f, 1.0f, 1f));   // 天更白
                 }
                 var sandMat2 = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sand_Shore.mat");
                 if (sandMat2 != null)
@@ -1632,15 +1659,30 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/WaterProject/24 浅碗沙滩重构(碗形水域/环树/水中卵石3堆)")]
         public static void RebuildShallowBowlBeach()
         {
+            KillVolumes();
             System.Random rng = new System.Random(20260924);
             float S(float th) => ShoreR(th) * 0.6f;
 
-            // 1) 相机：俯瞰碗形——碗心水面居中，四周沙滩平铺扩散，树环与卵石堆清晰可见
+            // 1) 相机：碗外沙滩带低机位（近处沙滩+前方水面中带+远景树墙），水面占画面中部主导
             var cam = UnityEngine.GameObject.Find("Main Camera");
             if (cam != null)
             {
-                cam.transform.localPosition = new Vector3(0f, 7f, -11f);
-                cam.transform.localRotation = Quaternion.Euler(-30f, 0f, 0f);
+                cam.transform.localPosition = new Vector3(0f, 1.2f, -16.5f);
+                cam.transform.localRotation = Quaternion.Euler(-2.5f, 0f, 0f);
+            }
+            // 1a) 全局亮化：水要显蓝（去灰雾暗调，太阳足、天空白）
+            var sun = UnityEngine.GameObject.Find("Sun") ?? UnityEngine.GameObject.Find("Directional Light");
+            if (sun != null)
+            {
+                sun.transform.rotation = Quaternion.Euler(60f, 25f, 0f);
+                var sunL = sun.GetComponent<Light>();
+                if (sunL != null) { sunL.intensity = 1.0f; EditorUtility.SetDirty(sun); }
+            }
+            RenderSettings.ambientIntensity = 1.0f;
+            if (RenderSettings.skybox != null)
+            {
+                RenderSettings.skybox.SetFloat("_Exposure", 0.9f);
+                RenderSettings.skybox.SetColor("_Tint", new Color(0.96f, 0.97f, 1.0f, 1f));
             }
 
             // 2) 池底：浅碗（中心 -0.55m → 岸边 0.02 微凹，Perlin 缓起伏）
@@ -1658,8 +1700,8 @@ namespace WaterProject.EditorTools
                         float th = Mathf.PI * 2f * gs / segF;
                         float rIn2 = Mathf.Max(12f, S(th));
                         float r = Mathf.Lerp(0.4f, rIn2 + 0.5f, rr);
-                        float bowl = Mathf.SmoothStep(1.5f, rIn2 - 1.2f, r);        // 浅碗：中心深 0.55 → 岸边近 0
-                        float y = Mathf.Lerp(-0.55f, 0.02f, bowl);
+                        // 碗形交给 PondWall 的 45° 沙滩斜坡去表达；池底做平底盆，保证 1.02m 净空容纳波谷
+                        float y = -1.0f;
                         float bump = (Mathf.PerlinNoise(r * 0.28f * Mathf.Cos(th) + 41.7f, r * 0.28f * Mathf.Sin(th) + 13.3f) - 0.5f) * 0.08f;
                         verts.Add(new Vector3(Mathf.Cos(th) * r, y + bump, Mathf.Sin(th) * r));
                         uvs.Add(new Vector2((float)gs / segF, rr));
@@ -1673,12 +1715,24 @@ namespace WaterProject.EditorTools
                         tris.Add(a); tris.Add(c); tris.Add(b);
                         tris.Add(b); tris.Add(c); tris.Add(d);
                     }
-                var m = new Mesh { name = "PondFloorShore" };
-                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
-                m.RecalculateNormals(); m.RecalculateBounds();
                 var oldA = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
-                if (oldA == null) AssetDatabase.CreateAsset(m, floorPath);
-                else { EditorUtility.CopySerialized(m, oldA); EditorUtility.SetDirty(oldA); }
+                if (oldA == null)
+                {
+                    var m = new Mesh { name = "PondFloorShore" };
+                    m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                    m.RecalculateNormals(); m.RecalculateBounds();
+                    AssetDatabase.CreateAsset(m, floorPath);
+                }
+                else
+                {
+                    oldA.Clear();
+                    oldA.vertices = verts.ToArray();
+                    oldA.uv = uvs.ToArray();
+                    oldA.triangles = tris.ToArray();
+                    oldA.RecalculateNormals();
+                    oldA.RecalculateBounds();
+                    EditorUtility.SetDirty(oldA);
+                }
                 AssetDatabase.SaveAssets();
                 var floor = UnityEngine.GameObject.Find("PondFloor");
                 if (floor == null) floor = new UnityEngine.GameObject("PondFloor");
@@ -1689,6 +1743,84 @@ namespace WaterProject.EditorTools
                 fmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(floorPath);
                 fmr.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Ground_Lake.mat");
                 floor.transform.position = new Vector3(0, 0, 0);
+                floor.transform.localScale = Vector3.one;   // 菜单12 遗留 (40,0.05,40) 会把浅碗压成 2.7cm 深
+            }
+
+            // 2b) PondWall：实心圆柱 → 45° 凹沙滩斜坡环（它的职责是"沙滩入水"，不是堵一块平板）
+            string slopePath = "Assets/Art/Meshes/BeachSlope.asset";
+            {
+                int segS = 120, ringsS = 8;
+                float run = 1.10f, drop = 1.02f;          // ≈42.8°，视觉即 45° 入水坡
+                var sv = new List<Vector3>();
+                var su = new List<Vector2>();
+                var st = new List<int>();
+                for (int gr = 0; gr <= ringsS; gr++)
+                {
+                    float u = (float)gr / ringsS;
+                    for (int gs = 0; gs <= segS; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / segS;
+                        float rIn2 = Mathf.Max(12f, S(th));
+                        float r = (rIn2 - run) + u * run;
+                        float y = -1.0f + u * drop;
+                        float fade = Mathf.SmoothStep(0f, 1f, Mathf.Min(u, 1f - u) * 4f);
+                        y += (Mathf.PerlinNoise(Mathf.Cos(th) * 2.2f + 7f, Mathf.Sin(th) * 2.2f + 3f) - 0.5f) * 0.06f * fade;
+                        sv.Add(new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r));
+                        su.Add(new Vector2((float)gs / segS, u));
+                    }
+                }
+                for (int gr = 0; gr < ringsS; gr++)
+                    for (int gs = 0; gs < segS; gs++)
+                    {
+                        int a = gr * (segS + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (segS + 1) + gs, d = c + 1;
+                        st.Add(a); st.Add(c); st.Add(b);
+                        st.Add(b); st.Add(c); st.Add(d);
+                    }
+                var slopeNormals = new List<Vector3>(sv.Count);
+                for (int i = 0; i < sv.Count; i++)
+                {
+                    var rd = new Vector3(sv[i].x, 0f, sv[i].z);
+                    rd = rd.sqrMagnitude > 1e-8f ? rd.normalized : Vector3.right;
+                    slopeNormals.Add((rd * 0.60f + Vector3.up * 0.80f).normalized);
+                }
+                var slopeAsset = AssetDatabase.LoadAssetAtPath<Mesh>(slopePath);
+                if (slopeAsset == null)
+                {
+                    slopeAsset = new Mesh { name = "BeachSlope" };
+                    slopeAsset.SetVertices(sv); slopeAsset.SetUVs(0, su); slopeAsset.SetTriangles(st, 0);
+                    slopeAsset.SetNormals(slopeNormals);
+                    slopeAsset.RecalculateBounds();
+                    AssetDatabase.CreateAsset(slopeAsset, slopePath);
+                }
+                else
+                {
+                    slopeAsset.Clear();
+                    slopeAsset.vertices = sv.ToArray();
+                    slopeAsset.uv = su.ToArray();
+                    slopeAsset.triangles = st.ToArray();
+                    slopeAsset.SetNormals(slopeNormals);
+                    slopeAsset.RecalculateBounds();
+                    EditorUtility.SetDirty(slopeAsset);
+                }
+                AssetDatabase.SaveAssets();
+
+                var wall = UnityEngine.GameObject.Find("PondWall");
+                if (wall == null) wall = new UnityEngine.GameObject("PondWall");
+                var wmf2 = wall.GetComponent<MeshFilter>();
+                if (wmf2 == null) wmf2 = wall.AddComponent<MeshFilter>();
+                var wmr2 = wall.GetComponent<MeshRenderer>();
+                if (wmr2 == null) wmr2 = wall.AddComponent<MeshRenderer>();
+                wmf2.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(slopePath);
+                // 这条环带的角色是"入水沙滩"，用沙滩材质；PondWall.mat 只作兜底
+                var wmat2 = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sand_Shore.mat");
+                if (wmat2 == null) wmat2 = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/PondWall.mat");
+                if (wmat2 != null) wmr2.sharedMaterial = wmat2;
+                wall.transform.position = Vector3.zero;
+                wall.transform.localScale = Vector3.one;   // 清掉菜单12 的 (24,0.5,24) 圆柱缩放
+                var wcol2 = wall.GetComponent<Collider>();
+                if (wcol2 != null) UnityEngine.Object.DestroyImmediate(wcol2);
+                EditorUtility.SetDirty(wall);
             }
 
             // 3) 沙滩：平缓浅碗外扩（水边 0.02 → 外缘 0.37 慢坡，无墙无脊，大面积平铺）
@@ -1729,7 +1861,7 @@ namespace WaterProject.EditorTools
                 m.RecalculateNormals(); m.RecalculateBounds();
                 var oldA = AssetDatabase.LoadAssetAtPath<Mesh>(ringPath);
                 if (oldA == null) AssetDatabase.CreateAsset(m, ringPath);
-                else { EditorUtility.CopySerialized(m, oldA); EditorUtility.SetDirty(oldA); }
+                else { WriteMeshFrom(oldA, m); }
                 AssetDatabase.SaveAssets();
                 var ring = UnityEngine.GameObject.Find("ShoreSandRing");
                 if (ring == null) ring = new UnityEngine.GameObject("ShoreSandRing");
@@ -1742,7 +1874,7 @@ namespace WaterProject.EditorTools
                 ring.transform.position = Vector3.zero;
             }
 
-            // 4) 树：以水为中心，沙滩平地环状 2 圈（r16.8-19 + r20.8-23.4），随机抖动不过密
+            // 4) 树：以水为中心，沙滩平地环状 2 圈（r19.5-21.7 + r23.6-25.8），随机抖动不过密。预留 r15-19.5 宽沙滩机位带。
             string treePrefab = "Assets/Art/StylePacks/正式素材/Trees/Trees_Quaternius.glb";
             var trees = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(treePrefab);
             var allGo1 = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
@@ -1755,7 +1887,7 @@ namespace WaterProject.EditorTools
                 for (int ringI = 0; ringI < 2; ringI++)
                 {
                     int count = ringI == 0 ? 12 : 14;
-                    float r0 = ringI == 0 ? 16.8f : 20.8f;
+                    float r0 = ringI == 0 ? 19.5f : 23.6f;
                     for (int i = 0; i < count; i++)
                     {
                         float th = (float)i / count * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
@@ -1765,9 +1897,22 @@ namespace WaterProject.EditorTools
                         var inst = PrefabUtility.InstantiatePrefab(trees) as UnityEngine.GameObject;
                         if (inst == null) continue;
                         inst.name = "Tree_ring_" + idx.ToString("00");
-                        inst.transform.position = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
-                        inst.transform.localScale = new Vector3(sc, sc, sc);
+                        var target = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
                         inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                        inst.transform.localScale = new Vector3(sc, sc, sc);
+                        // 整包内含 5 棵相距上百米的树；只留一棵，否则其余会被甩到地平线
+                        if (inst.transform.childCount > 0)
+                        {
+                            var keep = inst.transform.GetChild(rng.Next(inst.transform.childCount));
+                            for (int c = inst.transform.childCount - 1; c >= 0; c--)
+                            {
+                                var ch = inst.transform.GetChild(c);
+                                if (ch != keep) UnityEngine.Object.DestroyImmediate(ch.gameObject);
+                            }
+                            inst.transform.position = Vector3.zero;
+                            inst.transform.position = target - keep.position;
+                        }
+                        else inst.transform.position = target;
                         idx++;
                     }
                 }
@@ -1850,6 +1995,1238 @@ namespace WaterProject.EditorTools
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
             AssetDatabase.SaveAssets();
             UnityEngine.Debug.Log("[WaterProject] 浅碗沙滩完成：碗形水域/平滩外扩27.5m/环树26株/水中卵石3堆/荷12花3。");
+        }
+    // —— 25) 诊断：恢复 Water + 红色立方体标记（验证桥 Game 截图渲染的是否为当前实时场景） ——
+        [MenuItem("Tools/WaterProject/25 诊断恢复Water+红盒标记")]
+        public static void DiagRestoreWaterAndRedBox()
+        {
+            // 1) 恢复 Water 对象：激话 + 归位 + 强制挂 URP/Lit 纯蓝（绕开自定义 shader）
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w != null)
+            {
+                w.SetActive(true);
+                w.transform.position = new Vector3(0f, 0.02f, 0f);
+                var wm = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+                var lit = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                if (lit != null)
+                {
+                    lit.name = "_DiagBlue";
+                    lit.SetColor("_BaseColor", new Color(0.05f, 0.35f, 1.0f, 1f));
+                    var wmr = w.GetComponent<MeshRenderer>();
+                    if (wmr != null) wmr.sharedMaterial = lit;
+                }
+                UnityEngine.Debug.Log("[WaterProject] DIAG Water restored + URP/Lit pure blue attached.");
+            }
+            else UnityEngine.Debug.Log("[WaterProject] DIAG Water NOT FOUND!");
+
+            // 2) 红盒子放相机正前方（入镜即可见）
+            var box = UnityEngine.GameObject.Find("_DiagRedBox");
+            if (box == null)
+            {
+                box = UnityEngine.GameObject.CreatePrimitive(PrimitiveType.Cube);
+                box.name = "_DiagRedBox";
+            }
+            box.transform.position = new Vector3(0f, 1.5f, -5f);
+            box.transform.localScale = new Vector3(1f, 3f, 1f);
+            var bmr = box.GetComponent<MeshRenderer>();
+            var redMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            redMat.name = "_DiagRed";
+            redMat.SetColor("_BaseColor", new Color(1f, 0.05f, 0.05f, 1f));
+            bmr.sharedMaterial = redMat;
+            UnityEngine.Debug.Log("[WaterProject] DIAG red box at (0,1.5,-5).");
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        }
+    // —— 26) 切换播放（诊断用：Play 中 Game 截图=真实渲染） ——
+        [MenuItem("Tools/WaterProject/26 切换播放(诊断用)")]
+        public static void TogglePlayDiag()
+        {
+            var box = UnityEngine.GameObject.Find("_DiagRedBox");
+            if (box != null) UnityEngine.Object.DestroyImmediate(box);
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w != null) w.SetActive(true);
+            EditorApplication.isPlaying = !EditorApplication.isPlaying;
+            UnityEngine.Debug.Log("[WaterProject] toggled play -> " + EditorApplication.isPlaying);
+        }
+    // —— 27) 诊断：打印 Water 渲染器当前材质身份（Play 内也有效） ——
+        [MenuItem("Tools/WaterProject/27 打印Water材质身份(诊断)")]
+        public static void DiagDumpWaterMaterial()
+        {
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w == null) { UnityEngine.Debug.Log("[WaterProject] DIAG Water NOT FOUND"); return; }
+            var mr = w.GetComponent<Renderer>();
+            if (mr == null) { UnityEngine.Debug.Log("[WaterProject] DIAG no renderer"); return; }
+            var m = mr.sharedMaterial;
+            string path = m != null ? AssetDatabase.GetAssetPath(m) : "null";
+            string shaderName = m != null && m.shader != null ? m.shader.name : "null";
+            var mf = w.GetComponent<MeshFilter>();
+            string meshPath = mf != null && mf.sharedMesh != null ? AssetDatabase.GetAssetPath(mf.sharedMesh) : "null";
+            UnityEngine.Debug.Log($"[WaterProject] DIAG Water name={w.name} mat={m?.name} path={path} shader={shaderName} mesh={meshPath} isInst={ (m != null && AssetDatabase.GetAssetPath(m) == "") }");
+        }
+    // —— 28) 诊断：打印 Water_Advanced 资产的真实属性值 ——
+        [MenuItem("Tools/WaterProject/28 打印Water资产属性(诊断)")]
+        public static void DiagDumpWaterAssetProps()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m == null) { UnityEngine.Debug.Log("[WaterProject] DIAG asset load FAILED"); return; }
+            var sc = m.HasProperty("_ShallowColor") ? m.GetColor("_ShallowColor") : Color.magenta;
+            var de = m.HasProperty("_DeepColor") ? m.GetColor("_DeepColor") : Color.magenta;
+            var en = m.HasProperty("_WaterScatter") ? m.GetColor("_WaterScatter") : Color.magenta;
+            var sz = m.HasProperty("_SkyZenith") ? m.GetColor("_SkyZenith") : Color.magenta;
+            var sh = m.HasProperty("_SkyHorizon") ? m.GetColor("_SkyHorizon") : Color.magenta;
+            var sun = m.HasProperty("_SunColor") ? m.GetColor("_SunColor") : Color.magenta;
+            var ss = m.HasProperty("_ScatterStrength") ? m.GetFloat("_ScatterStrength") : -1f;
+            var sa = m.HasProperty("_WaveAmpScale") ? m.GetFloat("_WaveAmpScale") : -1f;
+            UnityEngine.Debug.Log($"[WaterProject] DIAG asset Shallow={sc} Deep={de} Scatter={en} Zen={sz} Hor={sh} Sun={sun} ScatStr={ss} Amp={sa}");
+        }
+    // —— 29) 深度诊断：Water 物体全部状态（transform/渲染器/材质属性块/网格） ——
+        [MenuItem("Tools/WaterProject/29 深度诊断Water物体(诊断)")]
+        public static void DiagDeepWater()
+        {
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w == null) { UnityEngine.Debug.Log("[WaterProject] DEEP Water NOT FOUND"); return; }
+            var t = w.transform;
+            UnityEngine.Debug.Log($"[WaterProject] DEEP pos={t.position} rot={t.eulerAngles} scale={t.localScale} active={w.activeInHierarchy} layer={LayerMask.LayerToName(w.layer)}({w.layer})");
+            var mr = w.GetComponent<MeshRenderer>();
+            if (mr != null)
+            {
+                var mats = mr.sharedMaterials;
+                var names = new System.Text.StringBuilder();
+                for (int i = 0; i < mats.Length; i++) names.Append((mats[i] != null ? mats[i].name : "NULL") + "|");
+                var mpb = new MaterialPropertyBlock();
+                mr.GetPropertyBlock(mpb);
+                UnityEngine.Debug.Log($"[WaterProject] DEEP renderer enabled={mr.enabled} cast={mr.shadowCastingMode} mot={mr.motionVectorGenerationMode} matCount={mats.Length} mats={names} mpbEmpty={mpb.isEmpty}");
+                var sm = mr.sharedMaterial;
+                if (sm != null)
+                    UnityEngine.Debug.Log($"[WaterProject] DEEP sharedMat={sm.name} shader={sm.shader.name} Shallow={sm.GetColor("_ShallowColor")} Deep={sm.GetColor("_DeepColor")} ScatStr={sm.GetFloat("_ScatterStrength")}");
+            }
+            else UnityEngine.Debug.Log("[WaterProject] DEEP no MeshRenderer");
+            var mf = w.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+                UnityEngine.Debug.Log($"[WaterProject] DEEP mesh={mf.sharedMesh.name} verts={mf.sharedMesh.vertexCount} tris={mf.sharedMesh.triangles.Length / 3} bounds={mf.sharedMesh.bounds} path={AssetDatabase.GetAssetPath(mf.sharedMesh)}");
+            else UnityEngine.Debug.Log("[WaterProject] DEEP no/missing MeshFilter mesh");
+            var col = w.GetComponent<Collider>();
+            UnityEngine.Debug.Log($"[WaterProject] DEEP collider={(col != null ? col.GetType().Name : "none")}");
+        }
+
+        // —— 30) 重建 Water 物体：全新 GameObject 直挂资产（绕开 prefab 实例/MPB/override 一切可能） ——
+        [MenuItem("Tools/WaterProject/30 重建Water物体(直挂资产)")]
+        public static void RebuildWaterObject()
+        {
+            var old = UnityEngine.GameObject.Find("Water");
+            if (old != null) UnityEngine.Object.DestroyImmediate(old);
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Meshes/LakeWaterIrregular.asset");
+            var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            var go = new UnityEngine.GameObject("Water");
+            go.transform.position = new Vector3(0f, 0.02f, 0f);
+            go.transform.rotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+            var mf = go.AddComponent<MeshFilter>();
+            if (mesh != null) mf.sharedMesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            if (mat != null) mr.sharedMaterial = mat;
+            var mc = go.AddComponent<MeshCollider>();
+            if (mesh != null) mc.sharedMesh = mesh;
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEngine.Debug.Log($"[WaterProject] REBUILT Water 挂 mesh={((mesh != null) ? mesh.name : "NULL")} mat={((mat != null) ? mat.name : "NULL")}");
+        }
+    // —— 31) 自渲染截图写盘（绕开桥截图通道，直接验证渲染真相） ——
+        [MenuItem("Tools/WaterProject/31 自渲染截图写盘(诊断)")]
+        public static void DiagSelfRenderToDisk()
+        {
+            var cam = Camera.main != null ? Camera.main : UnityEngine.Object.FindFirstObjectByType<Camera>();
+            if (cam == null) { UnityEngine.Debug.Log("[WaterProject] SELF no camera"); return; }
+            int w = Mathf.Max(4, cam.pixelWidth);
+            int h = Mathf.Max(4, cam.pixelHeight);
+            var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+            var prev = cam.targetTexture;
+            cam.targetTexture = rt;
+            cam.Render();
+            cam.targetTexture = prev;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            tex.Apply();
+            RenderTexture.active = null;
+            byte[] bytes = tex.EncodeToPNG();
+            string path = System.IO.Path.Combine(Application.dataPath, "../Docs/screenshots/_self.png");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            System.IO.File.WriteAllBytes(path, bytes);
+            UnityEngine.Object.DestroyImmediate(tex);
+            rt.Release();
+            UnityEngine.Object.DestroyImmediate(rt);
+            UnityEngine.Debug.Log("[WaterProject] SELF shot written: " + path + " (" + w + "x" + h + ")");
+        }
+    // —— 32) 诊断：Water 换 URP/Lit 纯蓝不透明（二分法验证） ——
+        [MenuItem("Tools/WaterProject/32 Water换URP纯蓝(诊断)")]
+        public static void DiagWaterLitBlue()
+        {
+            var w = UnityEngine.GameObject.Find("Water");
+            var lit = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            lit.name = "_DiagLitBlue";
+            lit.SetColor("_BaseColor", new Color(0f, 0f, 1f, 1f));
+            lit.SetColor("_Color", new Color(0f, 0f, 1f, 1f));
+            lit.SetFloat("_Surface", 0f);      // 不透明
+            lit.SetFloat("_AlphaClip", 0f);
+            if (w != null)
+            {
+                var mr = w.GetComponent<MeshRenderer>();
+                if (mr != null) { mr.sharedMaterial = lit; mr.enabled = true; }
+                UnityEngine.Debug.Log("[WaterProject] DIAG Water -> URP/Lit opaque pure blue.");
+            }
+            else UnityEngine.Debug.Log("[WaterProject] DIAG Water NOT FOUND");
+        }
+    // —— 通用：失效场景中全部 Volume（URP Volume 会锁死天空/后处理/材质观感，导致改 RenderSettings 无效） ——
+        private static void KillVolumes()
+        {
+            var all = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            int volCount = 0;
+            foreach (var go in all)
+            {
+                if (go == null) continue;
+                var comps = go.GetComponents<UnityEngine.Component>();
+                foreach (var comp in comps)
+                {
+                    if (comp != null && comp.GetType().Name == "Volume")
+                    {
+                        volCount++;
+                        var w = comp.GetType().GetProperty("weight");
+                        if (w != null) w.SetValue(comp, 0f);
+                        var en = comp.GetType().GetProperty("enabled");
+                        if (en != null) en.SetValue(comp, false);
+                        UnityEngine.Debug.Log("[WaterProject] VOLUME disabled: " + go.name);
+                    }
+                }
+            }
+            if (volCount > 0) UnityEngine.Debug.Log("[WaterProject] VOLUME total disabled: " + volCount);
+        }
+
+        // —— 33) 诊断：失效全部 Volume + 强换天空纯色（渲染环境验证） ——
+        [MenuItem("Tools/WaterProject/33 失效Volume+强换天空(诊断)")]
+        public static void DiagKillVolumesAndSkybox()
+        {
+            KillVolumes();
+
+            // 强换天空：新建纯天蓝 skybox 材质（Unlit color）并赋给 RenderSettings
+            var sky = new Material(Shader.Find("Unlit/Color"));
+            sky.name = "_DiagSkyPure";
+            sky.SetColor("_Color", new Color(0.45f, 0.72f, 1.0f, 1f));
+            RenderSettings.skybox = sky;
+            RenderSettings.ambientLight = new Color(0.5f, 0.6f, 0.8f);
+            UnityEngine.Debug.Log("[WaterProject] DIAG skybox replaced with pure sky-blue Unlit.");
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        }
+
+        // —— 34) 恢复正式天空盒（内置 DefaultSkybox + 曝光0.9白调）+ Water 归位 y0.02 ——
+        [MenuItem("Tools/WaterProject/34 恢复正式天空+Water归位")]
+        public static void RestoreProperSkyAndWater()
+        {
+            KillVolumes();
+            var sky = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
+            if (sky != null)
+            {
+                RenderSettings.skybox = sky;
+                if (sky.HasProperty("_SkyTint"))
+                {
+                    sky.SetColor("_SkyTint", new Color(0.50f, 0.50f, 0.50f, 1f));   // 默认中性（避免 HDR>1 tint 引发环境色翻转）
+                    sky.SetColor("_GroundColor", new Color(0.35f, 0.35f, 0.35f, 1f));
+                    sky.SetFloat("_Exposure", 1.0f);
+                    sky.SetFloat("_SunSize", 0.04f);
+                    sky.SetFloat("_SunSizeConvergence", 5f);
+                    sky.SetFloat("_AtmosphereThickness", 1.0f);
+                }
+                else if (sky.HasProperty("_Tint"))
+                {
+                    sky.SetColor("_Tint", new Color(0.75f, 0.88f, 1.15f, 1f));
+                    sky.SetFloat("_Exposure", 1.05f);
+                }
+                EditorUtility.SetDirty(sky);
+                UnityEngine.Debug.Log("[WaterProject] sky DEFAULT-PROCEDURAL: _SkyTint 天蓝 曝光1.05");
+            }
+            else UnityEngine.Debug.LogWarning("[WaterProject] Default-Skybox.mat not found!");
+            RenderSettings.ambientIntensity = 1.0f;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w != null)
+            {
+                w.SetActive(true);
+                w.transform.position = new Vector3(0f, 0.02f, 0f);
+                var mr = w.GetComponent<MeshRenderer>();
+                if (mr != null)
+                {
+                    mr.enabled = true;
+                    var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+                    if (mat != null) mr.sharedMaterial = mat;
+                }
+            }
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        }
+    // —— 35) 天空换"简单天蓝天空盒"（自定义 shader，天顶亮蓝/地平浅白；根治水面反射灰青） ——
+        [MenuItem("Tools/WaterProject/35 简单天蓝天空盒")]
+        public static void ApplySimpleBlueSky()
+        {
+            KillVolumes();
+            var shader = Shader.Find("WaterProject/SkySimpleBlue");
+            var sky = (shader != null)
+                ? new Material(shader)
+                : AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
+            sky.name = "Sky_SimpleBlue";
+            sky.SetColor("_HorizonColor", new Color(0.72f, 0.84f, 0.96f, 1f));
+            sky.SetColor("_ZenithColor", new Color(0.36f, 0.65f, 1.0f, 1f));
+            sky.SetColor("_GroundColor", new Color(0.26f, 0.32f, 0.38f, 1f));
+            RenderSettings.skybox = sky;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 1.0f;
+            RenderSettings.ambientSkyColor = new Color(0.35f, 0.55f, 0.90f, 1f);
+            // 太阳保持斜照以打出高光
+            var sun = UnityEngine.GameObject.Find("Sun") ?? UnityEngine.GameObject.Find("Directional Light");
+            if (sun != null)
+            {
+                sun.transform.rotation = Quaternion.Euler(52f, 28f, 0f);
+                var dl = sun.GetComponent<Light>();
+                if (dl != null) dl.intensity = 1.0f;
+            }
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEngine.Debug.Log("[WaterProject] sky -> SkySimpleBlue (天顶亮蓝/地平浅白)");
+        }
+
+    // —— 36) 重建水域网格：修掉 rc8 起 27 圈同半径的退化面（只剩岸线轮廓、无水面） ——
+        [MenuItem("Tools/WaterProject/36 重建水域网格(修复退化环)")]
+        public static void RebuildWaterDiskFixed()
+        {
+            string waterPath = "Assets/Art/Meshes/LakeWaterIrregular.asset";
+            int seg = 120, rings = 26;
+            var verts = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var tris = new List<int>();
+            for (int gr = 0; gr <= rings; gr++)
+            {
+                float rr = (float)gr / rings;
+                for (int gs = 0; gs <= seg; gs++)
+                {
+                    float th = Mathf.PI * 2f * gs / seg;
+                    // 水面铺到 45° 沙滩斜坡顶端内侧，水陆交界落在坡面上形成随波冲蚀带
+                    float rEdge = Mathf.Max(12f, ShoreR(th) * 0.6f) - 0.05f;
+                    float r = Mathf.Lerp(0.4f, rEdge, rr);
+                    verts.Add(new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r));
+                    uvs.Add(new Vector2((float)gs / seg, rr));
+                }
+            }
+            for (int gr = 0; gr < rings; gr++)
+                for (int gs = 0; gs < seg; gs++)
+                {
+                    int a = gr * (seg + 1) + gs, b = a + 1;
+                    int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(b); tris.Add(c); tris.Add(d);
+                }
+            var oldMesh = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath);
+            if (oldMesh == null)
+            {
+                var m = new Mesh { name = "LakeWaterIrregular" };
+                m.SetVertices(verts); m.SetUVs(0, uvs); m.SetTriangles(tris, 0);
+                m.RecalculateNormals(); m.RecalculateBounds();
+                AssetDatabase.CreateAsset(m, waterPath);
+            }
+            else
+            {
+                // 就地重写同一资产对象：CopySerialized 只搬 CPU 侧数据，GPU 顶点缓冲可能留空
+                oldMesh.Clear();
+                oldMesh.vertices = verts.ToArray();
+                oldMesh.uv = uvs.ToArray();
+                oldMesh.triangles = tris.ToArray();
+                oldMesh.RecalculateNormals();
+                oldMesh.RecalculateBounds();
+                EditorUtility.SetDirty(oldMesh);
+            }
+            AssetDatabase.SaveAssets();
+
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w == null) w = new UnityEngine.GameObject("Water");
+            w.SetActive(true);
+            w.transform.position = new Vector3(0f, 0.02f, 0f);
+            var wmf = w.GetComponent<MeshFilter>();
+            if (wmf == null) wmf = w.AddComponent<MeshFilter>();
+            wmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(waterPath);
+            var wmr = w.GetComponent<MeshRenderer>();
+            if (wmr == null) wmr = w.AddComponent<MeshRenderer>();
+            var wmat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (wmat != null) wmr.sharedMaterial = wmat;   // 清掉诊断期挂上的 URP/Lit
+            var wcol = w.GetComponent<MeshCollider>();
+            if (wcol != null) wcol.sharedMesh = wmf.sharedMesh;
+            EditorUtility.SetDirty(w);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEngine.Debug.Log("[WaterProject] water disk rebuilt: verts=" + verts.Count + " tris=" + (tris.Count / 3));
+        }
+
+    // —— 37) 水面渲染探针：把"为什么一个像素都不出"的实况写文件（桥的 Debug.Log 读不回来） ——
+        [MenuItem("Tools/WaterProject/37 水面渲染探针(写文件)")]
+        public static void ProbeWaterRenderer()
+        {
+            var sb = new System.Text.StringBuilder();
+            System.Action<string> L = s => sb.AppendLine(s);
+
+            var w = UnityEngine.GameObject.Find("Water");
+            if (w == null) L("Water: GameObject.Find NULL (inactive?)");
+            else
+            {
+                L("Water activeSelf=" + w.activeSelf + " activeInHierarchy=" + w.activeInHierarchy
+                  + " layer=" + LayerMask.LayerToName(w.layer) + "(" + w.layer + ")");
+                L("Water pos=" + w.transform.position + " scale=" + w.transform.lossyScale);
+
+                var mf = w.GetComponent<MeshFilter>();
+                if (mf == null) L("MeshFilter: none");
+                else if (mf.sharedMesh == null) L("MeshFilter.sharedMesh: NULL");
+                else
+                {
+                    var m = mf.sharedMesh;
+                    L("mesh=" + m.name + " verts=" + m.vertexCount + " subMeshes=" + m.subMeshCount
+                      + " tris0=" + (m.GetTriangles(0).Length / 3) + " bounds=" + m.bounds
+                      + " path=" + AssetDatabase.GetAssetPath(m));
+                }
+
+                var mr = w.GetComponent<MeshRenderer>();
+                if (mr == null) L("MeshRenderer: none");
+                else
+                {
+                    L("renderer enabled=" + mr.enabled + " shadowCasting=" + mr.shadowCastingMode
+                      + " bounds=" + mr.bounds + " lightmapIndex=" + mr.lightmapIndex
+                      + " receiveGI=" + mr.receiveGI);
+                    var mats = mr.sharedMaterials;
+                    L("sharedMaterials.Length=" + mats.Length);
+                    for (int i = 0; i < mats.Length; i++)
+                    {
+                        var mm = mats[i];
+                        if (mm == null) { L("  mat[" + i + "]=NULL"); continue; }
+                        var sh = mm.shader;
+                        L("  mat[" + i + "]=" + mm.name + " shader=" + (sh != null ? sh.name : "NULL")
+                          + " shaderSupported=" + (sh != null && sh.isSupported)
+                          + " shaderPath=" + (sh != null ? AssetDatabase.GetAssetPath(sh) : "-")
+                          + " hidden=" + (sh != null && sh.hideFlags != UnityEngine.HideFlags.None)
+                          + " matAssetPath=" + AssetDatabase.GetAssetPath(mm));
+                    }
+                }
+            }
+
+            var cam = Camera.main;
+            if (cam == null) L("Camera.main: NULL");
+            else
+            {
+                L("cam=" + cam.name + " enabled=" + cam.enabled + " ortho=" + cam.orthographic
+                  + " near=" + cam.nearClipPlane + " far=" + cam.farClipPlane
+                  + " cullingMask=" + cam.cullingMask + " targetTexture=" + (cam.targetTexture != null));
+                var wl = w != null ? w.layer : -1;
+                L("water layer in cullingMask=" + (wl >= 0 && (cam.cullingMask & (1 << wl)) != 0));
+                L("cam pos=" + cam.transform.position + " rot=" + cam.transform.eulerAngles);
+            }
+
+            var grp = GraphicsSettings.currentRenderPipeline;
+            var qal = QualitySettings.renderPipeline;
+            L("GraphicsSettings.currentRenderPipeline=" + (grp != null ? grp.name : "NULL(内置管线)"));
+            L("QualitySettings.renderPipeline=" + (qal != null ? qal.name : "NULL")
+              + " currentQuality=" + QualitySettings.GetQualityLevel() + "(" + QualitySettings.names[QualitySettings.GetQualityLevel()] + ")");
+            L("Shader.Find(URP/Lit)=" + (Shader.Find("Universal Render Pipeline/Lit") != null));
+            L("Shader.Find(WaterProject/Water_Advanced)=" + (Shader.Find("WaterProject/Water_Advanced") != null));
+
+            // 谁在 y=0.02 水面上方/共面 → 遮挡嫌疑清单
+            L("---- renderers reaching y>=-0.05 (world bounds) ----");
+            var pf = UnityEngine.GameObject.Find("PondFloor");
+            if (pf != null)
+            {
+                var pmf = pf.GetComponent<MeshFilter>();
+                var pm = pmf != null ? pmf.sharedMesh : null;
+                L("PondFloor localScale=" + pf.transform.localScale + " mesh=" + (pm != null ? pm.name : "NULL")
+                  + " localBounds=" + (pm != null ? pm.bounds.ToString() : "-"));
+                if (pm != null)
+                {
+                    var vs = pm.vertices;
+                    float ymin = float.MaxValue, ymax = float.MinValue;
+                    for (int i = 0; i < vs.Length; i++) { if (vs[i].y < ymin) ymin = vs[i].y; if (vs[i].y > ymax) ymax = vs[i].y; }
+                    L("PondFloor verts=" + vs.Length + " yMin=" + ymin.ToString("F3") + " yMax=" + ymax.ToString("F3")
+                      + " path=" + AssetDatabase.GetAssetPath(pm));
+                    for (int i = 0; i < vs.Length && i < 4; i++) L("  v[" + i + "]=" + vs[i]);
+                    int mid = vs.Length / 2;
+                    L("  v[" + mid + "]=" + vs[mid] + "  v[last]=" + vs[vs.Length - 1]);
+                }
+            }
+            // 黑渲染诊断：法线缺失/NaN/朝下 会让 N·L<=0 只剩环境光
+            L("---- normal sanity ----");
+            foreach (var nm in new[] { "DistantHill_00", "GreenWall", "ShoreSandRing", "Boulder_00" })
+            {
+                var go = UnityEngine.GameObject.Find(nm);
+                if (go == null) { L(nm + ": NOT FOUND"); continue; }
+                var mf3 = go.GetComponent<MeshFilter>();
+                var ms = mf3 != null ? mf3.sharedMesh : null;
+                if (ms == null) { L(nm + ": no mesh"); continue; }
+                var ns = ms.normals; var uvs3 = ms.uv; var v3 = ms.vertices;
+                int zero = 0, nan = 0; float avgY = 0f;
+                for (int i = 0; i < ns.Length; i++)
+                {
+                    var nn = ns[i];
+                    if (float.IsNaN(nn.x) || float.IsNaN(nn.y) || float.IsNaN(nn.z)) { nan++; continue; }
+                    if (nn.sqrMagnitude < 1e-6f) zero++;
+                    avgY += nn.y;
+                }
+                if (ns.Length > 0) avgY /= ns.Length;
+                var mr3 = go.GetComponent<MeshRenderer>();
+                var mt3 = mr3 != null ? mr3.sharedMaterial : null;
+                L(string.Format("{0}: mesh={1} verts={2} uv={3} normals={4} zeroNrm={5} nanNrm={6} avgNrmY={7:F3} mat={8} shader={9}",
+                    nm, ms.name, v3.Length, uvs3 != null ? uvs3.Length : -1, ns.Length, zero, nan, avgY,
+                    mt3 != null ? mt3.name : "NULL", mt3 != null && mt3.shader != null ? mt3.shader.name : "-"));
+            }
+
+            var all = Object.FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None);
+            var rows = new List<MeshRenderer>();
+            foreach (var r in all) if (r != null && r.enabled && r.gameObject.activeInHierarchy && r.bounds.max.y >= -0.05f) rows.Add(r);
+            rows.Sort((a, b) => a.bounds.center.y.CompareTo(b.bounds.center.y));
+            foreach (var r in rows)
+            {
+                var m0 = r.sharedMaterial;
+                L(string.Format("{0,-22} c=({1,7:F2},{2,7:F2},{3,7:F2}) ext=({4,6:F2},{5,6:F2},{6,6:F2}) yTop={7:F3} mat={8} layer={9}",
+                    r.gameObject.name, r.bounds.center.x, r.bounds.center.y, r.bounds.center.z,
+                    r.bounds.extents.x, r.bounds.extents.y, r.bounds.extents.z, r.bounds.max.y,
+                    m0 != null ? m0.name : "NULL", LayerMask.LayerToName(r.gameObject.layer)));
+            }
+
+            string path = System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt");
+            System.IO.File.WriteAllText(path, sb.ToString());
+            UnityEngine.Debug.Log("[WaterProject] probe written: " + path);
+        }
+
+    // —— 38) 照明回到 rc9 基线：清掉菜单24/35 的过曝残留 ——
+        [MenuItem("Tools/WaterProject/38 照明回到rc9基线(清诊断残留)")]
+        public static void RestoreRc9LightingBaseline()
+        {
+            RenderSettings.skybox = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 0.9f;
+            RenderSettings.ambientSkyColor = new Color(0.212f, 0.227f, 0.259f, 1f);
+            RenderSettings.fog = false;
+
+            var sun = UnityEngine.GameObject.Find("Sun") ?? UnityEngine.GameObject.Find("Directional Light");
+            if (sun != null)
+            {
+                sun.transform.rotation = Quaternion.Euler(60f, 25f, 0f);
+                var l = sun.GetComponent<Light>();
+                if (l != null)
+                {
+                    l.intensity = 0.85f;
+                    l.color = new Color(1f, 0.95686275f, 0.8392157f, 1f);
+                    EditorUtility.SetDirty(sun);
+                }
+            }
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEngine.Debug.Log("[WaterProject] lighting -> rc9 baseline (Default-Skybox / ambient 0.9 / sun 0.85 @60,25)");
+        }
+
+    // —— 39) 对标参考帧：蓝灰棱角巨石群（原创程序化，零版权） ——
+        [MenuItem("Tools/WaterProject/39 参考帧巨石群重构(蓝灰棱角岩)")]
+        public static void RebuildReferenceBoulders()
+        {
+            System.Random rng = new System.Random(2026091839);
+            float S(float th) => ShoreR(th) * 0.6f;
+
+            // 1) 三种棱角岩网格：非索引三角 → 每面独立法线 → 低多边形平面着色
+            var rocks = new Mesh[3];
+            for (int v = 0; v < 3; v++)
+            {
+                string rp = "Assets/Art/Meshes/Boulder_0" + (v + 1) + ".asset";
+                var built = BuildFacetedRock(v);
+                var asset = AssetDatabase.LoadAssetAtPath<Mesh>(rp);
+                if (asset == null)
+                {
+                    built.name = "Boulder_0" + (v + 1);
+                    AssetDatabase.CreateAsset(built, rp);
+                    asset = built;
+                }
+                else
+                {
+                    asset.Clear();
+                    asset.vertices = built.vertices;
+                    asset.normals = built.normals;
+                    asset.triangles = built.triangles;
+                    asset.RecalculateBounds();
+                    EditorUtility.SetDirty(asset);
+                }
+                rocks[v] = asset;
+            }
+            AssetDatabase.SaveAssets();
+
+            // 2) 原创蓝灰板岩材质
+            string matPath = "Assets/Art/Materials/Slate_BlueRock.mat";
+            var rockMat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            if (rockMat == null)
+            {
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                rockMat = new Material(lit) { name = "Slate_BlueRock" };
+                AssetDatabase.CreateAsset(rockMat, matPath);
+            }
+            rockMat.SetColor("_BaseColor", new Color(0.470f, 0.500f, 0.550f, 1f));
+            rockMat.SetFloat("_Smoothness", 0.12f);
+            rockMat.SetFloat("_Metallic", 0f);
+            EditorUtility.SetDirty(rockMat);
+            AssetDatabase.SaveAssets();
+
+            // 3) 清掉旧鹅卵石与上一轮巨石（保证可重复执行）
+            foreach (var go in UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None))
+                if (go != null && (go.name.StartsWith("Pebble_") || go.name.StartsWith("Boulder_"))) UnityEngine.Object.DestroyImmediate(go);
+
+            // 4) 成簇散布：岸线 10 簇 + 水中 4 簇 + 3 块巨型平台岩（参考帧是密集石群 + 少数大平板岩）
+            int made = 0;
+            for (int cl = 0; cl < 10; cl++)
+            {
+                float baseTh = Mathf.PI * 2f * cl / 10f + (float)rng.NextDouble() * 0.4f;
+                int cnt = 8 + rng.Next(6);
+                for (int k = 0; k < cnt; k++)
+                {
+                    float th = baseTh + (float)(rng.NextDouble() - 0.5) * 0.75f;
+                    float rIn2 = Mathf.Max(12f, S(th));
+                    float r = rIn2 + (float)(rng.NextDouble() - 0.35) * 4.2f;
+                    made += PlaceBoulder(rocks, rockMat, rng, "Boulder_", made,
+                        new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r), 0.18f, 0.95f);
+                }
+            }
+            for (int cl = 0; cl < 4; cl++)
+            {
+                float baseTh = Mathf.PI * 2f * (cl + 0.5f) / 4f + 0.7f;
+                for (int k = 0; k < 5; k++)
+                {
+                    float th = baseTh + (float)(rng.NextDouble() - 0.5) * 0.7f;
+                    float r = 3.0f + cl * 2.4f + (float)(rng.NextDouble() - 0.5) * 1.6f;
+                    made += PlaceBoulder(rocks, rockMat, rng, "Boulder_", made,
+                        new Vector3(Mathf.Cos(th) * r, -0.30f, Mathf.Sin(th) * r), 0.25f, 0.70f);
+                }
+            }
+            for (int k = 0; k < 3; k++)
+            {
+                float th = Mathf.PI * 2f * (k + 0.25f) / 3f + 0.35f;
+                int shelfIdx = made;
+                made += PlaceBoulder(rocks, rockMat, rng, "Boulder_", made,
+                    new Vector3(Mathf.Cos(th) * (Mathf.Max(12f, S(th)) + 2.4f), 0.05f,
+                                Mathf.Sin(th) * (Mathf.Max(12f, S(th)) + 2.4f)), 1.6f, 2.4f);
+                var shelf = UnityEngine.GameObject.Find("Boulder_" + shelfIdx.ToString("00"));
+                if (shelf != null)
+                {
+                    var s = shelf.transform.localScale;
+                    shelf.transform.localScale = new Vector3(s.x * 1.7f, s.y * 0.42f, s.z * 1.5f);
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEngine.Debug.Log("[WaterProject] boulders rebuilt: " + made);
+        }
+
+        // 非索引低多边形卧石：方向哈希扰动 → 同位置顶点一致，裂开后仍是封闭体
+        static Mesh BuildFacetedRock(int variant)
+        {
+            const int segs = 9, rings = 6;
+            float seed = 11.3f + variant * 7.7f;
+            var pos = new List<Vector3>();
+            var nrm = new List<Vector3>();
+            var idx = new List<int>();
+
+            System.Func<int, int, Vector3> pt = (i, j) =>
+            {
+                float phi = Mathf.PI * 2f * i / segs;
+                float theta = Mathf.PI * 0.5f * (2f * j / rings - 1f);
+                float ct = Mathf.Cos(theta);
+                float cx = ct * Mathf.Cos(phi), cy = Mathf.Sin(theta), cz = ct * Mathf.Sin(phi);
+                float n = 1f
+                    + 0.26f * Mathf.Sin(3.1f * cx + seed) * Mathf.Cos(2.7f * cy + seed * 0.6f)
+                    + 0.17f * Mathf.Sin(5.3f * cy + seed * 1.3f) * Mathf.Cos(4.9f * cz + seed)
+                    + 0.10f * Mathf.Sin(7.7f * cz + seed * 1.7f);
+                return new Vector3(cx, cy * 0.72f, cz) * n;
+            };
+
+            for (int j = 0; j < rings; j++)
+                for (int i = 0; i < segs; i++)
+                {
+                    AddFacet(pos, nrm, pt(i, j), pt(i, j + 1), pt(i + 1, j));
+                    AddFacet(pos, nrm, pt(i + 1, j), pt(i, j + 1), pt(i + 1, j + 1));
+                }
+
+            var m = new Mesh();
+            m.SetVertices(pos);
+            m.SetNormals(nrm);
+            for (int i = 0; i < pos.Count; i++) idx.Add(i);
+            m.SetTriangles(idx, 0);
+            m.RecalculateBounds();
+            return m;
+        }
+
+        // 就地重写已存在的 Mesh 资产：CopySerialized 只复制序列化字段，GPU 顶点/法线缓冲会留空
+        static void WriteMeshFrom(Mesh dst, Mesh src)
+        {
+            int vc = src.vertexCount;
+            dst.Clear();
+            dst.subMeshCount = Mathf.Max(1, src.subMeshCount);
+            dst.SetVertices(src.vertices);
+            if (src.uv != null && src.uv.Length == vc) dst.SetUVs(0, src.uv);
+            if (src.normals != null && src.normals.Length == vc) dst.SetNormals(src.normals);
+            if (src.tangents != null && src.tangents.Length == vc) dst.SetTangents(src.tangents);
+            for (int s = 0; s < dst.subMeshCount; s++) dst.SetTriangles(src.GetTriangles(s), s);
+            dst.RecalculateBounds();
+            EditorUtility.SetDirty(dst);
+        }
+
+        // 地面类网格：绕序朝上 + 显式朝上法线（沙环曾因绕序反+背面剔除，整片沙滩从上往下看被剔掉）
+        static void FaceGroundUp(Mesh m)
+        {
+            if (m == null) return;
+            var v = m.vertices;
+            var tri = m.triangles;
+            if (v.Length == 0 || tri.Length < 3) return;
+
+            Vector3 sum = Vector3.zero;
+            for (int i = 0; i + 2 < tri.Length; i += 3)
+            {
+                Vector3 a = v[tri[i]], b = v[tri[i + 1]], c = v[tri[i + 2]];
+                sum += Vector3.Cross(b - a, c - a);
+            }
+            if (sum.y < 0f)
+            {
+                for (int i = 0; i + 2 < tri.Length; i += 3)
+                {
+                    var t = tri[i + 1]; tri[i + 1] = tri[i + 2]; tri[i + 2] = t;
+                }
+                m.triangles = tri;
+            }
+
+            var nrm = new List<Vector3>(v.Length);
+            for (int i = 0; i < v.Length; i++)
+            {
+                var rd = new Vector3(v[i].x, 0f, v[i].z);
+                rd = rd.sqrMagnitude > 1e-8f ? rd.normalized : Vector3.right;
+                nrm.Add((rd * 0.22f + Vector3.up).normalized);
+            }
+            m.SetNormals(nrm);
+        }
+
+        static void AddFacet(List<Vector3> pos, List<Vector3> nrm, Vector3 a, Vector3 b, Vector3 c)
+        {
+            var centroid = (a + b + c) / 3f;
+            var n = Vector3.Cross(b - a, c - a);
+            if (n.sqrMagnitude < 1e-10f) return;
+            n.Normalize();
+            if (Vector3.Dot(n, centroid) < 0f)          // 法线朝外，绕序随之翻转
+            {
+                n = -n; var t = b; b = c; c = t;
+            }
+            pos.Add(a); nrm.Add(n);
+            pos.Add(b); nrm.Add(n);
+            pos.Add(c); nrm.Add(n);
+        }
+
+        static int PlaceBoulder(Mesh[] rocks, Material mat, System.Random rng, string prefix, int index, Vector3 at, float sMin, float sMax)
+        {
+            var go = new UnityEngine.GameObject(prefix + index.ToString("00"));
+            go.transform.position = at;
+            go.transform.rotation = Quaternion.Euler((float)(rng.NextDouble() - 0.5) * 16f,
+                                                     (float)rng.NextDouble() * 360f,
+                                                     (float)(rng.NextDouble() - 0.5) * 16f);
+            float s = sMin + (float)rng.NextDouble() * (sMax - sMin);
+            go.transform.localScale = new Vector3(s * (0.85f + (float)rng.NextDouble() * 0.4f),
+                                                  s * (0.65f + (float)rng.NextDouble() * 0.3f),
+                                                  s * (0.85f + (float)rng.NextDouble() * 0.4f));
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = rocks[rng.Next(rocks.Length)];
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            return 1;
+        }
+
+    // —— 40) 应用 rc4 水面基准（03c1ad8）：菜单22/24 会覆写水材质，重建链必须以本菜单收尾 ——
+        [MenuItem("Tools/WaterProject/40 应用rc4水面基准(03c1ad8)")]
+        public static void ApplyRc4WaterBaseline()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m == null) { UnityEngine.Debug.Log("[WaterProject] rc4 baseline: Water_Advanced.mat NOT FOUND"); return; }
+
+            var floats = new System.Collections.Generic.Dictionary<string, float>
+            {
+                { "_Absorb", 0.9f }, { "_AmbientStrength", 0.5f },
+                { "_CrestFoam", 1f }, { "_CrestJ", 0.6f }, { "_CrestSoft", 0.35f },
+                { "_DepthSharp", 3f }, { "_Eta", 1.33f }, { "_MaxUVOffset", 0.12f },
+                { "_DetailStrength", 3f }, { "_DetailScale", 1.6f }, { "_DetailStart", 2f }, { "_DetailEnd", 40f },
+                { "_FoamLift", 0.03f }, { "_FresnelPow", 6f }, { "_Opacity", 0.95f },
+                { "_InteractionAmp", 0.22f }, { "_InteractionFoam", 0.45f }, { "_InteractionNorm", 1.4f },
+                { "_MaxTess", 6f }, { "_TessNear", 6f }, { "_TessFar", 32f }, { "_TessTargetSize", 0.35f },
+                { "_RefractStrength", 0.9f }, { "_ScatterStrength", 0.38f },
+                { "_SpecPower", 180f }, { "_SpecStrength", 0.5f },
+                { "_ShoreFoam", 0.8f }, { "_SunGloss", 500f }, { "_SunStrength", 0.3f },
+                { "_SunTransmission", 0.7f }, { "_TransGloss", 48f },
+                { "_WaveCount", 4f }, { "_WaveAmpScale", 0.5f }, { "_WaveTimeScale", 1.8f },
+            };
+            var colors = new System.Collections.Generic.Dictionary<string, Color>
+            {
+                { "_DeepColor", new Color(0.09f, 0.38f, 0.47f, 1f) },
+                { "_ShallowColor", new Color(0.20f, 0.72f, 0.82f, 1f) },
+                { "_WaterScatter", new Color(0.42f, 0.75f, 0.88f, 1f) },
+                { "_SkyZenith", new Color(0.42f, 0.70f, 1.00f, 1f) },
+                { "_SkyHorizon", new Color(0.80f, 0.92f, 1.00f, 1f) },
+                { "_SunColor", new Color(1.00f, 0.93f, 0.75f, 1f) },
+                { "_FoamColor", new Color(0.95f, 0.97f, 0.98f, 1f) },
+            };
+            int n = 0;
+            foreach (var kv in floats) if (m.HasProperty(kv.Key)) { m.SetFloat(kv.Key, kv.Value); n++; }
+            foreach (var kv in colors) if (m.HasProperty(kv.Key)) { m.SetColor(kv.Key, kv.Value); n++; }
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssets();
+            UnityEngine.Debug.Log("[WaterProject] rc4 water baseline applied: " + n + " props");
+        }
+
+    // —— 41) 明亮天空 + 梯度环境光（环境光与天空解耦，避免 rc10 那种整体过曝） ——
+        [MenuItem("Tools/WaterProject/41 明亮天空+梯度环境光")]
+        public static void ApplyBrightSkyGradientAmbient()
+        {
+            var sb = new System.Text.StringBuilder();
+            var sh = Shader.Find("WaterProject/SkySimpleBlue");
+            if (sh == null)
+            {
+                sb.AppendLine("SkySimpleBlue shader NOT FOUND -> skybox unchanged");
+            }
+            else
+            {
+                var sky = new Material(sh) { name = "Sky_SimpleBlue" };
+                sky.SetColor("_ZenithColor", new Color(0.243f, 0.522f, 0.918f, 1f));
+                sky.SetColor("_HorizonColor", new Color(0.784f, 0.878f, 0.961f, 1f));
+                sky.SetColor("_GroundColor", new Color(0.420f, 0.500f, 0.520f, 1f));   // 地形仅60m，此色即地平线远雾，勿用暗灰
+                RenderSettings.skybox = sky;
+                sb.AppendLine("skybox -> SkySimpleBlue zenith(0.243,0.522,0.918) horizon(0.784,0.878,0.961) ground(0.42,0.50,0.52) ");
+            }
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.300f, 0.360f, 0.440f, 1f);
+            RenderSettings.ambientEquatorColor = new Color(0.260f, 0.290f, 0.320f, 1f);
+            RenderSettings.ambientGroundColor = new Color(0.200f, 0.190f, 0.170f, 1f);
+            RenderSettings.ambientIntensity = 0.75f;
+            sb.AppendLine("ambient -> Trilight sky(0.30,0.36,0.44) equator(0.26,0.29,0.32) ground(0.20,0.19,0.17) int=0.75 ");
+
+            var sun = UnityEngine.GameObject.Find("Sun") ?? UnityEngine.GameObject.Find("Directional Light");
+            if (sun != null)
+            {
+                sun.transform.rotation = Quaternion.Euler(52f, 10f, 0f);
+                var l = sun.GetComponent<Light>();
+                if (l != null) { l.intensity = 1.25f; EditorUtility.SetDirty(sun); }
+                sb.AppendLine("sun -> Euler(52,10,0) intensity 1.25 (暖色直射压过青色环境光，沙地才能回暖白)");
+            }
+            else sb.AppendLine("sun NOT FOUND");
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU41 " + sb.ToString().Replace("\n", "\nMENU41 "));
+        }
+
+    // —— 42) 水色对标参考帧（去奶白；不动 rc4 基准的波浪与不透明度） ——
+        [MenuItem("Tools/WaterProject/42 水色对标参考帧(去奶白)")]
+        public static void TuneWaterToReferenceFrame()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m == null) { UnityEngine.Debug.Log("[WaterProject] water tune: material NOT FOUND"); return; }
+
+            var floats = new System.Collections.Generic.Dictionary<string, float>
+            {
+                { "_ScatterStrength", 0.22f },   // 体积自发光降下来，奶白主因之一
+                { "_SpecStrength", 0.35f }, { "_SunStrength", 0.22f },
+                { "_Absorb", 1.6f }, { "_DepthSharp", 5f },   // 深度更快饱和，浅底不再往上泛白
+                { "_RefractStrength", 0.55f },               // 少把亮沙底掺进水色
+                { "_CrestJ", 0.28f }, { "_CrestFoam", 0.22f }, { "_CrestSoft", 0.22f },  // 泡沫只在真正的浪尖成线，不再铺成片
+                { "_ShoreFoam", 0.30f }, { "_SunTransmission", 0.45f },                   // 俯视机位下 R 仍偏高：削暖色来源
+            };
+            var colors = new System.Collections.Generic.Dictionary<string, Color>
+            {
+                { "_SkyHorizon", new Color(0.42f, 0.60f, 0.68f, 1f) },   // 掠射角反射压暗
+                { "_SkyZenith", new Color(0.20f, 0.46f, 0.60f, 1f) },
+            };
+            var log = new System.Text.StringBuilder();
+            foreach (var kv in floats) if (m.HasProperty(kv.Key)) { m.SetFloat(kv.Key, kv.Value); log.Append(kv.Key + "=" + kv.Value + " "); }
+            foreach (var kv in colors) if (m.HasProperty(kv.Key)) { m.SetColor(kv.Key, kv.Value); log.Append(kv.Key + "=" + kv.Value + " "); }
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssets();
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU42 water tune: " + log + " (参考帧深水目标 0.231,0.600,0.667)\n");
+        }
+
+    // —— 43) 真实 Game 视图截图（必须在 Play 中；菜单31 的 cam.Render 路径可能没有深度纹理） ——
+        [MenuItem("Tools/WaterProject/43 Game视图截图(Play中)")]
+        public static void CaptureRealGameView()
+        {
+            string note;
+            if (!UnityEngine.Application.isPlaying)
+            {
+                note = "MENU43 REFUSED: not in Play mode (先跑菜单26 进 Play)\n";
+            }
+            else
+            {
+                string outPath = "Docs/screenshots/_gameview.png";   // 相对工程根
+                ScreenCapture.CaptureScreenshot(outPath);
+                note = "MENU43 captured " + outPath + " frame=" + UnityEngine.Time.frameCount
+                       + " screen=" + UnityEngine.Screen.width + "x" + UnityEngine.Screen.height
+                       + " editor=" + UnityEngine.Application.isEditor
+                       + " (真实 Game 帧缓冲，与菜单31 的 cam.Render 路径可对比)\n";
+            }
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"), note);
+        }
+
+    // —— 44) 切换水面深度调试输出（R=gap G=depthMix B=fres） ——
+        [MenuItem("Tools/WaterProject/44 切换水面深度调试输出")]
+        public static void ToggleWaterDepthDebug()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            string probe = System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt");
+            if (m == null) { System.IO.File.AppendAllText(probe, "MENU44 material NOT FOUND\n"); return; }
+            if (!m.HasProperty("_DepthDebug")) { System.IO.File.AppendAllText(probe, "MENU44 shader has no _DepthDebug (未编译/属性缺失)\n"); return; }
+
+            float nxt = m.GetFloat("_DepthDebug") > 0.5f ? 0f : 1f;
+            m.SetFloat("_DepthDebug", nxt);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssets();
+            System.IO.File.AppendAllText(probe, "MENU44 _DepthDebug -> " + nxt + "\n");
+        }
+
+    // —— 45) 对标参考帧：俯视机位 + 石/沙/远角色对齐实测值 ——
+        [MenuItem("Tools/WaterProject/45 对标参考帧(俯视机位+石沙色)")]
+        public static void AlignToReferenceFrames()
+        {
+            var log = new System.Text.StringBuilder();
+
+            var cam = UnityEngine.GameObject.Find("Main Camera");
+            if (cam != null)
+            {
+                cam.transform.localPosition = new Vector3(0f, 7.0f, -14.5f);
+                // Unity 里 +X 旋转才是俯视；本项目多个菜单用负值当"俯角"是反的（rc9 验收图只拍到天空即此因）
+                cam.transform.localRotation = Quaternion.Euler(26f, 0f, 0f);
+                EditorUtility.SetDirty(cam);
+                log.Append("cam=(0,7,-14.5) Euler(+26,0,0) ");
+            }
+
+            var water = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (water != null && water.HasProperty("_SkyReflect"))
+            {
+                water.SetFloat("_SkyReflect", 0.45f);
+                EditorUtility.SetDirty(water);
+                log.Append("_SkyReflect=0.45 ");
+            }
+
+            var targets = new System.Collections.Generic.Dictionary<string, Color>
+            {
+                { "Slate_BlueRock",    new Color(0.575f, 0.673f, 0.689f, 1f) },   // 参考帧岩石蓝灰
+                { "Sand_Shore",        new Color(0.702f, 0.648f, 0.600f, 1f) },   // 参考帧沙滩暖白
+                { "Hill_Distant",      new Color(0.419f, 0.529f, 0.573f, 1f) },   // 远山雾蓝
+                { "GreenWall_Distant", new Color(0.243f, 0.545f, 0.286f, 1f) },   // 远岸草坡饱和绿（先前误取水色→死灰带）
+            };
+            foreach (var kv in targets)
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/" + kv.Key + ".mat");
+                if (mat == null) { log.Append(kv.Key + ":MISS "); continue; }
+                mat.SetColor("_BaseColor", kv.Value);
+                EditorUtility.SetDirty(mat);
+                log.Append(kv.Key + "=ok ");
+            }
+            AssetDatabase.SaveAssets();
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU45 " + log + "(参考帧实测: 深水0.245,0.611,0.662 / 沙0.702,0.648,0.600 / 岩0.575,0.673,0.689 / 远岸0.419,0.529,0.573)\n");
+        }
+
+    // —— 46) 地面类网格绕序修正（修"俯视时沙滩被背面剔除整片消失"） ——
+        [MenuItem("Tools/WaterProject/46 地面网格绕序修正(沙环池底)")]
+        public static void FixGroundMeshWinding()
+        {
+            var sb = new System.Text.StringBuilder();
+            string[] paths =
+            {
+                "Assets/Art/Meshes/ShoreSandRing.asset",
+                "Assets/Art/Meshes/PondFloorShore.asset",
+                "Assets/Art/Meshes/BeachSlope.asset",
+            };
+            foreach (var p in paths)
+            {
+                var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(p);
+                if (mesh == null) { sb.Append(System.IO.Path.GetFileName(p) + ":MISS "); continue; }
+                float before = AvgNormalY(mesh);
+                FaceGroundUp(mesh);
+                EditorUtility.SetDirty(mesh);
+                sb.Append(System.IO.Path.GetFileName(p) + " avgNrmY " + before.ToString("F3") + "->" + AvgNormalY(mesh).ToString("F3")
+                          + " tris=" + (mesh.triangles.Length / 3) + "  ");
+            }
+            AssetDatabase.SaveAssets();
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU46 " + sb + "\n");
+        }
+
+        static float AvgNormalY(Mesh m)
+        {
+            var ns = m.normals;
+            if (ns == null || ns.Length == 0) return float.NaN;
+            float s = 0f;
+            for (int i = 0; i < ns.Length; i++) s += ns[i].y;
+            return s / ns.Length;
+        }
+
+    // —— 47) 加 URP Volume（ACES 色调映射 + 色彩调整）；必须在 24 之后跑（KillVolumes 会停用 Volume） ——
+        [MenuItem("Tools/WaterProject/47 加URP Volume(ACES+色彩调整)")]
+        public static void ApplyGrasslandsVolume()
+        {
+            var sb = new System.Text.StringBuilder();
+            string profPath = "Assets/Settings/URP/GrasslandsVolume.profile.asset";
+            var prof = AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.VolumeProfile>(profPath);
+            if (prof == null)
+            {
+                prof = ScriptableObject.CreateInstance<UnityEngine.Rendering.VolumeProfile>();
+                AssetDatabase.CreateAsset(prof, profPath);
+                sb.Append("profile created ");
+            }
+            else sb.Append("profile reused ");
+
+            if (!prof.TryGet<UnityEngine.Rendering.Universal.Tonemapping>(out var ton))
+                ton = prof.Add<UnityEngine.Rendering.Universal.Tonemapping>();
+            ton.mode.overrideState = true; ton.mode.value = UnityEngine.Rendering.Universal.TonemappingMode.ACES;
+
+            if (!prof.TryGet<UnityEngine.Rendering.Universal.ColorAdjustments>(out var col))
+                col = prof.Add<UnityEngine.Rendering.Universal.ColorAdjustments>();
+            col.postExposure.overrideState = true; col.postExposure.value = -0.25f;
+            col.saturation.overrideState = true;  col.saturation.value = 18f;
+            col.contrast.overrideState = true;    col.contrast.value = 12f;
+            EditorUtility.SetDirty(prof);
+            AssetDatabase.SaveAssets();
+
+            var go = UnityEngine.GameObject.Find("GlobalVolume");
+            if (go == null) { go = new UnityEngine.GameObject("GlobalVolume"); sb.Append("volume created "); }
+            var vol = go.GetComponent<UnityEngine.Rendering.Volume>();
+            if (vol == null) vol = go.AddComponent<UnityEngine.Rendering.Volume>();
+            vol.enabled = true; vol.isGlobal = true; vol.sharedProfile = prof;
+            EditorUtility.SetDirty(go);
+            sb.Append("ACES postExp=-0.25 sat=18 con=12");
+
+            var cam = UnityEngine.GameObject.Find("Main Camera");
+            if (cam != null)
+            {
+                var cd = cam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                if (cd == null) cd = cam.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                cd.renderPostProcessing = true;
+                EditorUtility.SetDirty(cam);
+                sb.Append(" cam.postProcessing=on");
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU47 " + sb + "\n");
+        }
+
+    // —— 48) 对标参考帧：曝光/反照率/水色重标定（必须在 41/42/45 之后跑） ——
+        [MenuItem("Tools/WaterProject/48 对标参考帧(曝光+反照率+水色)")]
+        public static void RecalibrateToReference()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // 太阳：碎闪是几何条件——相机俯角 +26° ⇒ 太阳仰角须≈28°、方位≈205（接近视向反向）
+            var sun = UnityEngine.Object.FindFirstObjectByType<Light>();
+            if (sun != null && sun.type == UnityEngine.LightType.Directional)
+            {
+                sun.intensity = 1.95f;
+                sun.color = new Color(1f, 0.955f, 0.875f);
+                sun.transform.rotation = Quaternion.Euler(28f, 205f, 0f);
+                sun.shadows = UnityEngine.LightShadows.Soft;
+                EditorUtility.SetDirty(sun);
+                sb.Append("sun(1.95,E28/205) ");
+            } else sb.Append("sun:MISS ");
+
+            // 环境光：之前 Trilight 0.30/0.36/0.44 @0.75 把阴影整片洗白，参考帧暗部是冷蓝近黑
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor    = new Color(0.075f, 0.098f, 0.135f);
+            RenderSettings.ambientEquatorColor = new Color(0.070f, 0.076f, 0.074f);
+            RenderSettings.ambientGroundColor  = new Color(0.052f, 0.045f, 0.036f);
+            sb.Append("ambient=trilight-low ");
+
+            // 阴影距离：50m 会把远岸/树影整段裁掉
+            var urp = QualitySettings.renderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset
+                      ?? GraphicsSettings.renderPipelineAsset as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+            if (urp != null)
+            {
+                var so = new SerializedObject(urp);
+                var d = so.FindProperty("m_ShadowDistance");
+                var r = so.FindProperty("m_MainLightShadowmapResolution");
+                var c = so.FindProperty("m_ShadowCascadeCount");
+                if (d != null) { d.floatValue = 140f; }
+                if (r != null) { r.intValue = 2048; }
+                if (c != null) { c.intValue = 3; }
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(urp);
+                sb.Append("shadowDist=140/2048/c3 ");
+            } else sb.Append("urp:MISS ");
+
+            // 反照率：脚本 SetColor 走线性空间，参考帧实测 sRGB 需先转线性
+            var albedo = new System.Collections.Generic.Dictionary<string, Color>
+            {
+                { "Slate_BlueRock",    new Color(0.105f, 0.155f, 0.235f) },   // 深蓝灰板岩（原 0.575,0.673,0.689 偏白青）
+                { "Stone",             new Color(0.110f, 0.150f, 0.210f) },
+                { "Sand_Shore",        new Color(0.480f, 0.375f, 0.255f) },   // 暖褐沙（原偏粉白）
+                { "PondWall",          new Color(0.470f, 0.365f, 0.250f) },
+                { "Ground_Lake",       new Color(0.075f, 0.170f, 0.085f) },   // 草地要压暗，原酸性绿
+                { "GrassGround",       new Color(0.085f, 0.180f, 0.090f) },
+                { "GreenWall_Distant", new Color(0.11f, 0.24f, 0.13f) },
+                { "Hill_Distant",      new Color(0.300f, 0.400f, 0.420f) },   // 大气透视要"提亮"，压暗会变成黑锥
+            };
+            foreach (var kv in albedo)
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/" + kv.Key + ".mat");
+                if (mat == null) { sb.Append(kv.Key + ":MISS "); continue; }
+                mat.SetColor("_BaseColor", kv.Value);
+                EditorUtility.SetDirty(mat);
+            }
+            sb.Append("albedo x" + albedo.Count + " ");
+
+            var water = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (water != null)
+            {
+                water.SetColor("_DeepColor",    new Color(0.030f, 0.245f, 0.305f));
+                water.SetColor("_ShallowColor", new Color(0.160f, 0.550f, 0.520f));
+                water.SetColor("_WaterScatter", new Color(0.250f, 0.700f, 0.720f));
+                water.SetColor("_SkyZenith",    new Color(0.100f, 0.280f, 0.400f));
+                water.SetColor("_SkyHorizon",   new Color(0.300f, 0.440f, 0.500f));
+                water.SetColor("_SunColor",     new Color(1f, 0.950f, 0.820f));
+                water.SetColor("_FoamColor",    new Color(0.88f, 0.96f, 0.96f));
+                SetIf(water, "_SkyReflect", 0.55f);
+                SetIf(water, "_ScatterStrength", 0.55f);
+                SetIf(water, "_Absorb", 1.9f);
+                SetIf(water, "_AmbientStrength", 0.35f);
+                // 碎闪波瓣：过宽会糊成大片钙化斑，过窄则整塘无光
+                SetIf(water, "_SpecStrength", 0.80f);
+                SetIf(water, "_SpecPower", 150f);
+                SetIf(water, "_SunStrength", 0.85f);
+                SetIf(water, "_SunGloss", 250f);
+                // 细节法线：3 会把法线掀到近水平、菲涅尔饱和；0.35 又平得没有碎闪
+                SetIf(water, "_DetailStrength", 1.2f);
+                SetIf(water, "_DetailScale", 2.6f);
+                SetIf(water, "_DepthDebug", 0f);
+                EditorUtility.SetDirty(water);
+                sb.Append("water=teal+glitter ");
+            } else sb.Append("water:MISS ");
+
+            AssetDatabase.SaveAssets();
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU48 " + sb + "\n");
+        }
+
+        static void SetIf(Material m, string prop, float v)
+        {
+            if (m.HasProperty(prop)) m.SetFloat(prop, v);
+        }
+
+    // —— 49) 把 Scene 视图对到主相机（桥截图通道 = 带后处理的真实构图） ——
+        [MenuItem("Tools/WaterProject/49 Scene视图对齐主相机")]
+        public static void AlignSceneViewToMainCamera()
+        {
+            var cam = UnityEngine.GameObject.Find("Main Camera");
+            string note = "MENU49 ";
+            var sv = SceneView.lastActiveSceneView;
+            if (cam == null || sv == null)
+            {
+                note += "cam or sceneview MISSING (sv=" + (sv == null ? "null" : "ok") + ")";
+            }
+            else
+            {
+                sv.orthographic = false;
+                sv.rotation = cam.transform.rotation;
+                sv.pivot = cam.transform.position;
+                var mc = cam.GetComponent<Camera>();
+                if (mc != null) sv.camera.fieldOfView = mc.fieldOfView;
+                sv.size = 12f;
+                sv.Repaint();
+                note += "pivot=" + cam.transform.position + " euler=" + cam.transform.eulerAngles;
+            }
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"), note + "\n");
+        }
+
+    // —— 50) 远景/荷叶布局落盘（本轮用桥手工改的部分，重建链跑完后必须再跑这个） ——
+        [MenuItem("Tools/WaterProject/50 远景压平+荷叶分簇落盘")]
+        public static void ApplyFarPlaneAndLilyLayout()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // 远山：参考帧远景是"低缓台地"，没有尖峰；原锥体 Y/XZ 比≈0.6 会读成黑锥
+            // 每项 = x,y,z, sx,sy,sz
+            float[][] hills =
+            {
+                new float[]{ 33.95f,0f,  4.19f, 20.27f, 2.96f, 20.27f },
+                new float[]{ 17.74f,0f, 29.31f, 14.88f, 3.78f, 14.88f },
+                new float[]{  3.10f,0f, 33.70f, 15.79f, 2.97f, 15.79f },
+                new float[]{-26.74f,0f, 24.86f, 17.95f, 3.44f, 17.95f },
+                new float[]{-34.24f,0f,  3.52f, 15.08f, 2.75f, 15.08f },
+                new float[]{-23.73f,0f,-28.72f, 14.60f, 4.13f, 14.60f },
+                new float[]{ -4.35f,0f,-34.02f, 20.25f, 2.93f, 20.25f },
+                new float[]{ 30.77f,0f,-20.53f, 18.83f, 2.56f, 18.83f },
+            };
+            for (int i = 0; i < hills.Length; i++)
+            {
+                var go = UnityEngine.GameObject.Find("DistantHill_" + i.ToString("00"));
+                if (go == null) { sb.Append("H" + i + ":MISS "); continue; }
+                var h = hills[i];
+                go.transform.localPosition = new Vector3(h[0], h[1], h[2]);
+                go.transform.localScale = new Vector3(h[3], h[4], h[5]);
+                EditorUtility.SetDirty(go);
+            }
+
+            // 荷叶：y=0.022 埋在波体里会读成半透明描边，抬到 0.15（波峰之上）
+            // 每项 = x,z,scale
+            float[][] lily =
+            {
+                new float[]{ -6.2f,  2.6f, 0.16f }, new float[]{ -7.4f,  3.6f, 0.13f },
+                new float[]{ -5.4f,  3.9f, 0.115f }, new float[]{ -6.9f,  4.8f, 0.15f },
+                new float[]{ -5.8f,  5.4f, 0.10f }, new float[]{ -9.0f,  7.2f, 0.14f },
+                new float[]{ -8.0f,  8.3f, 0.11f }, new float[]{ -9.4f,  9.1f, 0.125f },
+                new float[]{ -4.6f, -4.8f, 0.14f }, new float[]{ -3.2f, -6.2f, 0.11f },
+                new float[]{  5.5f,  2.0f, 0.15f }, new float[]{  6.8f,  3.4f, 0.11f },
+            };
+            for (int i = 0; i < lily.Length; i++)
+            {
+                var go = UnityEngine.GameObject.Find("SmallLily_" + i.ToString("00"));
+                if (go == null) { sb.Append("L" + i + ":MISS "); continue; }
+                var t = lily[i];
+                go.transform.localPosition = new Vector3(t[0], 0.15f, t[1]);
+                go.transform.localScale = new Vector3(t[2], t[2], t[2]);
+                EditorUtility.SetDirty(go);
+            }
+
+            float[][] lotus =
+            {
+                new float[]{ -6.6f,  3.2f, 0.13f }, new float[]{ -8.6f,  7.8f, 0.115f },
+                new float[]{ -4.9f, -5.2f, 0.14f },
+            };
+            for (int i = 0; i < lotus.Length; i++)
+            {
+                var go = UnityEngine.GameObject.Find("SmallLotus_" + i.ToString("00"));
+                if (go == null) { sb.Append("F" + i + ":MISS "); continue; }
+                var t = lotus[i];
+                go.transform.localPosition = new Vector3(t[0], 0.15f, t[1]);
+                go.transform.localScale = new Vector3(t[2], t[2], t[2]);
+                EditorUtility.SetDirty(go);
+            }
+
+            var ground = UnityEngine.GameObject.Find("Ground");
+            if (ground != null)
+            {
+                ground.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+                ground.transform.localScale = new Vector3(110f, 1f, 110f);   // 收窄地平线处天空盒下半球露出的灰带
+                EditorUtility.SetDirty(ground);
+                sb.Append("ground=110 ");
+            } else sb.Append("ground:MISS ");
+
+            // 绿墙顶缘网格有被拉长的退化 quad，画成淡青横带+斜向尖刺；A/B 实测去掉后层次更好。
+            // 重造顶缘前停车；重造后把这里改回 y=0。
+            var gw = UnityEngine.GameObject.Find("GreenWall");
+            if (gw != null)
+            {
+                gw.transform.localPosition = new Vector3(0f, -500f, 0f);
+                EditorUtility.SetDirty(gw);
+                sb.Append("greenwall=parked ");
+            } else sb.Append("greenwall:MISS ");
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU50 " + sb + "\n");
         }
     }
 }
