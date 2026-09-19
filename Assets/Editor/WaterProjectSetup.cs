@@ -2979,15 +2979,27 @@ namespace WaterProject.EditorTools
             }
             else sb.Append("profile reused ");
 
+            // Add<T>() 只建内存对象；不调 AddObjectToAsset 就永远不落盘，
+            // profile 里只会留下 fileID: 0 的空槽 → 整条后处理链是静默空操作
+            prof.components.RemoveAll(c => c == null);
+
             if (!prof.TryGet<UnityEngine.Rendering.Universal.Tonemapping>(out var ton))
+            {
                 ton = prof.Add<UnityEngine.Rendering.Universal.Tonemapping>();
+                AssetDatabase.AddObjectToAsset(ton, prof);
+                sb.Append("tonemap+subasset ");
+            }
             ton.mode.overrideState = true; ton.mode.value = UnityEngine.Rendering.Universal.TonemappingMode.ACES;
 
             if (!prof.TryGet<UnityEngine.Rendering.Universal.ColorAdjustments>(out var col))
+            {
                 col = prof.Add<UnityEngine.Rendering.Universal.ColorAdjustments>();
-            col.postExposure.overrideState = true; col.postExposure.value = -0.25f;
-            col.saturation.overrideState = true;  col.saturation.value = 18f;
-            col.contrast.overrideState = true;    col.contrast.value = 12f;
+                AssetDatabase.AddObjectToAsset(col, prof);
+                sb.Append("colorAdj+subasset ");
+            }
+            col.postExposure.overrideState = true; col.postExposure.value = 1.15f;
+            col.saturation.overrideState = true;  col.saturation.value = 14f;
+            col.contrast.overrideState = true;    col.contrast.value = 0f;
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
 
@@ -2997,7 +3009,7 @@ namespace WaterProject.EditorTools
             if (vol == null) vol = go.AddComponent<UnityEngine.Rendering.Volume>();
             vol.enabled = true; vol.isGlobal = true; vol.sharedProfile = prof;
             EditorUtility.SetDirty(go);
-            sb.Append("ACES postExp=-0.25 sat=18 con=12");
+            sb.Append("ACES postExp=" + col.postExposure.value + " sat=" + col.saturation.value + " con=" + col.contrast.value);
 
             var cam = UnityEngine.GameObject.Find("Main Camera");
             if (cam != null)
@@ -3020,24 +3032,27 @@ namespace WaterProject.EditorTools
         {
             var sb = new System.Text.StringBuilder();
 
-            // 太阳：碎闪是几何条件——相机俯角 +26° ⇒ 太阳仰角须≈28°、方位≈205（接近视向反向）
+            // 太阳：仰角必须≈相机俯角+若干度，既保住水面碎闪（镜面反射仰角=像素俯角），
+            // 又不至于把所有朝上面的 N·L 压到 0.24 —— 菜单54 曾把仰角压到 14°，岩石顶面因此全黑
             var sun = UnityEngine.Object.FindFirstObjectByType<Light>();
             if (sun != null && sun.type == UnityEngine.LightType.Directional)
             {
-                sun.intensity = 1.95f;
-                sun.color = new Color(1f, 0.955f, 0.875f);
-                sun.transform.rotation = Quaternion.Euler(28f, 205f, 0f);
+                sun.intensity = 2.5f;
+                sun.color = new Color(1f, 0.975f, 0.95f);   // 暖色直射乘到每个受光面上，是沙滩发橙再被 ACES 削成白的推手
+                sun.transform.rotation = Quaternion.Euler(30f, 208f, 0f);
                 sun.shadows = UnityEngine.LightShadows.Soft;
                 EditorUtility.SetDirty(sun);
-                sb.Append("sun(1.95,E28/205) ");
+                sb.Append("sun(2.5,E30/208) ");
             } else sb.Append("sun:MISS ");
 
-            // 环境光：之前 Trilight 0.30/0.36/0.44 @0.75 把阴影整片洗白，参考帧暗部是冷蓝近黑
+            // 环境光：参考帧实测受光岩 med(103,130,154) ≈ 阴影岩 med(88,122,151)，
+            // 明暗差不到 1.2 倍 → 天光填充极强、几乎是平涂风格；
+            // 旧值 0.22/0.27/0.335 在 ACES 下把阴影面压到 (30,41,53)，差 8 倍线性亮度，是"不像"的首要原因
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor    = new Color(0.075f, 0.098f, 0.135f);
-            RenderSettings.ambientEquatorColor = new Color(0.070f, 0.076f, 0.074f);
-            RenderSettings.ambientGroundColor  = new Color(0.052f, 0.045f, 0.036f);
-            sb.Append("ambient=trilight-low ");
+            RenderSettings.ambientSkyColor    = new Color(0.500f, 0.580f, 0.680f);
+            RenderSettings.ambientEquatorColor = new Color(0.440f, 0.500f, 0.470f);
+            RenderSettings.ambientGroundColor  = new Color(0.290f, 0.270f, 0.230f);
+            sb.Append("ambient=trilight-fill ");
 
             // 阴影距离：50m 会把远岸/树影整段裁掉
             var urp = QualitySettings.renderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset
@@ -3056,17 +3071,20 @@ namespace WaterProject.EditorTools
                 sb.Append("shadowDist=140/2048/c3 ");
             } else sb.Append("urp:MISS ");
 
-            // 反照率：脚本 SetColor 走线性空间，参考帧实测 sRGB 需先转线性
+            // 反照率：脚本 SetColor 走线性空间；以下值全部经 Play 真实 Game 视图（含 ACES）取样校准
             var albedo = new System.Collections.Generic.Dictionary<string, Color>
             {
-                { "Slate_BlueRock",    new Color(0.105f, 0.155f, 0.235f) },   // 深蓝灰板岩（原 0.575,0.673,0.689 偏白青）
-                { "Stone",             new Color(0.110f, 0.150f, 0.210f) },
-                { "Sand_Shore",        new Color(0.480f, 0.375f, 0.255f) },   // 暖褐沙（原偏粉白）
-                { "PondWall",          new Color(0.470f, 0.365f, 0.250f) },
-                { "Ground_Lake",       new Color(0.075f, 0.170f, 0.085f) },   // 草地要压暗，原酸性绿
-                { "GrassGround",       new Color(0.085f, 0.180f, 0.090f) },
-                { "GreenWall_Distant", new Color(0.11f, 0.24f, 0.13f) },
-                { "Hill_Distant",      new Color(0.300f, 0.400f, 0.420f) },   // 大气透视要"提亮"，压暗会变成黑锥
+                { "Slate_BlueRock",    new Color(0.320f, 0.420f, 0.540f) },   // 参考帧实测受光 med(103,130,154)/阴影 med(88,122,151)：中调蓝灰，不是黑
+                { "Stone",             new Color(0.310f, 0.400f, 0.510f) },
+                { "Sand_Shore",        new Color(0.500f, 0.440f, 0.370f) },   // 近中性会把沙滩洗成蓝白；参考(180,166,154) 要暖调
+                { "PondWall",          new Color(0.470f, 0.415f, 0.350f) },
+                { "Ground_Lake",       new Color(0.280f, 0.340f, 0.190f) },   // 池底沙色：绿需反超红，否则折射出来的浅滩是灰的不是薄荷绿
+                { "GrassGround",       new Color(0.120f, 0.250f, 0.125f) },
+                { "GreenWall_Distant", new Color(0.055f, 0.330f, 0.110f) },   // 实测(55,151,78) vs 参考绿带(26,116,77)：压红压亮
+                { "Hill_Distant",      new Color(0.340f, 0.420f, 0.460f) },   // 大气透视：蓝>绿（此值原先只改在 .mat 上，菜单一跑就回退）
+                { "Ground_FarHaze",    new Color(0.150f, 0.245f, 0.215f) },   // 远处地面专用（与池底解耦）
+                { "NormalTree_Leaves", new Color(0.300f, 0.520f, 0.215f) },   // 覆盖 glb 内嵌；逆光剪影靠环境光抬，不靠提反照率
+                { "NormalTree_Bark",   new Color(0.170f, 0.110f, 0.075f) },
             };
             foreach (var kv in albedo)
             {
@@ -3077,28 +3095,56 @@ namespace WaterProject.EditorTools
             }
             sb.Append("albedo x" + albedo.Count + " ");
 
+            // 低多边形平涂：地形一律无光泽。Ground_Lake 原 _Smoothness 0.5 会在擦地视角把远处地面洗成淡青白带
+            foreach (var mname in new[] { "Ground_Lake", "GrassGround", "Sand_Shore", "PondWall",
+                                          "GreenWall_Distant", "Hill_Distant", "Ground_FarHaze",
+                                          "NormalTree_Leaves", "NormalTree_Bark" })
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/" + mname + ".mat");
+                if (mat != null && mat.HasProperty("_Smoothness"))
+                {
+                    mat.SetFloat("_Smoothness", 0f);
+                    EditorUtility.SetDirty(mat);
+                }
+            }
+            sb.Append("matte x9 ");
+
             var water = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
             if (water != null)
             {
-                water.SetColor("_DeepColor",    new Color(0.030f, 0.245f, 0.305f));
-                water.SetColor("_ShallowColor", new Color(0.160f, 0.550f, 0.520f));
-                water.SetColor("_WaterScatter", new Color(0.250f, 0.700f, 0.720f));
+                // 曝光从 0.55 抬到 1.15 后这三色过冲：实测水中 (79,205,219) vs 参考帧 (71,154,158)
+                // / (78,158,157)，G/B 各强 25~30%；保持色相比例整体压 0.55
+                water.SetColor("_DeepColor",    new Color(0.078f, 0.340f, 0.430f));
+                water.SetColor("_ShallowColor", new Color(0.200f, 0.520f, 0.480f));
+                water.SetColor("_WaterScatter", new Color(0.090f, 0.370f, 0.400f));
                 water.SetColor("_SkyZenith",    new Color(0.100f, 0.280f, 0.400f));
-                water.SetColor("_SkyHorizon",   new Color(0.300f, 0.440f, 0.500f));
+                // 掠射反射取的就是这个值（shader 里 lerp(_SkyHorizon,_SkyZenith,reflDir.y)）；
+                // 旧值 0.30/0.44/0.50 让低机位的大半水面（reflDir.y≈0）整体发黑发闷
+                water.SetColor("_SkyHorizon",   new Color(0.550f, 0.700f, 0.850f));
                 water.SetColor("_SunColor",     new Color(1f, 0.950f, 0.820f));
                 water.SetColor("_FoamColor",    new Color(0.88f, 0.96f, 0.96f));
                 SetIf(water, "_SkyReflect", 0.55f);
-                SetIf(water, "_ScatterStrength", 0.55f);
-                SetIf(water, "_Absorb", 1.9f);
+                SetIf(water, "_ScatterStrength", 0.45f);
+                SetIf(water, "_Absorb", 0.85f);
+                // 池子只有 ~1.3m 深，而 gap 是视深：1.9 的吸收系数把 depthMix 顶到 0.91，整池都读成深水、
+                // 近岸反而比塘心还暗（参考帧正相反：近岸淡薄荷绿、塘心才转青）
+                SetIf(water, "_Opacity", 0.76f);
                 SetIf(water, "_AmbientStrength", 0.35f);
-                // 碎闪波瓣：过宽会糊成大片钙化斑，过窄则整塘无光
-                SetIf(water, "_SpecStrength", 0.80f);
-                SetIf(water, "_SpecPower", 150f);
-                SetIf(water, "_SunStrength", 0.85f);
-                SetIf(water, "_SunGloss", 250f);
+                // 透射光是近白色的，是红通道的主要污染源 → 压低才能保住青蓝饱和度
+                SetIf(water, "_SunTransmission", 0.2f);
+                // 透彻感：_Opacity 决定"看清湖底"的权重(1-_Opacity)，0.95 时只剩 5% → 像蒙了层色膜
+                // _MaxUVOffset 是折射位移上限（占屏幕比例），0.12 会把湖底抹成一团糊
+                SetIf(water, "_MaxUVOffset", 0.025f);
+                SetIf(water, "_RefractStrength", 0.3f);
+                // 碎闪波瓣：必须"窄"。宽波瓣 + 低频法线 = 大片同朝向面一起亮 → 整块死白光斑
+                SetIf(water, "_SpecStrength", 1.1f);
+                SetIf(water, "_SpecPower", 900f);
+                SetIf(water, "_SunStrength", 1.4f);
+                SetIf(water, "_SunGloss", 1500f);
                 // 细节法线：3 会把法线掀到近水平、菲涅尔饱和；0.35 又平得没有碎闪
+                // _DetailScale 6.5 配合 shader 第三层高频八度，把碎闪打碎成点状
                 SetIf(water, "_DetailStrength", 1.2f);
-                SetIf(water, "_DetailScale", 2.6f);
+                SetIf(water, "_DetailScale", 6.5f);
                 SetIf(water, "_DepthDebug", 0f);
                 EditorUtility.SetDirty(water);
                 sb.Append("water=teal+glitter ");
@@ -3134,6 +3180,11 @@ namespace WaterProject.EditorTools
                 var mc = cam.GetComponent<Camera>();
                 if (mc != null) sv.camera.fieldOfView = mc.fieldOfView;
                 sv.size = 12f;
+                // Scene 视图相机默认不跑后处理，桥截图会静默忽略 Volume —— 必须显式打开才是可测通道
+                var scd = sv.camera.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                if (scd == null) scd = sv.camera.gameObject.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                scd.renderPostProcessing = true;
+                note += " sceneViewPost=on ";
                 sv.Repaint();
                 note += "pivot=" + cam.transform.position + " euler=" + cam.transform.eulerAngles;
             }
@@ -3170,13 +3221,14 @@ namespace WaterProject.EditorTools
             }
 
             // 荷叶：y=0.022 埋在波体里会读成半透明描边，抬到 0.15（波峰之上）
+            // 菜单52 改了盆底剖面后，原 r=11.5~13.1 的四株落到了干滩上，已按水陆界内收到 r≈9
             // 每项 = x,z,scale
             float[][] lily =
             {
                 new float[]{ -6.2f,  2.6f, 0.16f }, new float[]{ -7.4f,  3.6f, 0.13f },
                 new float[]{ -5.4f,  3.9f, 0.115f }, new float[]{ -6.9f,  4.8f, 0.15f },
-                new float[]{ -5.8f,  5.4f, 0.10f }, new float[]{ -9.0f,  7.2f, 0.14f },
-                new float[]{ -8.0f,  8.3f, 0.11f }, new float[]{ -9.4f,  9.1f, 0.125f },
+                new float[]{ -5.8f,  5.4f, 0.10f }, new float[]{ -7.18f,  5.74f, 0.14f },
+                new float[]{ -6.52f,  6.76f, 0.11f }, new float[]{ -6.39f,  6.19f, 0.125f },
                 new float[]{ -4.6f, -4.8f, 0.14f }, new float[]{ -3.2f, -6.2f, 0.11f },
                 new float[]{  5.5f,  2.0f, 0.15f }, new float[]{  6.8f,  3.4f, 0.11f },
             };
@@ -3190,10 +3242,11 @@ namespace WaterProject.EditorTools
                 EditorUtility.SetDirty(go);
             }
 
+            // 荷花原 scale 0.115-0.14 实测只有 ~10cm，而荷叶直径 3-4m → 完全看不见；按探针放大到 1.3-1.65
             float[][] lotus =
             {
-                new float[]{ -6.6f,  3.2f, 0.13f }, new float[]{ -8.6f,  7.8f, 0.115f },
-                new float[]{ -4.9f, -5.2f, 0.14f },
+                new float[]{ -6.6f,  3.2f, 1.5f }, new float[]{ -6.67f,  6.06f, 1.3f },
+                new float[]{ -4.9f, -5.2f, 1.65f },
             };
             for (int i = 0; i < lotus.Length; i++)
             {
@@ -3227,6 +3280,571 @@ namespace WaterProject.EditorTools
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
             System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
                 "MENU50 " + sb + "\n");
+        }
+
+    // —— 51) 加距离雾（柔化地平线硬边 + 大气透视）——
+    // 注意：URP 14 没有 Fog 的 VolumeComponent（Overrides 里只有 Tonemapping/ColorAdjustments 等），
+    //       雾只能走 RenderSettings；且本项目水面 shader 不接雾，前景水面保持清晰。
+        [MenuItem("Tools/WaterProject/51 加距离雾(柔化地平线)")]
+        public static void ApplyDistanceFog()
+        {
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = UnityEngine.FogMode.Exponential;
+            // 雾色必须等于天空盒在地平线处的实际出色，否则"雾满"的远地仍会与天空撞出一条硬边：
+            // sky = lerp(_HorizonColor(0.72,0.82,0.95), _ZenithColor(0.36,0.62,1.0), up*up=0.25) ≈ (0.63,0.77,0.96)
+            RenderSettings.fogColor = new Color(0.63f, 0.77f, 0.96f);
+            RenderSettings.fogDensity = 0.0045f;
+            // Exponential: f=exp(-(d*density)^2) → 27m 处仅 1.5% 雾（池塘不受影响），200m 56%，550m 99.8%
+
+            // 地平线最后一条硬边来自"地面平面边缘之外"的天空盒下半球 _GroundColor；
+            // 让它等于雾色 → 地形/雾/天空同色，接缝消失。两者必须一处改、一起改。
+            var sky = RenderSettings.skybox;
+            if (sky != null)
+            {
+                if (sky.HasProperty("_GroundColor")) sky.SetColor("_GroundColor", RenderSettings.fogColor);
+                if (sky.HasProperty("_HorizonColor")) sky.SetColor("_HorizonColor", new Color(0.72f, 0.83f, 0.97f));
+                EditorUtility.SetDirty(sky);
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU51 fog=on exp density=0.0045 color=(0.63,0.77,0.96) skyGround=synced sky=" + (sky != null ? sky.name + "/" + sky.shader.name : "NULL") + "\n");
+        }
+
+    // —— 53) 道具重贴合地面：盆底改了剖面后，石头按新地面重新坐落 ——
+        [MenuItem("Tools/WaterProject/53 石头重贴合地面(按实际网格采样)")]
+        public static void ReseatPropsToGround()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // 直接采样"场景里真实存在"的地面网格顶点做高度场。
+            // 不复制菜单52/菜单24 的高度公式——水面与沙环的半径公式在多个菜单里已经漂移过，
+            // 复制一份只会再制造一次不一致。
+            string[] groundObjs = { "PondBasin", "BasinStep_00", "BasinStep_01", "BasinStep_02", "ShoreSandRing" };
+            var gx = new List<float>(); var gy = new List<float>(); var gz = new List<float>();
+            foreach (var n in groundObjs)
+            {
+                var go = UnityEngine.GameObject.Find(n);
+                if (go == null) { sb.Append(n + ":MISS "); continue; }
+                var mf = go.GetComponent<MeshFilter>();
+                if (mf == null || mf.sharedMesh == null) { sb.Append(n + ":NOMESH "); continue; }
+                var mv = mf.sharedMesh.vertices;
+                var ltw = go.transform.localToWorldMatrix;
+                for (int i = 0; i < mv.Length; i++)
+                {
+                    Vector3 w = ltw.MultiplyPoint3x4(mv[i]);
+                    gx.Add(w.x); gy.Add(w.y); gz.Add(w.z);
+                }
+            }
+            sb.Append("samples " + gx.Count + " ");
+            if (gx.Count == 0) { WriteProbe("MENU53 " + sb + " ABORT(no ground)\n"); return; }
+
+            // 取覆盖范围内所有顶点的最高 y：盆底/台地/干沙滩谁在上面算谁
+            System.Func<float, float, float> groundAt = (x, z) =>
+            {
+                float best = float.NegativeInfinity;
+                for (int i = 0; i < gx.Count; i++)
+                {
+                    float dx = gx[i] - x, dz = gz[i] - z;
+                    float d2 = dx * dx + dz * dz;
+                    if (d2 > 1.6f) continue;                       // 1.26m 水平容差
+                    if (gy[i] > best) best = gy[i];
+                }
+                return best;
+            };
+
+            int moved = 0, skipped = 0;
+            var all = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            foreach (var go in all)
+            {
+                if (go == null) continue;
+                if (!(go.name.StartsWith("Boulder_") || go.name.StartsWith("SandBlob_"))) continue;
+                var t = go.transform;
+                float g = groundAt(t.position.x, t.position.z);
+                if (float.IsNegativeInfinity(g)) { skipped++; continue; }
+
+                var er = go.GetComponent<Renderer>();
+                float ey = er != null ? er.bounds.extents.y : 0.3f;
+                // 埋进地面 25% 的自身高度：既不悬空也不整个吞掉
+                float want = g + ey * 0.75f;
+                if (Mathf.Abs(want - t.position.y) < 0.01f) { skipped++; continue; }
+                t.position = new Vector3(t.position.x, want, t.position.z);
+                EditorUtility.SetDirty(go);
+                moved++;
+            }
+            sb.Append("rocks moved " + moved + " kept " + skipped + " ");
+
+            // 荷叶/荷花：漂在干地上就是错位，报出来（半径要按水陆界重排，不能瞎挪）
+            foreach (var go in all)
+            {
+                if (go == null) continue;
+                if (!(go.name.StartsWith("SmallLily_") || go.name.StartsWith("SmallLotus_"))) continue;
+                float g = groundAt(go.transform.position.x, go.transform.position.z);
+                if (float.IsNegativeInfinity(g)) continue;
+                if (g > -0.04f)   // 地面已不低于水面 → 这株其实坐在沙滩上
+                    sb.Append("DRY " + go.name + " r=" + Mathf.Sqrt(go.transform.position.x * go.transform.position.x + go.transform.position.z * go.transform.position.z).ToString("F1") + " g=" + g.ToString("F2") + " ");
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU53 " + sb + "\n");
+        }
+
+        static void WriteProbe(string s)
+        {
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"), s);
+        }
+
+    // —— 54) 构图A 机位：站在近岸沙滩上俯看整池，水面占下 2/3、远岸绿坡占顶部（不是天空） ——
+        [MenuItem("Tools/WaterProject/54 视频低机位(贴近水面)")]
+        public static void ApplyVideoCameraLow()
+        {
+            var cam = UnityEngine.GameObject.Find("Main Camera");
+            if (cam == null) { WriteProbe("MENU54 cam:MISS\n"); return; }
+            // 俯角 20° 时画面顶缘在地平线上 6°，正好把 r19 起、高 3~4m 的远岸草坡收进顶部 1/4；
+            // 机位退到 r≈15（水域边缘约 13.4）才能把近岸沙唇留在画面下缘，否则整幅都是水
+            cam.transform.localPosition = new Vector3(-3.2f, 3.4f, -14.5f);
+            cam.transform.localRotation = Quaternion.Euler(20f, 9f, 0f);
+            var c = cam.GetComponent<Camera>();
+            if (c != null) { c.fieldOfView = 52f; c.nearClipPlane = 0.1f; }
+            EditorUtility.SetDirty(cam);
+
+            // 太阳仰角归菜单48 单一来源：这里曾重复写 Euler(14,208)，把菜单48 的 E30 静默改回去，
+            // 于是所有朝上面的 N·L 掉到 0.24、岩石顶全黑。几何耦合不等于要重复赋值。
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU54 camA=(-3.2,3.4,-14.5) Euler(20,9,0) fov52 sun=menu48\n");
+        }
+
+    // —— 55) 荷叶密集化：改成参考帧那样"多簇、小片、缀粉花" ——
+        [MenuItem("Tools/WaterProject/55 荷叶密集化(多簇小片+粉花)")]
+        public static void DensifyLilyClusters()
+        {
+            var sb = new System.Text.StringBuilder();
+            var rng = new System.Random(20260922);
+
+            // 探针实测：scale=0.15 时 SmallLily_03 直径 4.26m → 该 glb 在 scale=1 下约 28.4m。
+            // 旧注释写的"9-14cm"是按错误单位估的，所以一直偏大；这里按目标直径反算 scale。
+            const float lilyDiamAt1 = 28.4f, lotusDiamAt1 = 0.83f;
+
+            var all = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            foreach (var go in all)
+                if (go != null && (go.name.StartsWith("SmallLily_") || go.name.StartsWith("SmallLotus_")))
+                    UnityEngine.Object.DestroyImmediate(go);
+
+            string lilyPath = "Assets/Art/StylePacks/正式素材/Lotus/WaterLilies_GooglePoly.glb";
+            string lotusPath = "Assets/Art/StylePacks/正式素材/Lotus/LotusFlower_SeanTarrant.glb";
+            var lily = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lilyPath);
+            var lotus = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(lotusPath);
+            if (lily == null) { WriteProbe("MENU55 lily glb MISSING\n"); return; }
+
+            // 簇心：构图A 的主簇在"近半池"贴着相机，不是漂在塘心；相机在 (-3.2,3.4,-14.5) 朝 +z
+            Vector2[] cen = { new Vector2(-2.6f, -5.6f), new Vector2(-8.4f, 1.2f),
+                              new Vector2(5.8f, 3.4f), new Vector2(1.6f, -1.0f) };
+            int idx = 0;
+            for (int c = 0; c < cen.Length; c++)
+            {
+                int n = 13 + rng.Next(5);
+                for (int i = 0; i < n; i++)
+                {
+                    float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+                    float rad = (float)rng.NextDouble() * 2.3f;
+                    float d = 0.72f + (float)rng.NextDouble() * 0.62f;   // 目标直径 0.72~1.34m
+                    float sc = d / lilyDiamAt1;
+                    var inst = PrefabUtility.InstantiatePrefab(lily) as UnityEngine.GameObject;
+                    if (inst == null) continue;
+                    inst.name = "SmallLily_" + (idx++).ToString("00");
+                    inst.transform.position = new Vector3(cen[c].x + Mathf.Cos(a) * rad, 0.055f,
+                                                          cen[c].y + Mathf.Sin(a) * rad);
+                    inst.transform.localScale = new Vector3(sc, sc, sc);
+                    inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                }
+            }
+            sb.Append("pads " + idx + " ");
+
+            if (lotus != null)
+            {
+                int fi = 0;
+                for (int c = 0; c < cen.Length; c++)
+                {
+                    int n = 3 + rng.Next(2);
+                    for (int i = 0; i < n; i++)
+                    {
+                        float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+                        float rad = (float)rng.NextDouble() * 1.5f;
+                        float d = 0.30f + (float)rng.NextDouble() * 0.22f;  // 花 0.30~0.52m
+                        float sc = d / lotusDiamAt1;
+                        var inst = PrefabUtility.InstantiatePrefab(lotus) as UnityEngine.GameObject;
+                        if (inst == null) continue;
+                        inst.name = "SmallLotus_" + (fi++).ToString("00");
+                        inst.transform.position = new Vector3(cen[c].x + Mathf.Cos(a) * rad, 0.065f,
+                                                              cen[c].y + Mathf.Sin(a) * rad);
+                        inst.transform.localScale = new Vector3(sc, sc, sc);
+                        inst.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 360f, 0);
+                    }
+                }
+                sb.Append("flowers " + fi + " ");
+            } else sb.Append("lotus:MISS ");
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU55 " + sb + " (lily scale=1 → 28.4m 实测反推；簇心移到近半池)\n");
+        }
+
+    // —— 56) 远岸草坡 + 灌木带上岸 + 荷/莲材质强制覆盖（对标构图A：顶部是绿岸，不是天空） ——
+        [MenuItem("Tools/WaterProject/56 远岸草坡重构+荷花粉色覆盖")]
+        public static void BuildFarBankAndOverrideFlora()
+        {
+            var sb = new System.Text.StringBuilder();
+
+            // 1) 草坡剖面：埋入地下 → 草脚（约30°）→ 极缓的远坡 → 外沿（被雾吃掉，只为挡地平线）
+            //    第一版内壁 15.6→19.4 抬 3.7m（近于垂直），画面顶部成了一道峡谷壁；
+            //    且 11x/23x 高频起伏在平面着色下拍打成同心明暗条纹。改成推远 + 放缓 + 低次谐波。
+            float[] rProf = { 20f, 24f, 34f, 60f };
+            System.Func<float, float> Hedge = th =>
+                1.70f + 0.60f * Mathf.Sin(th * 3f + 0.7f) + 0.35f * Mathf.Sin(th * 7f + 2.1f);
+            System.Func<float, float, float> BankY = (r, th) =>
+            {
+                float h = Hedge(th);
+                if (r <= rProf[1]) return Mathf.Lerp(-0.6f, h, Mathf.InverseLerp(rProf[0], rProf[1], r));
+                if (r <= rProf[2]) return Mathf.Lerp(h, h + 2.4f, Mathf.InverseLerp(rProf[1], rProf[2], r));
+                return Mathf.Lerp(h + 2.4f, h + 6.5f, Mathf.InverseLerp(rProf[2], rProf[3], r));
+            };
+
+            const int seg = 256;
+            var verts = new List<Vector3>();
+            var tris = new List<int>();
+            for (int gs = 0; gs <= seg; gs++)
+            {
+                float th = Mathf.PI * 2f * gs / seg;
+                float ct = Mathf.Cos(th), st = Mathf.Sin(th);
+                verts.Add(new Vector3(ct * rProf[0], -0.6f, st * rProf[0]));
+                verts.Add(new Vector3(ct * rProf[1], Hedge(th), st * rProf[1]));
+                verts.Add(new Vector3(ct * rProf[2], Hedge(th) + 2.4f, st * rProf[2]));
+                verts.Add(new Vector3(ct * rProf[3], Hedge(th) + 6.5f, st * rProf[3]));
+                if (gs == seg) break;
+                int a = gs * 4;
+                for (int k = 0; k < 3; k++)
+                {
+                    int i0 = a + k, i1 = a + 4 + k, i2 = a + 5 + k, i3 = a + k + 1;
+                    tris.Add(i0); tris.Add(i1); tris.Add(i2);
+                    tris.Add(i0); tris.Add(i2); tris.Add(i3);
+                }
+            }
+            var bankMesh = FacetedFrom(verts, tris);
+            SaveMesh(bankMesh, "Assets/Art/Meshes/GreenWall.asset", "GreenWall");
+
+            var bankMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/GreenWall_Distant.mat");
+            var bank = GetOrCreate("GreenWall");
+            var bmf = bank.GetComponent<MeshFilter>(); if (bmf == null) bmf = bank.AddComponent<MeshFilter>();
+            var bmr = bank.GetComponent<MeshRenderer>(); if (bmr == null) bmr = bank.AddComponent<MeshRenderer>();
+            bmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Art/Meshes/GreenWall.asset");
+            if (bankMat != null) bmr.sharedMaterial = bankMat;
+            // 140m 阴影距离下整圈草坡会在沙滩上投出一道硬阴带；它只是平面着色的背景，不需要自阴影
+            bmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            bmr.receiveShadows = true;
+            bank.transform.localPosition = Vector3.zero;   // 菜单50 把它停在 y=-500，这里放回
+            sb.Append("bank seg" + seg + " y0 ");
+
+            // 2) 树挪上草坡、缩成灌木：参考帧远岸是一排低矮树冠，不是逆光大树
+            var trs = UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None);
+            int tn = 0;
+            var rngT = new System.Random(20260923);
+            foreach (var go in trs)
+            {
+                if (go == null || !go.name.StartsWith("Tree_ring_")) continue;
+                var t = go.transform;
+                if (t.childCount == 0) continue;
+                var keep = t.GetChild(0);
+                float th = Mathf.Atan2(keep.position.z, keep.position.x);
+                float r = 30f + (float)rngT.NextDouble() * 20f;
+                float sc = 0.42f + (float)rngT.NextDouble() * 0.22f;
+                var target = new Vector3(Mathf.Cos(th) * r, BankY(r, th) - 0.25f, Mathf.Sin(th) * r);
+                // 先改缩放再平移：keep.position 每次现算世界矩阵，所以父节点旋转/缩放都被自动算进 delta
+                t.localScale = new Vector3(sc, sc, sc);
+                t.position = t.position + (target - keep.position);
+                tn++;
+            }
+            sb.Append("trees " + tn + " ");
+
+            // 3) 荷/莲材质覆盖：菜单48 的 albedo 字典只认自建 .mat，glb 内嵌材质它碰不到
+            var lilyMat  = ForceMat("Lily_Green",  new Color(0.130f, 0.450f, 0.140f));
+            // 饱和洋红 (0.90,0.26,0.50) 会被 ACES 的色相限制压成砖红；参考帧的花是浅粉，必须提亮降饱和才保得住
+            var lotusMat = ForceMat("Lotus_Pink",  new Color(0.920f, 0.560f, 0.660f));
+            int ln = 0, fn = 0, diag = 0;
+            foreach (var go in trs)
+            {
+                if (go == null) continue;
+                bool isLily = go.name.StartsWith("SmallLily_");
+                bool isLotus = go.name.StartsWith("SmallLotus_");
+                if (!isLily && !isLotus) continue;
+                var pick = isLily ? lilyMat : lotusMat;
+                foreach (var rr in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (diag < 6)
+                    {
+                        var old = rr.sharedMaterial;
+                        sb.Append("[" + rr.name + "<" + (old == null ? "null" : old.name) + "] ");
+                        diag++;
+                    }
+                    rr.sharedMaterial = pick;
+                    if (isLily) ln++; else fn++;
+                }
+            }
+            sb.Append("lilyRnd " + ln + " lotusRnd " + fn + " ");
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU56 " + sb + "\n");
+        }
+
+        // 建/取一个纯色 URP/Lit 双面材质（glb 内嵌材质不可写，只能整只 Renderer 换掉）
+        static Material ForceMat(string assetName, Color c)
+        {
+            string p = "Assets/Art/Materials/" + assetName + ".mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m == null)
+            {
+                var lit = Shader.Find("Universal Render Pipeline/Lit");
+                m = new Material(lit);
+                AssetDatabase.CreateAsset(m, p);
+            }
+            m.SetColor("_BaseColor", c);
+            m.SetColor("_Color", c);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0f);
+            if (m.HasProperty("_Cull")) m.SetFloat("_Cull", 0f);   // 荷叶背面是黄色胶层，双面+同色一并解决
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+    // —— 52) 凹陷沙坑重构：一个平底盆读不出凹陷，改用"锥形盆底 + 同心台地 + 湿沙分色" ——
+        [MenuItem("Tools/WaterProject/52 凹陷沙坑重构(锥形盆底+同心台地)")]
+        public static void RebuildBasinDepression()
+        {
+            var sb = new System.Text.StringBuilder();
+            const string basinPath = "Assets/Art/Meshes/PondBasin.asset";
+
+            // ---- 湿沙 / 潮沙材质：按深度分色是"读出凹陷"最强的一条线索 ----
+            Material WetOf(string name, Color linear)
+            {
+                string p = "Assets/Art/Materials/" + name + ".mat";
+                var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+                if (m == null)
+                {
+                    m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = name };
+                    AssetDatabase.CreateAsset(m, p);
+                }
+                m.SetColor("_BaseColor", linear);
+                m.SetFloat("_Smoothness", 0.08f);
+                m.SetFloat("_Metallic", 0f);
+                EditorUtility.SetDirty(m);
+                return m;
+            }
+            var wet  = WetOf("Sand_Wet",  new Color(0.280f, 0.300f, 0.175f));   // 折射层会把沙底大量混进水色：红>绿 的暖沙会把浅滩拖成灰，绿要反超红
+            var damp = WetOf("Sand_Damp", new Color(0.360f, 0.400f, 0.235f));   // 中间台地：半湿
+            sb.Append("mats ");
+
+            // ---- 1) 锥形盆底：中心 -1.30 → 岸边略低于水面，指数 1.55 让坡度向岸最大、盆底趋平 ----
+            int seg = 128, rings = 34;
+            // Rim 必须低于水面（水面在 y≈+0.02）：原先取 0.02 正好与水面共面，水一变透，
+            // 盆体外缘就破水而出，在近岸糊出一道灰白"水泥台阶"
+            float Depth = 1.30f, Rim = -0.07f, Pow = 1.55f;
+            var pos = new List<Vector3>();
+            var tri = new List<int>();
+            var vq  = new List<Vector3>();
+            for (int gr = 0; gr <= rings; gr++)
+            {
+                float t = (float)gr / rings;
+                for (int gs = 0; gs <= seg; gs++)
+                {
+                    float th = Mathf.PI * 2f * gs / seg;
+                    float rEdge = Mathf.Max(12f, ShoreR(th) * 0.6f) - 0.05f;   // 与水面网格同一岸线
+                    float r = Mathf.Lerp(0.3f, rEdge, t);
+                    // 等深线随角度摆动：正圆台地会读成"靶心"，挖出来的沙坑不该是同心圆
+                    float te = Mathf.Clamp01(t + WobA(th, 1.7f + t * 2f) * 0.85f);
+                    float y = -Depth + (Depth + Rim) * Mathf.Pow(te, Pow);
+                    // 盆底起伏：靠岸处收敛到 0，避免与 ShoreSandRing 抢位
+                    float n = (Hash11(gs * 7.1f + gr * 13.7f) - 0.5f) * 0.11f * Mathf.Pow(t, 0.6f);
+                    vq.Add(new Vector3(Mathf.Cos(th) * r, y + n, Mathf.Sin(th) * r));
+                }
+            }
+            for (int gr = 0; gr < rings; gr++)
+                for (int gs = 0; gs < seg; gs++)
+                {
+                    int a = gr * (seg + 1) + gs, b = a + 1;
+                    int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                    tri.Add(a); tri.Add(c); tri.Add(b);
+                    tri.Add(b); tri.Add(c); tri.Add(d);
+                }
+            var basin = FacetedFrom(vq, tri);          // 非索引化 → 每面独立法线 → 平面着色台阶感
+            sb.Append("basin v" + basin.vertexCount + " avgNrmY " + AvgNormalY(basin).ToString("F3") + " ");
+            SaveMesh(basin, basinPath, "PondBasin");
+
+            var bgo = GetOrCreate("PondBasin");
+            var bmf = bgo.GetComponent<MeshFilter>(); if (bmf == null) bmf = bgo.AddComponent<MeshFilter>();
+            var bmr = bgo.GetComponent<MeshRenderer>(); if (bmr == null) bmr = bgo.AddComponent<MeshRenderer>();
+            bmf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(basinPath);
+            bmr.sharedMaterial = wet;
+            bmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;   // 水下不需要投影，避免自阴影噪点
+            bmr.receiveShadows = true;
+            bgo.transform.localPosition = Vector3.zero;
+            bgo.transform.localScale = Vector3.one;
+
+            // ---- 2) 同心台地：三圈略高于盆底的窄环带，制造"一层一层往下陷"的硬边 ----
+            float[][] bands = { new float[]{0.34f,0.46f}, new float[]{0.56f,0.68f}, new float[]{0.76f,0.88f} };
+            var stepMeshes = new List<Mesh>();
+            for (int k = 0; k < bands.Length; k++)
+            {
+                float t0 = bands[k][0], t1 = bands[k][1];
+                var sp = new List<Vector3>(); var st = new List<int>(); var sv = new List<Vector3>();
+                int srings = 7;
+                for (int gr = 0; gr <= srings; gr++)
+                {
+                    float t = Mathf.Lerp(t0, t1, (float)gr / srings);
+                    for (int gs = 0; gs <= seg; gs++)
+                    {
+                        float th = Mathf.PI * 2f * gs / seg;
+                        float w = WobA(th, 1.7f + t * 2f);
+                        float tw = Mathf.Clamp01(t + w * 0.85f);
+                        float tband = Mathf.Clamp01(t + w * 0.85f);
+                        // 台地自身外缘略高，形成向内的陡坎（凹陷感主要来自这一道坎的明暗）
+                        // 再压到原来的 1/4：水一透，每圈台地的外缘都是一次深度突变，
+                        // 在近岸画出一条几乎笔直的分界线；凹陷已由锥形盆底承担，台地只需若隐若现
+                        float y = -Depth + (Depth + Rim) * Mathf.Pow(tw, Pow) + 0.010f + 0.016f * tband;
+                        float rEdge = Mathf.Max(12f, ShoreR(th) * 0.6f) - 0.05f;
+                        float r = Mathf.Lerp(0.3f, rEdge, tband) * (1f + 0.012f * (Hash11(gs + k * 31f) - 0.5f));
+                        sv.Add(new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r));
+                    }
+                }
+                for (int gr = 0; gr < srings; gr++)
+                    for (int gs = 0; gs < seg; gs++)
+                    {
+                        int a = gr * (seg + 1) + gs, b = a + 1;
+                        int c = (gr + 1) * (seg + 1) + gs, d = c + 1;
+                        st.Add(a); st.Add(c); st.Add(b);
+                        st.Add(b); st.Add(c); st.Add(d);
+                    }
+                var sm = FacetedFrom(sv, st);
+                string path = "Assets/Art/Meshes/BasinStep_0" + k + ".asset";
+                SaveMesh(sm, path, "BasinStep_0" + k);
+                var sgo = GetOrCreate("BasinStep_0" + k);
+                var smf = sgo.GetComponent<MeshFilter>(); if (smf == null) smf = sgo.AddComponent<MeshFilter>();
+                var smr = sgo.GetComponent<MeshRenderer>(); if (smr == null) smr = sgo.AddComponent<MeshRenderer>();
+                smf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+                smr.sharedMaterial = damp;
+                smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                smr.receiveShadows = true;
+                sgo.transform.localPosition = Vector3.zero;
+                sgo.transform.localScale = Vector3.one;
+                stepMeshes.Add(sm);
+            }
+            sb.Append("steps x" + stepMeshes.Count + " ");
+
+            // ---- 3) 退役旧件：平底盆下沉当兜底、45°窄池壁关掉（它会盖住新的缓坡读感）----
+            var old = UnityEngine.GameObject.Find("PondFloor");
+            if (old != null) { old.transform.localPosition = new Vector3(0f, -1.9f, 0f); EditorUtility.SetDirty(old); sb.Append("floor=lowered "); }
+            var wall = UnityEngine.GameObject.Find("PondWall");
+            if (wall != null)
+            {
+                var wm = wall.GetComponent<MeshRenderer>();
+                if (wm != null) wm.enabled = false;
+                sb.Append("wall=off ");
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            System.IO.File.AppendAllText(System.IO.Path.Combine(Application.dataPath, "../Logs/water_probe.txt"),
+                "MENU52 " + sb + " basin depth=" + Depth + " pow=" + Pow + " (旧 PondWall 关闭 / PondFloor 沉到 -1.9)\n");
+        }
+
+    // —— 57) 按已验证依赖顺序整链重建（省掉每个菜单一次 MCP 往返；失败点看 probe 的 STEP 行） ——
+        [MenuItem("Tools/WaterProject/57 整链重建(按验证顺序)")]
+        public static void RebuildAllInOrder()
+        {
+            var steps = new System.Collections.Generic.KeyValuePair<string, System.Action>[]
+            {
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("21 沙丘环湖", BuildDuneHollowScape),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("22 对标修正", AlignToVideo),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("24 浅碗沙滩", RebuildShallowBowlBeach),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("52 凹陷沙坑", RebuildBasinDepression),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("46 地面绕序", FixGroundMeshWinding),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("36 水域网格", RebuildWaterDiskFixed),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("38 照明基线", RestoreRc9LightingBaseline),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("39 巨石群", RebuildReferenceBoulders),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("53 石头贴合", ReseatPropsToGround),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("40 rc4水基准", ApplyRc4WaterBaseline),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("41 天空环境光", ApplyBrightSkyGradientAmbient),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("42 水色", TuneWaterToReferenceFrame),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("45 俯视机位", AlignToReferenceFrames),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("47 Volume", ApplyGrasslandsVolume),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("48 曝光反照率", RecalibrateToReference),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("50 远景压平", ApplyFarPlaneAndLilyLayout),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("51 距离雾", ApplyDistanceFog),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("55 荷叶簇", DensifyLilyClusters),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("56 远岸草坡", BuildFarBankAndOverrideFlora),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("54 构图A机位", ApplyVideoCameraLow),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("23 重挂材质", RebindAllMaterials),
+            };
+            WriteProbe("MENU57 begin (" + steps.Length + " steps)\n");
+            for (int i = 0; i < steps.Length; i++)
+            {
+                WriteProbe("MENU57 STEP " + i + " " + steps[i].Key + "\n");
+                try { steps[i].Value(); }
+                catch (System.Exception e) { WriteProbe("MENU57 FAIL " + steps[i].Key + " :: " + e.Message + "\n"); }
+            }
+            AssetDatabase.SaveAssets();
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU57 done\n");
+        }
+
+        // 非索引化：每个三角形独立顶点，RecalculateNormals 即得逐面法线（平面着色）；顺带把绕序统一成朝上
+        static Mesh FacetedFrom(List<Vector3> src, List<int> idx)
+        {
+            var pos = new List<Vector3>(idx.Count);
+            for (int i = 0; i + 2 < idx.Count; i += 3)
+            {
+                Vector3 a = src[idx[i]], b = src[idx[i + 1]], c = src[idx[i + 2]];
+                Vector3 n = Vector3.Cross(b - a, c - a);
+                // 朝下就换一对顶点，保证从上方看是正面（否则会被背面剔除整片消失）
+                if (n.y < 0f) { pos.Add(a); pos.Add(c); pos.Add(b); }
+                else          { pos.Add(a); pos.Add(b); pos.Add(c); }
+            }
+            var m = new Mesh();
+            if (pos.Count > 65000) m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            m.SetVertices(pos);
+            var order = new int[pos.Count];
+            for (int i = 0; i < pos.Count; i++) order[i] = i;
+            m.SetTriangles(order, 0);
+            m.RecalculateNormals();
+            m.RecalculateBounds();
+            return m;
+        }
+
+        // 稳定哈希（同一 seed 每次生成同样的起伏，保证可复现）
+        static float Hash11(float v)
+        {
+            v = Mathf.Sin(v * 12.9898f) * 43758.5453f;
+            return v - Mathf.Floor(v);
+        }
+
+        // 平滑角向扰动：三组正弦、相位来自稳定哈希
+        // 用途：让等深线与台地边界不再是正圆（正圆读成"靶心"，不像挖出来的沙坑）
+        static float WobA(float th, float seed)
+        {
+            float p1 = Hash11(seed * 3.1f) * 6.2832f;
+            float p2 = Hash11(seed * 7.7f) * 6.2832f;
+            float p3 = Hash11(seed * 13.3f) * 6.2832f;
+            return 0.050f * Mathf.Sin(2f * th + p1) + 0.032f * Mathf.Sin(5f * th + p2) + 0.019f * Mathf.Sin(9f * th + p3);
+        }
+
+        static void SaveMesh(Mesh m, string path, string name)
+        {
+            m.name = name;
+            var old = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (old == null) AssetDatabase.CreateAsset(m, path);
+            else { WriteMeshFrom(old, m); Object.DestroyImmediate(m); }
+        }
+
+        static UnityEngine.GameObject GetOrCreate(string name)
+        {
+            var go = UnityEngine.GameObject.Find(name);
+            if (go == null) go = new UnityEngine.GameObject(name);
+            return go;
         }
     }
 }

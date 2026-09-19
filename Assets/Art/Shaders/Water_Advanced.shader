@@ -257,8 +257,11 @@ Shader "WaterProject/Water_Advanced"
             float3 DetailNormal(float3 worldPos, float t)
             {
                 // 流动感：细节法线以 ~0.35-0.45 m/s 世界速度平移；第二层反向抖动制造多向流动
-                float2 total = NoiseSlope(worldPos.xz, _DetailScale,        float2(t * 0.42, t * 0.33)) * 0.7
-                             + NoiseSlope(worldPos.xz, _DetailScale * 2.1f, -float2(t * 0.33, t * 0.42)) * 0.5;
+                // 第三层高频小波：把"同朝向的大片"打碎成密集小面，碎闪才会是点状而非整块白斑
+                // 低频八度从 0.7 降到 0.4：它的大平片是"整块一起亮"的元凶；能量挪给两层高频
+                float2 total = NoiseSlope(worldPos.xz, _DetailScale,        float2(t * 0.42, t * 0.33)) * 0.40
+                             + NoiseSlope(worldPos.xz, _DetailScale * 2.1f, -float2(t * 0.33, t * 0.42)) * 0.55
+                             + NoiseSlope(worldPos.xz, _DetailScale * 5.4f, float2(t * 0.55, -t * 0.47)) * 0.50;
                 float3 n = float3(-total.x * _DetailStrength, 1.0, -total.y * _DetailStrength);
                 return normalize(n);
             }
@@ -425,7 +428,8 @@ Shader "WaterProject/Water_Advanced"
 
                 // ── 天空反射（菲涅尔）[3] ──
                 float3 reflDir = reflect(-V, N);
-                float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y * 0.5 + 0.5));
+                // reflDir.y≈0 是掠射反射，应当取"地平线色"（亮）；旧映射 *0.5+0.5 会把它推到天顶暗色 → 低机位水面发黑发闷
+                float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y));
                 // 太阳闪烁与场景主光方向对齐（不硬编码方向）
                 skyCol += _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += skyCol * fres * _SkyReflect * (1.0 - interA * 0.4);
@@ -442,9 +446,10 @@ Shader "WaterProject/Water_Advanced"
                 // 浅滩（gap 小）额外泛光，光能透到底的提亮
                 col += _ShallowColor * _ScatterStrength * 0.28 * (1.0 - trans);
 
-                // ── 高光 ──
+                // ── 高光 ── 用 lerp 而非累加：累加会把已经挺亮的水色顶过 1.0 → 整块削平的死白
                 float3 H = normalize(mainLight.direction + V);
-                col += mainLight.color * pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength * (1.0 - fres * 0.5);
+                float spec = saturate(pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength);
+                col = lerp(col, _SunColor.rgb, spec);
 
                 // ── 折射层混合：浅水看湖底（沙色），深水收敛到深水色 ──
                 float depthMix = 1.0 - exp(-max(gap, 0.0) * _Absorb);   // 0浅→1深
@@ -453,7 +458,10 @@ Shader "WaterProject/Water_Advanced"
 
                 // ── 泡沫 [8]：浪尖(J) + 岸边(深度差) + 交互 ──
                 float crestFoam  = saturate((_CrestJ - gr.J) / max(_CrestSoft, 1e-4));
-                float shoreFoam  = saturate((1.0 - gap * 0.6) * (1.0 - fres) * 0.6);
+                // gap 是"沿视线的视深"；低机位下视线接近水平，1m 垂直水深会被换算成 ~4m 视深，
+                // 泡沫带因此窄到看不见。先换算回垂直水深，带宽才与观察角度无关。
+                float vd = gap * max(V.y, 0.12);
+                float shoreFoam  = saturate((1.0 - vd * 1.7) * (1.0 - fres) * 0.75);
                 float interFoam  = interA * _InteractionFoam;
                 float foam = saturate(crestFoam * _CrestFoam + shoreFoam * _ShoreFoam + interFoam);
 
