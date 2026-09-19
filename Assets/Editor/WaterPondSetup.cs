@@ -96,7 +96,7 @@ namespace WaterProject.EditorTools
                 basin.RecalculateNormals();
                 basin.RecalculateBounds();
                 SaveMeshAsset(basin, MeshFolder + "/PoolBasin.asset", "PoolBasin");
-                AttachExistingMesh("PoolBasin", GetMat("Pond_SandWet", new Color(0.30f, 0.33f, 0.22f)));
+                AttachExistingMesh("PoolBasin", GetMat("Pond_SandWet", new Color(0.095f, 0.118f, 0.070f)));
             }
 
             // ── 沙岸 + 外场：r = 岸线-0.5 → 40 ──
@@ -122,7 +122,7 @@ namespace WaterProject.EditorTools
                         idx.Add(a); idx.Add(c); idx.Add(b);
                         idx.Add(b); idx.Add(c); idx.Add(d);
                     }
-                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.50f, 0.45f, 0.37f)));
+                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.150f, 0.135f, 0.082f)));
             }
 
             // ── 绿坡环：把"沙漠里一个洞"变成"林间一潭" ──
@@ -151,7 +151,7 @@ namespace WaterProject.EditorTools
                     }
                 }
                 var hills = AttachMesh("PoolHills", WaterProjectSetup.FacetedFrom(v, idx),
-                                       GetMat("Pond_Grass", new Color(0.075f, 0.250f, 0.115f)));
+                                       GetMat("Pond_Grass", new Color(0.040f, 0.130f, 0.058f)));
                 var hmr = hills != null ? hills.GetComponent<MeshRenderer>() : null;
                 if (hmr != null) hmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             }
@@ -258,7 +258,7 @@ namespace WaterProject.EditorTools
             // 倒影要有内容，否则"平面反射"这件事根本看不出来。
             var rng = new System.Random(202609242);
 
-            var rockMat = GetMat("Pond_Rock", new Color(0.32f, 0.42f, 0.54f));
+            var rockMat = GetMat("Pond_Rock", new Color(0.110f, 0.165f, 0.135f));
             var rocks = new Mesh[3];
             for (int v = 0; v < 3; v++)
                 rocks[v] = WaterProjectSetup.BuildFacetedRock(v, 1f);
@@ -293,49 +293,31 @@ namespace WaterProject.EditorTools
                 }
             }
 
-            // 树绕潭一圈 —— 平面反射要有内容可倒，三棵排成一排是"布景"，七棵散开才是"林子"
-            var trees = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(
-                "Assets/Art/StylePacks/正式素材/Trees/Trees_Quaternius.glb");
+            // 树绕潭一圈 —— 倒影要有内容，否则"平面反射"这件事根本看不出来。
+            // 三棵排成一排是"布景"，七棵散开才是"林子"。
+            // 树种来自 Blender 交付包（Assets/Trees/Prefabs），摆放逻辑与菜单68 共用 PlacePondTree。
             int placed = 0;
-            if (trees != null)
+            for (int k = 0; k < 7; k++)
             {
-                for (int k = 0; k < 7; k++)
-                {
-                    // 0 号固定在相机视线方向（+z 偏左），保证主倒影一定在画面里
-                    float th = k == 0 ? Mathf.PI * 0.5f + 0.15f
-                                      : Mathf.PI * 2f * k / 7f + (float)rng.NextDouble() * 0.4f;
-                    // 树要**贴着岸**长。倒影占多少水面是几何问题不是着色问题：
-                    // 树在岸外 3.6~9.1m 时离相机 20~26m，只张 8° 仰角，就只能在远岸一条窄带里倒出来；
-                    // 收到 1.6~4.8m 后张角翻倍，潭面大半都能映到树。
-                    float r = PondR(th) + 1.6f + (float)rng.NextDouble() * 3.2f;
-                    var inst = PrefabUtility.InstantiatePrefab(trees) as UnityEngine.GameObject;
-                    if (inst == null) continue;
-                    inst.name = "PondTree_0" + k;
-                    if (inst.transform.childCount == 0) continue;
-                    var keep = inst.transform.GetChild(0);
-                    for (int c = inst.transform.childCount - 1; c >= 0; c--)
-                        if (inst.transform.GetChild(c) != keep)
-                            UnityEngine.Object.DestroyImmediate(inst.transform.GetChild(c).gameObject);
-
-                    float sc = 0.80f + (float)rng.NextDouble() * 0.45f;
-                    inst.transform.localScale = Vector3.one * sc;
-                    var target = new Vector3(Mathf.Cos(th) * r, BankY(r, th) - 0.2f, Mathf.Sin(th) * r);
-                    inst.transform.position = Vector3.zero;
-                    inst.transform.position = target - Vector3.Scale(keep.localPosition, inst.transform.localScale);
-
-                    // 远树不必自投影：仰角 30° 下它们会在草坡上拖出长条黑影
-                    foreach (var shR in inst.GetComponentsInChildren<Renderer>(true))
-                        shR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    placed++;
-                }
+                // 0 号固定在相机视线方向（+z 偏左），保证主倒影一定在画面里
+                float th = k == 0 ? Mathf.PI * 0.5f + 0.15f
+                                  : Mathf.PI * 2f * k / 7f + (float)rng.NextDouble() * 0.4f;
+                // 树要**贴着岸**长。倒影占多少水面是几何问题不是着色问题：
+                // 树在岸外 3.6~9.1m 时离相机 20~26m，只张 8° 仰角，就只能在远岸一条窄带里倒出来；
+                // 收到 1.6~4.8m 后张角翻倍，潭面大半都能映到树。
+                float r = PondR(th) + 1.6f + (float)rng.NextDouble() * 3.2f;
+                if (PlacePondTree("PondTree_0" + k,
+                        new Vector3(Mathf.Cos(th) * r, BankY(r, th), Mathf.Sin(th) * r),
+                        rng, k, 0.85f, 1.15f) != null) placed++;
             }
 
             EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
-            WriteProbe("MENU63 props " + n + " rocks/trees " + placed + (trees == null ? " TREES-MISSING" : "") + "\n");
+            WriteProbe("MENU63 props " + n + " rocks/trees " + placed
+                       + (placed < 7 ? " TREE-PREFAB-MISSING" : "") + "\n");
         }
 
         // ═════════════════════════ 64 ═════════════════════════
-        [MenuItem("Tools/WaterPond/64 整链建潭(60→63)")]
+        [MenuItem("Tools/WaterPond/64 整链建潭(60→68)")]
         public static void BuildWholePond()
         {
             if (UnityEngine.Application.isPlaying)
@@ -347,6 +329,7 @@ namespace WaterProject.EditorTools
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("60 骨架", BuildPondShell),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("61 水", BuildPondWater),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("63 道具", BuildPondProps),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("68 森林", BuildForest),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("62 反射", BuildPlanarReflection),
             };
             for (int i = 0; i < steps.Length; i++)
@@ -412,6 +395,184 @@ namespace WaterProject.EditorTools
             WriteProbe("MENU67 rt " + rt.width + "x" + rt.height + " -> " + outPath + "\n");
         }
 
+        // ═════════════════════════ 68 ═════════════════════════
+        [MenuItem("Tools/WaterPond/68 森林化(冠层+密树环+灌木+倒木)")]
+        public static void BuildForest()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU68 REFUSED: 在 Play 模式，先退出\n"); return; }
+
+            var rng = new System.Random(202609247);
+
+            // 只清自己这一轮的产物：菜单63 的 PondTree_/PondRock_ 由它自己负责
+            foreach (var go in UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None))
+                if (go != null && (go.name.StartsWith("ForestTree_") || go.name.StartsWith("PondBush_")
+                                   || go.name.StartsWith("PoolLog_")))
+                    UnityEngine.Object.DestroyImmediate(go);
+
+            int bushes = BuildUndergrowth(rng);
+            int trees  = BuildTreeWall();
+            int logs   = BuildFallenLogs(rng);
+            BuildCanopyDome();
+
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU68 forest trees " + trees + " bushes " + bushes + " logs " + logs + "\n");
+        }
+
+        // 冠层穹顶：一块"有洞的天花板"。
+        //   天窗（t0）留在头顶，是画面里唯一的天；
+        //   下缘（t1）抬到约 32° 仰角 —— 这台机位画幅上缘只到仰角 16°，
+        //   下缘若停在 18° 就会正好压在顶边上，读成黑色洞顶而不是"头顶的树冠"。
+        //   0~32° 那圈留给树干 + 漏光带，而这一圈正是低机位掠射水面会倒出来的高度。
+        static void BuildCanopyDome()
+        {
+            const int AZ = 72, PO = 18;
+            float t1 = 0.320f * Mathf.PI;
+            int rowLen = AZ + 1;
+            var v = new List<Vector3>();
+
+            for (int j = 0; j <= PO; j++)
+            {
+                float fj = (float)j / PO;
+                for (int i = 0; i <= AZ; i++)
+                {
+                    float p = Mathf.PI * 2f * i / AZ;
+                    // 洞缘被树冠咬成不规则形，不给它一条干净的圆周
+                    float t0 = 0.085f * Mathf.PI
+                             + 0.020f * Mathf.Sin(p * 5f + 1.1f)
+                             + 0.012f * Mathf.Sin(p * 11f - 0.4f);
+                    float t = Mathf.Lerp(t0, t1, fj);
+                    float rr = 26f * (1f + 0.10f * Mathf.Sin(p * 5f + t * 3f)
+                                          + 0.07f * Mathf.Sin(p * 9f - 1.4f)
+                                          + 0.05f * Mathf.Sin(t * 11f + 2.2f));
+                    v.Add(new Vector3(Mathf.Sin(t) * Mathf.Cos(p) * rr,
+                                      Mathf.Cos(t) * rr,
+                                      Mathf.Sin(t) * Mathf.Sin(p) * rr));
+                }
+            }
+
+            var idx = new List<int>();
+            for (int j = 0; j < PO; j++)
+                for (int i = 0; i < AZ; i++)
+                {
+                    int a = j * rowLen + i, b = a + 1, c = (j + 1) * rowLen + i, d = c + 1;
+                    idx.Add(a); idx.Add(c); idx.Add(b);
+                    idx.Add(b); idx.Add(c); idx.Add(d);
+                }
+
+            var dome = AttachMesh("PoolCanopy", WaterProjectSetup.FacetedFrom(v, idx),
+                                  GetMat("Pond_Canopy", new Color(0.055f, 0.118f, 0.062f)));
+            var mr = dome != null ? dome.GetComponent<MeshRenderer>() : null;
+            if (mr != null) mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        // 两圈密植：中圈把对岸封成树墙（也是倒影主体），外圈在雾里读成"林子还有多深"。
+        static int BuildTreeWall()
+        {
+            var camT = UnityEngine.GameObject.Find("Main Camera");
+            Vector3 camXZ = camT != null ? camT.transform.position : new Vector3(-2.2f, 1.9f, -9.6f);
+
+            var rng = new System.Random(202609248);
+            int n = 0;
+            for (int ring = 0; ring < 2; ring++)
+            {
+                int count = ring == 0 ? 14 : 20;
+                float lo = ring == 0 ? 6.0f : 15.0f;
+                float span = ring == 0 ? 6.0f : 13.0f;
+                float sLo = ring == 0 ? 0.85f : 1.00f;
+                for (int k = 0; k < count; k++)
+                {
+                    float th = Mathf.PI * 2f * k / count + (float)rng.NextDouble() * 0.42f;
+                    float r = PondR(th) + lo + (float)rng.NextDouble() * span;
+                    var at = new Vector3(Mathf.Cos(th) * r, BankY(r, th), Mathf.Sin(th) * r);
+                    // 别把树长在相机身上
+                    if (new Vector2(at.x - camXZ.x, at.z - camXZ.z).magnitude < 3.5f) continue;
+                    if (PlacePondTree("ForestTree_" + n.ToString("00"), at, rng, n,
+                                      sLo, sLo + 0.30f) != null) n++;
+                }
+            }
+            return n;
+        }
+
+        // 林下灌木：同一套石头机器，把噪声模块压到 0.22 → 读成一团圆叶而不是岩石
+        static int BuildUndergrowth(System.Random rng)
+        {
+            var mat = GetMat("Pond_Bush", new Color(0.030f, 0.098f, 0.044f));
+            var blobs = new Mesh[3];
+            for (int v = 0; v < 3; v++) blobs[v] = WaterProjectSetup.BuildFacetedRock(v, 0.22f);
+
+            int n = 0;
+            for (int k = 0; k < 36; k++)
+            {
+                float th = (float)rng.NextDouble() * Mathf.PI * 2f;
+                float r = PondR(th) + 1.2f + (float)rng.NextDouble() * 15f;
+                float y = BankY(r, th) - 0.20f;
+                // 注意：PlaceBoulder 返回的是"本次放置数 1"，索引要从外面传进去
+                WaterProjectSetup.PlaceBoulder(blobs, mat, rng, "PondBush_", n,
+                    new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r), 0.55f, 1.45f);
+                n++;
+            }
+            return n;
+        }
+
+        // 倒木：把棱角巨石沿长轴拉成一条脊，一头搭进水里 —— 低多边形里最省事的"横倒的树"
+        static int BuildFallenLogs(System.Random rng)
+        {
+            var mat = GetMat("Pond_Bark", new Color(0.062f, 0.040f, 0.026f));
+            var logMesh = WaterProjectSetup.BuildFacetedRock(1, 0.30f);
+            int n = 0;
+            for (int k = 0; k < 3; k++)
+            {
+                float th = Mathf.PI * 2f * k / 3f + 0.9f + (float)rng.NextDouble() * 0.4f;
+                float r = PondR(th) - 0.6f + (float)rng.NextDouble() * 2.4f;
+                float y = BankY(Mathf.Max(r, PondR(th) + 0.2f), th) + 0.10f;
+                var go = new UnityEngine.GameObject("PoolLog_" + k);
+                var mf = go.AddComponent<MeshFilter>();
+                var mr = go.AddComponent<MeshRenderer>();
+                mf.sharedMesh = logMesh;
+                mr.sharedMaterial = mat;
+                go.transform.position = new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r);
+                go.transform.rotation = Quaternion.Euler(0f, Mathf.PI * Mathf.Rad2Deg * th + 90f
+                                                          + (float)rng.NextDouble() * 30f - 15f,
+                                                         (float)rng.NextDouble() * 6f - 3f);
+                go.transform.localScale = new Vector3(3.4f + (float)rng.NextDouble() * 1.6f,
+                                                      0.42f, 0.40f);
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                n++;
+            }
+            return n;
+        }
+
+        // 交付树 Prefab 摆放：变体轮换 + 随机绕 Y + 0.85~1.15 缩放（文档 §6.5 去重复感），
+        // 叶片 Renderer 关投影（文档 §7.1：alpha-clip 阴影是森林场景的头号开销）。
+        static UnityEngine.GameObject PlacePondTree(string nm, Vector3 target, System.Random rng,
+                                                    int variant, float sMin, float sMax)
+        {
+            string ap = "Assets/Trees/Prefabs/Prefab_SM_Tree_Broadleaf_"
+                      + (variant % 5 + 1).ToString("00") + ".prefab";
+            var pf = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(ap);
+            if (pf == null) { WriteProbe("PLACE-MISSING " + ap + "\n"); return null; }
+
+            var inst = PrefabUtility.InstantiatePrefab(pf) as UnityEngine.GameObject;
+            if (inst == null) return null;
+            inst.name = nm;
+            // ⚠ 根节点带着导入器给的 -90° X 轴转换（Blender 是 Z-up）。
+            //   只能在世界系里【左乘】一个绕 Y 的旋转；直接赋 rotation 会把轴转换抹掉、树被放倒。
+            inst.transform.position = target;      // 原点在树根底部，不再做局部偏移
+            inst.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f)
+                                    * inst.transform.rotation;
+            inst.transform.localScale = Vector3.one
+                * (sMin + (float)rng.NextDouble() * (sMax - sMin));
+
+            foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && m.name.Contains("Leaf"))
+                    { r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; break; }
+            }
+            return inst;
+        }
+
         // ═════════════════════════ 共用 ═════════════════════════
         static void SetupLighting()
         {
@@ -423,41 +584,61 @@ namespace WaterProject.EditorTools
             }
             sun.name = "Directional Light";
             sun.type = UnityEngine.LightType.Directional;
-            // 顺光位下受光面 N·L≈0.92（逆光时只有 0.16），沿用 2.5 会直接把沙地打到截顶
-            // （实测 med(255,255,239)、岩石 (171,225,255)）。1.4 让同反照率的岩石落回
-            // Main 的实测族 (103,130,154)。
-            sun.intensity = 1.4f;
-            sun.color = new Color(1f, 0.975f, 0.95f);
-            // 太阳放在【相机后上方】而不是对岸逆光位。
-            // 逆光（Euler 30/208）时远岸沙坡朝 -z、坡度 23°，N·L 只有 0.16 → 被蓝色三光源环境光
-            // 主导，在水线上方横出一条失饱和的灰带（实测 (110,118,119)→(99,106,106)，而它后面
-            // 平坦岸顶是 (211,201,177)）—— 与 Main 的"水泥台阶"同一类故障。
-            // 顺光后远岸坡面 N·L≈0.92，且平面反射里映出的也是受光的坡面而不是暗块。
-            // 代价：掠射碎闪本来要求太阳仰角≈视线俯角（这台机位约 5~7°），而 _SunGloss 260 的
-            // 半高宽只有 ±0.3°，抬到 48° 后水面基本不再有太阳反光带 —— 林间静潭本就该如此。
-            sun.transform.rotation = Quaternion.Euler(48f, 336f, 0f);
+            // ── 林间漏光 ──
+            // 开阔地那套"太阳 1.4 @E48/336"在这里不成立：密林里没有成片顺光，
+            // 只有一束从头顶天窗插下来的漏光。仰角给到 72°（接近顶光，才像穿过冠层），
+            // 方位仍放相机后侧 —— 放到对岸就会把远岸重新打回那条失饱和灰带（见《05》D-16）。
+            // 叶卡是双面 alpha 片，朝向太阳的只占少数，平均受光很低；2.2 下树冠与地平带
+            // 一起塌到 (40,62,30) 附近。抬到 3.0 抬的是"被照到的那几簇"，环境光不动，
+            // 所以增加的是反差而不是整体亮度 —— 幽深需要的是暗底 + 少量亮部。
+            sun.intensity = 3.0f;
+            sun.color = new Color(1f, 0.880f, 0.620f);   // 暖金，与绿底互补才读得出"光"
+            sun.transform.rotation = Quaternion.Euler(72f, 340f, 0f);
             sun.shadows = UnityEngine.LightShadows.Soft;
 
-            // 潭水的观感一半靠天光：水面反射的是天空，环境光照的是岸。
+            // 林内天光是被叶子反复反弹出来的绿，阴影面必须是"暗绿"而不是"暗灰" —— 幽深感主要靠它。
+            // 但不能压太低：交付树的叶卡是双面 alpha 片，树冠下半球朝向太阳的很少，
+            // 天空分量低于 ~0.15 时整片树冠会糊成一团没有形状的暗块。
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor    = new Color(0.500f, 0.580f, 0.680f);
-            RenderSettings.ambientEquatorColor = new Color(0.440f, 0.500f, 0.470f);
-            RenderSettings.ambientGroundColor  = new Color(0.290f, 0.270f, 0.230f);
+            RenderSettings.ambientSkyColor    = new Color(0.150f, 0.230f, 0.160f);
+            RenderSettings.ambientEquatorColor = new Color(0.100f, 0.150f, 0.100f);
+            RenderSettings.ambientGroundColor  = new Color(0.032f, 0.042f, 0.028f);
 
-            var sky = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Sky_SimpleBlue.mat");
-            if (sky != null) RenderSettings.skybox = sky;
+            RenderSettings.skybox = ForestSkyMaterial();
 
+            // 雾是"看不透的林子"这件事本身：颜色取冠层中调绿灰，
+            // 这样远处树干不是"变暗"而是"融进树冠"，层次才不会塌成一片黑。
             RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.Exponential;
-            RenderSettings.fogColor = new Color(0.63f, 0.77f, 0.96f);
-            RenderSettings.fogDensity = 0.0060f;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = new Color(0.086f, 0.130f, 0.098f);
+            RenderSettings.fogDensity = 0.0260f;
 
-            // 后处理：ACES + 高曝光，和 Main 同一套标定
             var volGo = GetOrCreate("GlobalVolume");
             var vol = volGo.GetComponent<UnityEngine.Rendering.Volume>();
             if (vol == null) vol = volGo.AddComponent<UnityEngine.Rendering.Volume>();
             vol.isGlobal = true; vol.enabled = true;
             vol.sharedProfile = PondVolume();
+        }
+
+        // 林冠天空盒：复用 SkySimpleBlue 的三段渐变着色器。
+        // 明暗方向和开阔地**相反** —— 冠层的暗由 PoolCanopy 那层几何负责，
+        // 天空盒在这里只代表"从缝隙漏进来的天"，所以天顶要亮、地平是中等雾绿。
+        // 若把天顶压成浓绿，穹顶天窗里透出来的就是一块黑，整幅唯一的灯就没了。
+        static Material ForestSkyMaterial()
+        {
+            string p = MatFolder + "/Sky_ForestCanopy.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            var sh = Shader.Find("WaterProject/SkySimpleBlue");
+            if (sh == null) { WriteProbe("!! SkySimpleBlue shader NOT FOUND\n"); return null; }
+            if (m == null) { m = new Material(sh) { name = "Sky_ForestCanopy" }; AssetDatabase.CreateAsset(m, p); }
+            else m.shader = sh;
+            m.SetColor("_ZenithColor",  new Color(0.660f, 0.700f, 0.560f));  // 天窗里的天
+            // 地平带必须是画面里最亮的区域之一 —— 幽深靠"整体暗 + 几处亮"，不是"全都一样暗"。
+            // 压到 0.185 时它与树冠实测几乎同值（(42,59,36) vs (40,62,30)），整幅掉进一条窄绿带。
+            m.SetColor("_HorizonColor", new Color(0.280f, 0.370f, 0.250f));  // 远处透光树冠墙
+            m.SetColor("_GroundColor",  new Color(0.035f, 0.048f, 0.030f));  // 腐殖质
+            EditorUtility.SetDirty(m);
+            return m;
         }
 
         static UnityEngine.Rendering.VolumeProfile PondVolume()
@@ -478,9 +659,9 @@ namespace WaterProject.EditorTools
 
             if (!prof.TryGet<ColorAdjustments>(out var col))
             { col = prof.Add<ColorAdjustments>(); AssetDatabase.AddObjectToAsset(col, prof); }
-            col.postExposure.overrideState = true; col.postExposure.value = 1.15f;
-            col.saturation.overrideState = true;   col.saturation.value = 14f;
-            col.contrast.overrideState = true;     col.contrast.value = 0f;
+            col.postExposure.overrideState = true; col.postExposure.value = 1.50f;
+            col.saturation.overrideState = true;   col.saturation.value = 24f;
+            col.contrast.overrideState = true;     col.contrast.value = 18f;
 
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
@@ -496,18 +677,18 @@ namespace WaterProject.EditorTools
             if (m == null) { m = new Material(sh) { name = "Water_Pond" }; AssetDatabase.CreateAsset(m, p); }
             else m.shader = sh;
 
-            m.SetColor("_DeepColor",    new Color(0.055f, 0.290f, 0.310f));
-            m.SetColor("_ShallowColor", new Color(0.260f, 0.580f, 0.540f));
-            m.SetColor("_SkyZenith",    new Color(0.100f, 0.280f, 0.400f));
-            m.SetColor("_SkyHorizon",   new Color(0.550f, 0.700f, 0.850f));
-            m.SetColor("_SunColor",     new Color(1.000f, 0.950f, 0.840f));
-            m.SetColor("_FoamColor",    new Color(0.920f, 0.970f, 0.970f));
+            m.SetColor("_SkyZenith",    new Color(0.660f, 0.700f, 0.560f));   // = Sky_ForestCanopy 天顶
+            m.SetColor("_SkyHorizon",   new Color(0.280f, 0.370f, 0.250f));   // = Sky_ForestCanopy 地平
+            m.SetColor("_SunColor",     new Color(1.000f, 0.880f, 0.620f));   // = 灯的暖金色
+            m.SetColor("_FoamColor",    new Color(0.620f, 0.680f, 0.560f));
 
-            // 潭深 ~1.45m。_Absorb 0.9 在这个深度给出 depthMix 0.73 → 整潭近黑绿，
-            // 把倒影整个吞掉。清水潭的吸收必须很低，深度感主要靠"看得见底"而不是压暗。
-            m.SetFloat("_Absorb", 0.30f);
+            // 林间潭不是"清水见沙"，是"腐殖质的墨绿"：吸收抬上去、透明度抬上去，
+            // 但深浅两色都要让绿主导 —— 富营养水体的吸收方向是红，不是青蓝。
+            m.SetColor("_DeepColor",    new Color(0.014f, 0.062f, 0.050f));
+            m.SetColor("_ShallowColor", new Color(0.085f, 0.215f, 0.165f));
+            m.SetFloat("_Absorb", 0.55f);
             m.SetFloat("_MaxDepth", 1.6f);
-            m.SetFloat("_Opacity", 0.66f);
+            m.SetFloat("_Opacity", 0.76f);
 
             // 几何波：fetch 正确的短波细浪
             m.SetFloat("_WaveAmp", 0.010f);
@@ -518,7 +699,7 @@ namespace WaterProject.EditorTools
             m.SetFloat("_DetailStrength", 0.28f);
             m.SetFloat("_DetailScale", 1.9f);
             m.SetFloat("_DetailFlow", 0.10f);
-            m.SetFloat("_RippleStrength", 0.11f);
+            m.SetFloat("_RippleStrength", 0.085f);
             m.SetFloat("_RippleScale", 5.5f);
 
             m.SetFloat("_RefractStrength", 0.12f);
@@ -532,17 +713,20 @@ namespace WaterProject.EditorTools
             m.SetFloat("_ReflDistort", 0.016f);
             m.SetFloat("_ReflFade", 120.0f);
             m.SetFloat("_FresnelPow", 4.0f);
-            m.SetFloat("_SkyReflect", 0.95f);
+            // 林底不是一面干净的镜子：四周都在遮天，反射权重给不到 1；
+            // 涟漪再强一点就会把倒影切成斑马纹，所以同时收 _RippleStrength。
+            m.SetFloat("_SkyReflect", 0.90f);
 
             m.SetFloat("_SpecPower", 320f);
-            m.SetFloat("_SpecStrength", 1.1f);
+            m.SetFloat("_SpecStrength", 0.5f);
             m.SetFloat("_SunGloss", 260f);
-            m.SetFloat("_SunStrength", 0.9f);
+            m.SetFloat("_SunStrength", 0.5f);
 
             m.SetFloat("_CrestJ", 0.55f);   m.SetFloat("_CrestSoft", 0.30f);
-            m.SetFloat("_CrestFoam", 0.10f);
-            m.SetFloat("_ShoreFoam", 0.75f); m.SetFloat("_ShoreWidth", 0.55f);
-            m.SetFloat("_AmbientStrength", 0.40f);
+            m.SetFloat("_CrestFoam", 0.04f);
+            m.SetFloat("_ShoreFoam", 0.28f); m.SetFloat("_ShoreWidth", 0.55f);
+            // 环境光整体压到约 1/4 之后，水体自照项必须补偿，否则"幽深"会变成"一个黑洞"。
+            m.SetFloat("_AmbientStrength", 1.0f);
             m.SetFloat("_DebugMode", 0f);
 
             EditorUtility.SetDirty(m);

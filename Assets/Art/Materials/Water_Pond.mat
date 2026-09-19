@@ -29,9 +29,9 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.3
-    - _AmbientStrength: 0.4
-    - _CrestFoam: 0.1
+    - _Absorb: 0.55
+    - _AmbientStrength: 1
+    - _CrestFoam: 0.04
     - _CrestJ: 0.55
     - _CrestSoft: 0.3
     - _DebugMode: 0
@@ -43,28 +43,28 @@ Material:
     - _FresnelPow: 4
     - _MaxDepth: 1.6
     - _MaxUVOffset: 0.012
-    - _Opacity: 0.66
+    - _Opacity: 0.76
     - _PlanarStrength: 1.6
     - _ReflDistort: 0.016
     - _ReflFade: 120
     - _RefractStrength: 0.12
     - _RippleScale: 5.5
-    - _RippleStrength: 0.11
-    - _ShoreFoam: 0.75
+    - _RippleStrength: 0.085
+    - _ShoreFoam: 0.28
     - _ShoreWidth: 0.55
-    - _SkyReflect: 0.95
+    - _SkyReflect: 0.9
     - _SpecPower: 320
-    - _SpecStrength: 1.1
+    - _SpecStrength: 0.5
     - _SunGloss: 260
-    - _SunStrength: 0.9
+    - _SunStrength: 0.5
     - _WaveAmp: 0.01
     - _WaveScale: 1
     - _WaveSpeed: 0.55
     m_Colors:
-    - _DeepColor: {r: 0.055, g: 0.29, b: 0.31, a: 1}
-    - _FoamColor: {r: 0.92, g: 0.97, b: 0.97, a: 1}
-    - _ShallowColor: {r: 0.26, g: 0.58, b: 0.54, a: 1}
-    - _SkyHorizon: {r: 0.55, g: 0.7, b: 0.85, a: 1}
-    - _SkyZenith: {r: 0.1, g: 0.28, b: 0.4, a: 1}
-    - _SunColor: {r: 1, g: 0.95, b: 0.84, a: 1}
+    - _DeepColor: {r: 0.014, g: 0.062, b: 0.05, a: 1}
+    - _FoamColor: {r: 0.62, g: 0.68, b: 0.56, a: 1}
+    - _ShallowColor: {r: 0.085, g: 0.215, b: 0.165, a: 1}
+    - _SkyHorizon: {r: 0.28, g: 0.37, b: 0.25, a: 1}
+    - _SkyZenith: {r: 0.66, g: 0.7, b: 0.56, a: 1}
+    - _SunColor: {r: 1, g: 0.88, b: 0.62, a: 1}
   m_BuildTextureStacks: []
