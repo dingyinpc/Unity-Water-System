@@ -33,12 +33,12 @@ Material:
     - _DepthDebug: 0
     - _DepthSharp: 5
     - _DetailEnd: 40
-    - _DetailScale: 6.5
+    - _DetailScale: 7.6
     - _DetailStart: 2
-    - _DetailStrength: 1.2
+    - _DetailStrength: 1.4
     - _Eta: 1.33
     - _FoamLift: 0.03
-    - _FresnelPow: 6
+    - _FresnelPow: 4
     - _InteractionAmp: 0.22
     - _InteractionFoam: 0.45
     - _InteractionNorm: 1.4
@@ -48,11 +48,11 @@ Material:
     - _RefractStrength: 0.3
     - _ScatterStrength: 0.45
     - _ShoreFoam: 0.3
-    - _SkyReflect: 0.55
-    - _SpecPower: 900
-    - _SpecStrength: 1.1
-    - _SunGloss: 1500
-    - _SunStrength: 1.4
+    - _SkyReflect: 1
+    - _SpecPower: 200
+    - _SpecStrength: 2
+    - _SunGloss: 90
+    - _SunStrength: 2.2
     - _SunTransmission: 0.2
     - _TessFar: 32
     - _TessNear: 6

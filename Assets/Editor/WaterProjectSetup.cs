@@ -2616,7 +2616,7 @@ namespace WaterProject.EditorTools
         }
 
         // 非索引低多边形卧石：方向哈希扰动 → 同位置顶点一致，裂开后仍是封闭体
-        static Mesh BuildFacetedRock(int variant)
+        static Mesh BuildFacetedRock(int variant, float lump = 1f)
         {
             const int segs = 9, rings = 6;
             float seed = 11.3f + variant * 7.7f;
@@ -2630,10 +2630,11 @@ namespace WaterProject.EditorTools
                 float theta = Mathf.PI * 0.5f * (2f * j / rings - 1f);
                 float ct = Mathf.Cos(theta);
                 float cx = ct * Mathf.Cos(phi), cy = Mathf.Sin(theta), cz = ct * Mathf.Sin(phi);
+                // lump 缩放三档噪声幅度：1 = 棱角巨石，0.3 左右 = 圆润卵石
                 float n = 1f
-                    + 0.26f * Mathf.Sin(3.1f * cx + seed) * Mathf.Cos(2.7f * cy + seed * 0.6f)
-                    + 0.17f * Mathf.Sin(5.3f * cy + seed * 1.3f) * Mathf.Cos(4.9f * cz + seed)
-                    + 0.10f * Mathf.Sin(7.7f * cz + seed * 1.7f);
+                    + 0.26f * lump * Mathf.Sin(3.1f * cx + seed) * Mathf.Cos(2.7f * cy + seed * 0.6f)
+                    + 0.17f * lump * Mathf.Sin(5.3f * cy + seed * 1.3f) * Mathf.Cos(4.9f * cz + seed)
+                    + 0.10f * lump * Mathf.Sin(7.7f * cz + seed * 1.7f);
                 return new Vector3(cx, cy * 0.72f, cz) * n;
             };
 
@@ -3080,7 +3081,7 @@ namespace WaterProject.EditorTools
                 { "PondWall",          new Color(0.470f, 0.415f, 0.350f) },
                 { "Ground_Lake",       new Color(0.280f, 0.340f, 0.190f) },   // 池底沙色：绿需反超红，否则折射出来的浅滩是灰的不是薄荷绿
                 { "GrassGround",       new Color(0.120f, 0.250f, 0.125f) },
-                { "GreenWall_Distant", new Color(0.055f, 0.330f, 0.110f) },   // 实测(55,151,78) vs 参考绿带(26,116,77)：压红压亮
+                { "GreenWall_Distant", new Color(0.022f, 0.250f, 0.100f) },   // 实测(52,149,82) vs 参考草带(26,116,77)：红要再砍一半以上才够饱和
                 { "Hill_Distant",      new Color(0.340f, 0.420f, 0.460f) },   // 大气透视：蓝>绿（此值原先只改在 .mat 上，菜单一跑就回退）
                 { "Ground_FarHaze",    new Color(0.150f, 0.245f, 0.215f) },   // 远处地面专用（与池底解耦）
                 { "NormalTree_Leaves", new Color(0.300f, 0.520f, 0.215f) },   // 覆盖 glb 内嵌；逆光剪影靠环境光抬，不靠提反照率
@@ -3123,7 +3124,6 @@ namespace WaterProject.EditorTools
                 water.SetColor("_SkyHorizon",   new Color(0.550f, 0.700f, 0.850f));
                 water.SetColor("_SunColor",     new Color(1f, 0.950f, 0.820f));
                 water.SetColor("_FoamColor",    new Color(0.88f, 0.96f, 0.96f));
-                SetIf(water, "_SkyReflect", 0.55f);
                 SetIf(water, "_ScatterStrength", 0.45f);
                 SetIf(water, "_Absorb", 0.85f);
                 // 池子只有 ~1.3m 深，而 gap 是视深：1.9 的吸收系数把 depthMix 顶到 0.91，整池都读成深水、
@@ -3136,15 +3136,24 @@ namespace WaterProject.EditorTools
                 // _MaxUVOffset 是折射位移上限（占屏幕比例），0.12 会把湖底抹成一团糊
                 SetIf(water, "_MaxUVOffset", 0.025f);
                 SetIf(water, "_RefractStrength", 0.3f);
-                // 碎闪波瓣：必须"窄"。宽波瓣 + 低频法线 = 大片同朝向面一起亮 → 整块死白光斑
-                SetIf(water, "_SpecStrength", 1.1f);
-                SetIf(water, "_SpecPower", 900f);
-                SetIf(water, "_SunStrength", 1.4f);
-                SetIf(water, "_SunGloss", 1500f);
+                // 碎闪：参考帧亮带实测 med(208,218,201)（近白），我们一路从 (69,149,171) 抬到 (95,177,175)
+                // 才像样。真正的瓶颈不是高光强度，而是**掠射反射根本没建立起来**：
+                //   _SunGloss 700 → pow(cosδ,700) 半高宽只有 ±1.8°，太阳高光被压成一条细线；
+                //   _FresnelPow 6 → 水面俯角 10° 时 fres 才 0.33，要贴着地平线才趋近 1，
+                //     于是画面里绝大部分水面都没在"照镜子"，天空反射根本吃不满。
+                // 两者一起放宽后，中水面才出现成片的高亮反射场。
+                // 不会退回根因 8：细节法线已是三 octave 且 _DetailScale 7.6，面元足够小，
+                // 放宽波瓣只会让点变多变亮，不会连成一整块死白。
+                SetIf(water, "_FresnelPow", 4f);      // 菜单40 会把这项塞回 6，必须在后面覆盖一次
+                SetIf(water, "_SkyReflect", 1.0f);
+                SetIf(water, "_SpecStrength", 2.0f);
+                SetIf(water, "_SpecPower", 200f);
+                SetIf(water, "_SunStrength", 2.2f);
+                SetIf(water, "_SunGloss", 90f);
                 // 细节法线：3 会把法线掀到近水平、菲涅尔饱和；0.35 又平得没有碎闪
-                // _DetailScale 6.5 配合 shader 第三层高频八度，把碎闪打碎成点状
-                SetIf(water, "_DetailStrength", 1.2f);
-                SetIf(water, "_DetailScale", 6.5f);
+                // _DetailScale 提到 7.6 + 强度 1.4：波纹更小更密，碎闪点才够密
+                SetIf(water, "_DetailStrength", 1.4f);
+                SetIf(water, "_DetailScale", 7.6f);
                 SetIf(water, "_DepthDebug", 0f);
                 EditorUtility.SetDirty(water);
                 sb.Append("water=teal+glitter ");
@@ -3358,7 +3367,8 @@ namespace WaterProject.EditorTools
             foreach (var go in all)
             {
                 if (go == null) continue;
-                if (!(go.name.StartsWith("Boulder_") || go.name.StartsWith("SandBlob_"))) continue;
+                if (!(go.name.StartsWith("Boulder_") || go.name.StartsWith("SandBlob_")
+                      || go.name.StartsWith("Pebble_"))) continue;
                 var t = go.transform;
                 float g = groundAt(t.position.x, t.position.z);
                 if (float.IsNegativeInfinity(g)) { skipped++; continue; }
@@ -3505,7 +3515,7 @@ namespace WaterProject.EditorTools
                 float h = Hedge(th);
                 if (r <= rProf[1]) return Mathf.Lerp(-0.6f, h, Mathf.InverseLerp(rProf[0], rProf[1], r));
                 if (r <= rProf[2]) return Mathf.Lerp(h, h + 2.4f, Mathf.InverseLerp(rProf[1], rProf[2], r));
-                return Mathf.Lerp(h + 2.4f, h + 6.5f, Mathf.InverseLerp(rProf[2], rProf[3], r));
+                return Mathf.Lerp(h + 2.4f, h + 8.5f, Mathf.InverseLerp(rProf[2], rProf[3], r));
             };
 
             const int seg = 256;
@@ -3518,7 +3528,7 @@ namespace WaterProject.EditorTools
                 verts.Add(new Vector3(ct * rProf[0], -0.6f, st * rProf[0]));
                 verts.Add(new Vector3(ct * rProf[1], Hedge(th), st * rProf[1]));
                 verts.Add(new Vector3(ct * rProf[2], Hedge(th) + 2.4f, st * rProf[2]));
-                verts.Add(new Vector3(ct * rProf[3], Hedge(th) + 6.5f, st * rProf[3]));
+                verts.Add(new Vector3(ct * rProf[3], Hedge(th) + 8.5f, st * rProf[3]));
                 if (gs == seg) break;
                 int a = gs * 4;
                 for (int k = 0; k < 3; k++)
@@ -3560,6 +3570,10 @@ namespace WaterProject.EditorTools
                 // 先改缩放再平移：keep.position 每次现算世界矩阵，所以父节点旋转/缩放都被自动算进 delta
                 t.localScale = new Vector3(sc, sc, sc);
                 t.position = t.position + (target - keep.position);
+                // 仰角 30° + 阴影距离 140m ⇒ 每棵远树都在草坡上拖出一道长黑影，参考帧的远岸没有这种条纹。
+                // 这个距离上它们只需要读成灌木剪影，不需要自投影
+                foreach (var shR in t.GetComponentsInChildren<Renderer>(true))
+                    shR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 tn++;
             }
             sb.Append("trees " + tn + " ");
@@ -3611,6 +3625,95 @@ namespace WaterProject.EditorTools
             if (m.HasProperty("_Cull")) m.SetFloat("_Cull", 0f);   // 荷叶背面是黄色胶层，双面+同色一并解决
             EditorUtility.SetDirty(m);
             return m;
+        }
+
+    // —— 58) 沿岸补撒圆润小卵石：参考帧两岸是"大量小圆石成簇"，我们只有稀疏大棱角石 ——
+        [MenuItem("Tools/WaterProject/58 沿岸补撒圆润小卵石")]
+        public static void ScatterShorePebbles()
+        {
+            var rng = new System.Random(202609241);
+            float S(float th) => ShoreR(th) * 0.6f;
+
+            // 1) 两颗圆润卵石网格：同一个球机，但 lump 把噪声压到 0.3，读成被水磨圆的小石
+            var pebbles = new Mesh[2];
+            for (int v = 0; v < 2; v++)
+            {
+                string p = "Assets/Art/Meshes/Pebble_0" + (v + 1) + ".asset";
+                var built = BuildFacetedRock(3 + v, 0.30f);
+                var asset = AssetDatabase.LoadAssetAtPath<Mesh>(p);
+                if (asset == null)
+                {
+                    built.name = "Pebble_0" + (v + 1);
+                    AssetDatabase.CreateAsset(built, p);
+                    asset = built;
+                }
+                else
+                {
+                    asset.Clear();
+                    asset.vertices = built.vertices;
+                    asset.normals = built.normals;
+                    asset.triangles = built.triangles;
+                    asset.RecalculateBounds();
+                    EditorUtility.SetDirty(asset);
+                }
+                pebbles[v] = asset;
+            }
+            AssetDatabase.SaveAssets();
+
+            var mat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Slate_BlueRock.mat");
+            if (mat == null) { WriteProbe("MENU58 mat MISSING\n"); return; }
+
+            // 2) 清掉上一轮（菜单39 的清除循环也认 Pebble_，两边都能保证可重复执行）
+            foreach (var go in UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None))
+                if (go != null && go.name.StartsWith("Pebble_")) UnityEngine.Object.DestroyImmediate(go);
+
+            // 3) 15 簇沿水线成簇散布；y 先给个近似值，真正的贴合交给菜单53（它采样实际地面网格）
+            //    尺度：0.055~0.175 时远岸卵石只有 1~3 px，等于没撒。参考帧的卵石是能数出来的块
+            int made = 0;
+            for (int cl = 0; cl < 15; cl++)
+            {
+                float baseTh = Mathf.PI * 2f * cl / 15f + (float)rng.NextDouble() * 0.35f;
+                int cnt = 8 + rng.Next(7);
+                for (int k = 0; k < cnt; k++)
+                {
+                    float th = baseTh + (float)(rng.NextDouble() - 0.5) * 0.85f;
+                    float rIn2 = Mathf.Max(12f, S(th));
+                    // 偏向干滩一侧：参考帧卵石主要铺在浪线以上的滩面上
+                    float r = rIn2 + (float)(rng.NextDouble() - 0.38) * 3.4f;
+                    made += PlaceBoulder(pebbles, mat, rng, "Pebble_", made,
+                        new Vector3(Mathf.Cos(th) * r, 0.04f, Mathf.Sin(th) * r), 0.16f, 0.36f);
+                }
+            }
+            // 相机 yaw 9° → 视线朝 +z，也就是 θ≈π/2 那一侧的岸。额外补 5 簇，
+            // 否则密度全撒在画面外的近岸与两侧，远岸看着仍然光秃
+            for (int cl = 0; cl < 5; cl++)
+            {
+                float baseTh = Mathf.PI * 0.5f + (cl - 2) * 0.30f + (float)rng.NextDouble() * 0.12f;
+                int cnt = 9 + rng.Next(6);
+                for (int k = 0; k < cnt; k++)
+                {
+                    float th = baseTh + (float)(rng.NextDouble() - 0.5) * 0.42f;
+                    float rIn2 = Mathf.Max(12f, S(th));
+                    float r = rIn2 + (float)rng.NextDouble() * 3.2f - 0.7f;
+                    made += PlaceBoulder(pebbles, mat, rng, "Pebble_", made,
+                        new Vector3(Mathf.Cos(th) * r, 0.04f, Mathf.Sin(th) * r), 0.16f, 0.40f);
+                }
+            }
+            // 浅水里再撒几堆，参考帧水下的石头是读出清澈感的关键线索之一
+            for (int cl = 0; cl < 5; cl++)
+            {
+                float baseTh = Mathf.PI * 2f * (cl + 0.3f) / 5f + 1.1f;
+                for (int k = 0; k < 6; k++)
+                {
+                    float th = baseTh + (float)(rng.NextDouble() - 0.5) * 0.7f;
+                    float r = 5.5f + cl * 1.3f + (float)(rng.NextDouble() - 0.5) * 1.4f;
+                    made += PlaceBoulder(pebbles, mat, rng, "Pebble_", made,
+                        new Vector3(Mathf.Cos(th) * r, -0.22f, Mathf.Sin(th) * r), 0.12f, 0.26f);
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU58 pebbles " + made + "\n");
         }
 
     // —— 52) 凹陷沙坑重构：一个平底盆读不出凹陷，改用"锥形盆底 + 同心台地 + 湿沙分色" ——
@@ -3766,6 +3869,7 @@ namespace WaterProject.EditorTools
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("36 水域网格", RebuildWaterDiskFixed),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("38 照明基线", RestoreRc9LightingBaseline),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("39 巨石群", RebuildReferenceBoulders),
+                new System.Collections.Generic.KeyValuePair<string, System.Action>("58 小卵石", ScatterShorePebbles),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("53 石头贴合", ReseatPropsToGround),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("40 rc4水基准", ApplyRc4WaterBaseline),
                 new System.Collections.Generic.KeyValuePair<string, System.Action>("41 天空环境光", ApplyBrightSkyGradientAmbient),
