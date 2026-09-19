@@ -474,12 +474,12 @@ namespace WaterProject.EditorTools
 
             var rng = new System.Random(202609248);
             int n = 0;
-            for (int ring = 0; ring < 2; ring++)
+            for (int ring = 0; ring < 3; ring++)
             {
-                int count = ring == 0 ? 14 : 20;
-                float lo = ring == 0 ? 6.0f : 15.0f;
-                float span = ring == 0 ? 6.0f : 13.0f;
-                float sLo = ring == 0 ? 0.85f : 1.00f;
+                int count = ring == 0 ? 18 : (ring == 1 ? 26 : 32);
+                float lo = ring == 0 ? 5.0f : (ring == 1 ? 12.0f : 21.0f);
+                float span = ring == 0 ? 6.0f : (ring == 1 ? 8.0f : 12.0f);
+                float sLo = ring == 0 ? 0.85f : (ring == 1 ? 0.95f : 1.05f);
                 for (int k = 0; k < count; k++)
                 {
                     float th = Mathf.PI * 2f * k / count + (float)rng.NextDouble() * 0.42f;
@@ -558,7 +558,10 @@ namespace WaterProject.EditorTools
             inst.name = nm;
             // ⚠ 根节点带着导入器给的 -90° X 轴转换（Blender 是 Z-up）。
             //   只能在世界系里【左乘】一个绕 Y 的旋转；直接赋 rotation 会把轴转换抹掉、树被放倒。
-            inst.transform.position = target;      // 原点在树根底部，不再做局部偏移
+            // 交付说明写"原点在树根底部、不要再加偏移"——那只对**平地**成立。
+            // 实测最低几何比 y=0 还低 0.17~0.31m（根盘外扩），照字面摆会把浅色根盘整个
+            // 露在地表上、读成一堆骨头。统一埋 0.45m，让树干"从土里长出来"。
+            inst.transform.position = target + new Vector3(0f, -0.45f, 0f);
             inst.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f)
                                     * inst.transform.rotation;
             inst.transform.localScale = Vector3.one
@@ -606,11 +609,12 @@ namespace WaterProject.EditorTools
 
             RenderSettings.skybox = ForestSkyMaterial();
 
-            // 雾是"看不透的林子"这件事本身：颜色取冠层中调绿灰，
-            // 这样远处树干不是"变暗"而是"融进树冠"，层次才不会塌成一片黑。
+            // 雾是"看不透的林子"这件事本身：颜色取**冷青灰**而不是绿灰 ——
+            // 绿雾会把远处树干整片染成草绿、和幽蓝的水抢色；冷雾才把纵深拉开，
+            // 同时远处树干仍是"融进雾里"而不是"变黑"。
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.086f, 0.130f, 0.098f);
+            RenderSettings.fogColor = new Color(0.058f, 0.100f, 0.112f);
             RenderSettings.fogDensity = 0.0260f;
 
             var volGo = GetOrCreate("GlobalVolume");
@@ -635,7 +639,7 @@ namespace WaterProject.EditorTools
             m.SetColor("_ZenithColor",  new Color(0.660f, 0.700f, 0.560f));  // 天窗里的天
             // 地平带必须是画面里最亮的区域之一 —— 幽深靠"整体暗 + 几处亮"，不是"全都一样暗"。
             // 压到 0.185 时它与树冠实测几乎同值（(42,59,36) vs (40,62,30)），整幅掉进一条窄绿带。
-            m.SetColor("_HorizonColor", new Color(0.280f, 0.370f, 0.250f));  // 远处透光树冠墙
+            m.SetColor("_HorizonColor", new Color(0.225f, 0.320f, 0.300f));  // 远处透光树冠墙（偏冷，与幽蓝水同调）
             m.SetColor("_GroundColor",  new Color(0.035f, 0.048f, 0.030f));  // 腐殖质
             EditorUtility.SetDirty(m);
             return m;
@@ -663,6 +667,21 @@ namespace WaterProject.EditorTools
             col.saturation.overrideState = true;   col.saturation.value = 24f;
             col.contrast.overrideState = true;     col.contrast.value = 18f;
 
+            // 「上方有光透下来」的第一层不是光柱几何，是**受光叶簇自己发光**：
+            // 阈值只吃最亮的那几簇，晕开之后才有"林冠漏光"的空气感。
+            // 阈值给到 1.05 是刻意抬高 —— 低于 1 会把整幅暗部一起提亮，画面立刻发灰。
+            if (!prof.TryGet<Bloom>(out var bl))
+            { bl = prof.Add<Bloom>(); AssetDatabase.AddObjectToAsset(bl, prof); }
+            bl.threshold.overrideState = true;  bl.threshold.value = 1.05f;
+            bl.intensity.overrideState = true;  bl.intensity.value = 0.45f;
+            bl.scatter.overrideState = true;    bl.scatter.value = 0.70f;
+
+            // 压四周把视线收到潭心，暗调场景没有它会有"整幅糊成一片"的感觉
+            if (!prof.TryGet<Vignette>(out var vg))
+            { vg = prof.Add<Vignette>(); AssetDatabase.AddObjectToAsset(vg, prof); }
+            vg.intensity.overrideState = true;    vg.intensity.value = 0.30f;
+            vg.smoothness.overrideState = true;   vg.smoothness.value = 0.45f;
+
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
             return prof;
@@ -678,15 +697,16 @@ namespace WaterProject.EditorTools
             else m.shader = sh;
 
             m.SetColor("_SkyZenith",    new Color(0.660f, 0.700f, 0.560f));   // = Sky_ForestCanopy 天顶
-            m.SetColor("_SkyHorizon",   new Color(0.280f, 0.370f, 0.250f));   // = Sky_ForestCanopy 地平
+            m.SetColor("_SkyHorizon",   new Color(0.225f, 0.320f, 0.300f));   // = Sky_ForestCanopy 地平
             m.SetColor("_SunColor",     new Color(1.000f, 0.880f, 0.620f));   // = 灯的暖金色
             m.SetColor("_FoamColor",    new Color(0.620f, 0.680f, 0.560f));
 
-            // 林间潭不是"清水见沙"，是"腐殖质的墨绿"：吸收抬上去、透明度抬上去，
-            // 但深浅两色都要让绿主导 —— 富营养水体的吸收方向是红，不是青蓝。
-            m.SetColor("_DeepColor",    new Color(0.014f, 0.062f, 0.050f));
-            m.SetColor("_ShallowColor", new Color(0.085f, 0.215f, 0.165f));
-            m.SetFloat("_Absorb", 0.55f);
+            // 用户要"幽蓝"不是"墨绿" ⇒ 蓝通道必须反超绿。
+            // 富营养浅潭是绿的（红被吸收），冷泉/深水才是蓝黑（红绿都被吃掉、只剩蓝）。
+            // 所以这里不是调饱和度，是把吸收曲线往"绿也吃掉"的方向推。
+            m.SetColor("_DeepColor",    new Color(0.016f, 0.060f, 0.108f));
+            m.SetColor("_ShallowColor", new Color(0.062f, 0.185f, 0.245f));
+            m.SetFloat("_Absorb", 0.62f);
             m.SetFloat("_MaxDepth", 1.6f);
             m.SetFloat("_Opacity", 0.76f);
 

@@ -160,7 +160,7 @@ namespace WaterProject.EditorTools
             var lit = Shader.Find("Universal Render Pipeline/Lit");
             if (lit == null) { W("MENU71 FAIL: URP/Lit 找不到\n"); return; }
 
-            var bark = ForceLit(lit, MatFolder + "/M_Tree_Bark.mat", "M_Tree_Bark");
+            var bark = ForceShader(lit, MatFolder + "/M_Tree_Bark.mat", "M_Tree_Bark");
             bark.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TexFolder + "/T_TreeBark_BaseColor.png"));
             bark.SetColor("_BaseColor", Color.white);
             bark.SetFloat("_Surface", 0f);      // Opaque
@@ -169,38 +169,56 @@ namespace WaterProject.EditorTools
             // 文档第 4 节允许"常数 0.65 / 接 Roughness 图"二选一，这里取常数：
             // URP 14 的 Mask Map 通道选择在不同小版本里字段名不一致，脚本盲设风险高。
             bark.SetFloat("_GlossMapScale", 0.35f);
-            bark.SetFloat("_Smoothness", 0.65f);
+            bark.SetFloat("_Glossiness", 0.65f);
             bark.SetTexture("_BumpMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TexFolder + "/T_TreeBark_Normal.png"));
             bark.SetFloat("_BumpScale", 1f);
             bark.EnableKeyword("_NORMALMAP");
 
-            var leaf = ForceLit(lit, MatFolder + "/M_Tree_Leaf.mat", "M_Tree_Leaf");
+            // 叶片不用内置 Lit —— 它没有 transmission 通道，逆光的叶子只会黑成剪影。
+            var leafSh = Shader.Find("WaterProject/TreeLeaf");
+            bool custom = leafSh != null;
+            if (!custom) W("MENU71 ⚠ WaterProject/TreeLeaf 找不到（多半是没编译过），叶片退回 URP/Lit\n");
+            var leaf = ForceShader(custom ? leafSh : lit, MatFolder + "/M_Tree_Leaf.mat", "M_Tree_Leaf");
             leaf.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TexFolder + "/T_TreeLeaf_Atlas.png"));
             leaf.SetColor("_BaseColor", Color.white);
-            leaf.SetFloat("_Surface", 0f);
-            leaf.SetFloat("_AlphaClip", 1f);     // ★ Clip，不是 Blend
-            leaf.SetFloat("_Cutoff", 0.5f);
-            leaf.SetFloat("_Cull", 0f);           // ★ Both，卡片双面
-            leaf.SetFloat("_Metallic", 0f);
-            leaf.SetFloat("_Smoothness", 0.42f);
-            leaf.EnableKeyword("_ALPHATEST_ON");
-            leaf.DisableKeyword("_NORMALMAP");
+            if (custom)
+            {
+                leaf.SetFloat("_Cutoff", 0.5f);
+                leaf.SetColor("_TransColor", new Color(0.55f, 0.85f, 0.35f));
+                leaf.SetFloat("_TransStrength", 1.6f);
+                leaf.SetFloat("_TransPower", 10f);
+                leaf.SetFloat("_WindStrength", 0.12f);
+                leaf.SetFloat("_WindFreq", 1.1f);
+                // 交付说明第 5 节建议 windDir = (1,0,0.35) 归一化
+                leaf.SetVector("_WindDir", new Vector4(0.943f, 0f, 0.330f, 0f));
+            }
+            else
+            {
+                leaf.SetFloat("_Surface", 0f);
+                leaf.SetFloat("_AlphaClip", 1f);
+                leaf.SetFloat("_Cutoff", 0.5f);
+                leaf.SetFloat("_Cull", 0f);
+                leaf.SetFloat("_Metallic", 0f);
+                leaf.SetFloat("_Glossiness", 0.42f);
+                leaf.EnableKeyword("_ALPHATEST_ON");
+            }
 
-            W("MENU71 bark smoothness " + bark.GetFloat("_Smoothness")
-              + " leaf _ALPHATEST_ON=" + leaf.IsKeywordEnabled("_ALPHATEST_ON")
-              + " leaf cull " + leaf.GetFloat("_Cull")
-              + " leaf baseMap " + (leaf.GetTexture("_BaseMap") != null) + "\n");
+            W("MENU71 bark smoothness " + bark.GetFloat("_Glossiness")
+              + " leaf shader " + leaf.shader.name
+              + " trans " + (custom ? leaf.GetFloat("_TransStrength").ToString("F2") : "N/A")
+              + " wind " + (custom ? leaf.GetFloat("_WindStrength").ToString("F2") : "N/A")
+              + " baseMap " + (leaf.GetTexture("_BaseMap") != null) + "\n");
         }
 
-        static Material ForceLit(Shader lit, string path, string name)
+        static Material ForceShader(Shader sh, string path, string name)
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (m == null)
             {
-                m = new Material(lit) { name = name };
+                m = new Material(sh) { name = name };
                 AssetDatabase.CreateAsset(m, path);
             }
-            else m.shader = lit;
+            else m.shader = sh;
             return m;
         }
 
