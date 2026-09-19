@@ -559,7 +559,7 @@ namespace WaterProject.EditorTools
         }
 
         // 不规则岸线函数：水盘/沙洲/池底共用（多波瓣 + 破碎感；基准 20.5 保持 20m 级水面）
-        static float ShoreR(float th)
+        internal static float ShoreR(float th)
         {
             float w1 = 0.88f + 0.12f * Mathf.Sin(th * 2f + 1.3f);
             float w2 = 0.09f * Mathf.Sin(th * 4f + 0.6f);
@@ -2616,7 +2616,7 @@ namespace WaterProject.EditorTools
         }
 
         // 非索引低多边形卧石：方向哈希扰动 → 同位置顶点一致，裂开后仍是封闭体
-        static Mesh BuildFacetedRock(int variant, float lump = 1f)
+        internal static Mesh BuildFacetedRock(int variant, float lump = 1f)
         {
             const int segs = 9, rings = 6;
             float seed = 11.3f + variant * 7.7f;
@@ -2717,7 +2717,7 @@ namespace WaterProject.EditorTools
             pos.Add(c); nrm.Add(n);
         }
 
-        static int PlaceBoulder(Mesh[] rocks, Material mat, System.Random rng, string prefix, int index, Vector3 at, float sMin, float sMax)
+        internal static int PlaceBoulder(Mesh[] rocks, Material mat, System.Random rng, string prefix, int index, Vector3 at, float sMin, float sMax)
         {
             var go = new UnityEngine.GameObject(prefix + index.ToString("00"));
             go.transform.position = at;
@@ -3897,7 +3897,7 @@ namespace WaterProject.EditorTools
         }
 
         // 非索引化：每个三角形独立顶点，RecalculateNormals 即得逐面法线（平面着色）；顺带把绕序统一成朝上
-        static Mesh FacetedFrom(List<Vector3> src, List<int> idx)
+        internal static Mesh FacetedFrom(List<Vector3> src, List<int> idx)
         {
             var pos = new List<Vector3>(idx.Count);
             for (int i = 0; i + 2 < idx.Count; i += 3)

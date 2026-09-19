@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Water_Pond
+  m_Shader: {fileID: 4800000, guid: 8ed6ccdd1bcc69d43bbd1b2f6c222048, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _PlanarRef:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Absorb: 0.3
+    - _AmbientStrength: 0.4
+    - _CrestFoam: 0.1
+    - _CrestJ: 0.55
+    - _CrestSoft: 0.3
+    - _DebugMode: 0
+    - _DepthSharp: 4
+    - _DetailFlow: 0.1
+    - _DetailScale: 1.9
+    - _DetailStrength: 0.28
+    - _Eta: 1.33
+    - _FresnelPow: 4
+    - _MaxDepth: 1.6
+    - _MaxUVOffset: 0.012
+    - _Opacity: 0.66
+    - _PlanarStrength: 1.6
+    - _ReflDistort: 0.016
+    - _ReflFade: 120
+    - _RefractStrength: 0.12
+    - _RippleScale: 5.5
+    - _RippleStrength: 0.11
+    - _ShoreFoam: 0.75
+    - _ShoreWidth: 0.55
+    - _SkyReflect: 0.95
+    - _SpecPower: 320
+    - _SpecStrength: 1.1
+    - _SunGloss: 260
+    - _SunStrength: 0.9
+    - _WaveAmp: 0.01
+    - _WaveScale: 1
+    - _WaveSpeed: 0.55
+    m_Colors:
+    - _DeepColor: {r: 0.055, g: 0.29, b: 0.31, a: 1}
+    - _FoamColor: {r: 0.92, g: 0.97, b: 0.97, a: 1}
+    - _ShallowColor: {r: 0.26, g: 0.58, b: 0.54, a: 1}
+    - _SkyHorizon: {r: 0.55, g: 0.7, b: 0.85, a: 1}
+    - _SkyZenith: {r: 0.1, g: 0.28, b: 0.4, a: 1}
+    - _SunColor: {r: 1, g: 0.95, b: 0.84, a: 1}
+  m_BuildTextureStacks: []

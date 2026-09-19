@@ -6,5 +6,7 @@ POS_FILE="${1:-Logs/.editorlog_pos}"
 pos=$(cat "$POS_FILE" 2>/dev/null || echo 0)
 size=$(wc -c < "$LOG")
 echo "log grew $((size - pos)) bytes since snapshot"
-tail -c +"$pos" "$LOG" | tr -d '\000' | grep -E "error CS[0-9]+|CompilationPipeline|Scripts have compile errors|No errors" | tail -20
+tail -c +"$pos" "$LOG" | tr -d '\000' \
+  | grep -E "error CS[0-9]+|Shader error in|CompilationPipeline|Scripts have compile errors|undeclared identifier" \
+  | tail -20
 echo "$size" > "$POS_FILE"
