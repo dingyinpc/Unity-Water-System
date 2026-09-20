@@ -18,18 +18,35 @@
 #ifndef WATERPROJECT_OCEANSHORE_INCLUDED
 #define WATERPROJECT_OCEANSHORE_INCLUDED
 
-CBUFFER_START(OceanShore)
-    float4 _Shore;    // x = 世界 X 起点（岸线谐波以此为零点）, y = 岸线 Z 基准
-    float4 _ShoreA;   // 三个谐波的幅度（米）
-    float4 _ShoreB;   // 三个谐波的频率（1/米）
-    float4 _WindDir;  // 浪**传播**的方向（朝岸 = -z），已归一化
-    float  _ShoreSlope;   // 海床：每离岸 1m 加深多少
-    float  _BeachRise;    // 滩面：每往岸上 1m 抬升多少（线性项）
-    float  _BeachCurve;   // 滩面二次项（越往里越陡，读成沙丘脚）
-    float  _SwashReach;   // 水膜上冲距离
-    float  _SwashSpeed;   // 上冲周期频率
-    float  _SwashFade;    // 边界退透距离
-CBUFFER_END
+// ── 本文件一个 uniform 都不声明。这是契约，不是偷懒 ──
+// 宿主 shader 必须在自己**唯一**的 UnityPerMaterial 块里，先声明下面 10 个名字，
+// 再 #include 本文件。声明在本文件之后 = 编译报 "undeclared identifier '_Shore'"，
+// 因为 HLSL 自上而下解析，本文件的函数体看不到后面的声明。
+//
+//   float4 _Shore;      // x = 世界 X 起点（岸线谐波以此为零点）, y = 岸线 Z 基准
+//   float4 _ShoreA;     // 三个谐波的幅度（米）
+//   float4 _ShoreB;     // 三个谐波的频率（1/米）
+//   float4 _WindDir;    // 浪**传播**的方向（朝岸 = -z），已归一化
+//   float  _ShoreSlope; // 海床：每离岸 1m 加深多少
+//   float  _BeachRise;  // 滩面：每往岸上 1m 抬升多少（线性项）
+//   float  _BeachCurve; // 滩面二次项（越往里越陡，读成沙丘脚）
+//   float  _SwashReach; // 水膜上冲距离
+//   float  _SwashSpeed; // 上冲周期频率
+//   float  _SwashFade;  // 边界退透距离
+//
+// 三种"看起来更省事"的放法都试过了，全部编译失败，别再试第四种：
+//   ① 本文件自己开一个 CBUFFER_START(UnityPerMaterial)
+//      → "Duplicate constant buffer declaration: UnityPerMaterial"。
+//        同名 cbuffer **不会**被合并；URP 的 CommonMaterial.hlsl 用的其实是
+//        另一个名字（UnityBuiltinPerMaterial），不是同名第二块。
+//   ② 本文件开一个自创名的块（OceanShore）→ 能跑，但 SRP Batcher 要求
+//      一个材质的属性全在 UnityPerMaterial 里，于是两个材质都判成不兼容。
+//   ③ 本文件只 #define 一个声明宏，宿主在块里展开 → 回到"声明在 include 之后"，
+//      本文件自己的函数先用到 _Shore，直接 undeclared identifier。
+//
+// 另：这 10 个名字还必须在 shader 的 Properties{} 里列出来，否则**不落盘** ——
+// 序列化看的是 Properties{}，与 cbuffer 无关；只在 cbuffer 里声明的 uniform，
+// SetFloat 写了也只活在本轮会话，重开工程归零。
 
 // 岸线：世界 X → 岸线所在的 Z。单值函数，所以不能有把海遮在后面的岬角。
 float ShoreZ(float worldX)

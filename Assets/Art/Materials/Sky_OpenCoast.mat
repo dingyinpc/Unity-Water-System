@@ -25,14 +25,14 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _CloudCover: 0.58
+    - _CloudCover: 0.68
     - _CloudDrift: 0.01
-    - _CloudScale: 0.045
-    - _SunGlow: 0.42
+    - _CloudScale: 0.9
+    - _SunGlow: 0.3
     m_Colors:
-    - _CloudColor: {r: 1, g: 0.995, b: 0.985, a: 1}
-    - _CloudShadow: {r: 0.52, g: 0.57, b: 0.65, a: 1}
-    - _GroundColor: {r: 0.23, g: 0.25, b: 0.24, a: 1}
-    - _HorizonColor: {r: 0.4, g: 0.575, b: 0.76, a: 1}
-    - _ZenithColor: {r: 0.1, g: 0.29, b: 0.7, a: 1}
+    - _CloudColor: {r: 1, g: 0.998, b: 0.995, a: 1}
+    - _CloudShadow: {r: 0.43, g: 0.51, b: 0.63, a: 1}
+    - _GroundColor: {r: 0.3, g: 0.265, b: 0.205, a: 1}
+    - _HorizonColor: {r: 0.7, g: 0.8, b: 0.91, a: 1}
+    - _ZenithColor: {r: 0.22, g: 0.44, b: 0.88, a: 1}
   m_BuildTextureStacks: []

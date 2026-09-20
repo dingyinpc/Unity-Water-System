@@ -50,9 +50,16 @@ namespace WaterProject.EditorTools
         static readonly Vector4 WaveDir = new Vector4(-0.175f, 0f, -0.985f, 0f);
 
         // ───────── 大气 ─────────
-        static readonly Color SkyZenith  = new Color(0.100f, 0.290f, 0.700f);
-        static readonly Color SkyHorizon = new Color(0.400f, 0.575f, 0.760f);
-        static readonly Color SkyGround  = new Color(0.230f, 0.250f, 0.240f);
+        // ⚠ 画幅里可见的那一段天空（0°~21° 仰角）几乎就是 _HorizonColor 本身，
+        //   天顶色要 40° 以上才明显介入。所以"天空太暗"要动的**主要是地平色**。
+        //   而 ACES + 曝光 0.85 吃线性值很狠：线性 0.52 进去只出 124（实测），
+        //   想拿到 190+ 必须把线性值推到接近白，不能靠微调。
+        static readonly Color SkyZenith  = new Color(0.220f, 0.440f, 0.880f);
+        // 地平色 == 雾色（唯一来源）：它一变就是三处一起变 —— 天空下缘、远景雾、
+        // 水面反射的兜底色。提亮它时必须同步下调 _SkyReflect，否则海会跟着泛白。
+        static readonly Color SkyHorizon = new Color(0.700f, 0.800f, 0.910f);
+        // 环境光是 Skybox 模式 ⇒ 这一档就是"沙面向上的反弹光"，给暖沙色而不是中性灰
+        static readonly Color SkyGround  = new Color(0.300f, 0.265f, 0.205f);
         const float FogDensity = 0.0022f;   // ExponentialSquared
 
         // ───────── 网格尺度 ─────────
@@ -318,7 +325,9 @@ namespace WaterProject.EditorTools
             var woodMat  = GetLitMat("Ocean_Driftwood", new Color(0.115f, 0.090f, 0.068f));
             // 太阳在正前方 ⇒ 岬角是纯逆光剪影。剪影是对的，但反照率一旦压到
             // 0.04 这种程度，雾就托不起它，直接读成"漂在海上的黑板"。
-            var cliffMat = GetLitMat("Ocean_Cliff",    new Color(0.115f, 0.135f, 0.165f));
+            // ⚠ 反过来，雾色（= 地平色）大幅提亮之后它会被托成一片白、失去分离，
+            //   所以这个值必须跟着 SkyHorizon 一起调，不能定死。
+            var cliffMat = GetLitMat("Ocean_Cliff",    new Color(0.070f, 0.086f, 0.112f));
 
             var rocks = new Mesh[4];
             for (int i = 0; i < 4; i++) rocks[i] = WaterProjectSetup.BuildFacetedRock(i * 5 + 2, 0.85f);
@@ -517,12 +526,19 @@ namespace WaterProject.EditorTools
             m.SetColor("_GroundColor",  SkyGround);
             if (m.HasProperty("_CloudColor"))
             {
-                m.SetColor("_CloudColor",  new Color(1.000f, 0.995f, 0.985f));
-                m.SetColor("_CloudShadow", new Color(0.520f, 0.570f, 0.650f));
-                m.SetFloat("_CloudCover",  0.58f);
-                m.SetFloat("_CloudScale",  0.045f);
+                m.SetColor("_CloudColor",  new Color(1.000f, 0.998f, 0.995f));
+                // ⚠ 云底只能给"浅灰蓝"，不能给深蓝灰：用户抱怨的就是"太暗"，
+                //   靠压暗云底把团块拉出来正中反面。对比要靠形状和数量，不靠明度。
+                m.SetColor("_CloudShadow", new Color(0.430f, 0.510f, 0.630f));
+                m.SetFloat("_CloudCover",  0.68f);
+                // ⚠ 0.045 是差了一个数量级的错值。代进去算：画幅顶缘投影半径
+                //   |d.xz|/d.y ≈ 2.5，经 comp 压缩后 2.1，乘 0.045 只有 0.096；
+                //   到地平也才 0.14 —— 整片天落在**同一个噪声格子**里，f 几乎恒定，
+                //   所以"云"从来就没有过结构，之前看到的那条带其实是日晕 + 贴地衰减项。
+                //   0.9 让天顶到地平横跨约 2~6 个格子，才是能分辨的团块。
+                m.SetFloat("_CloudScale",  0.9f);
                 m.SetFloat("_CloudDrift",  0.010f);
-                m.SetFloat("_SunGlow",     0.42f);
+                m.SetFloat("_SunGlow",     0.30f);
             }
             EditorUtility.SetDirty(m);
             AssetDatabase.SaveAssets();
@@ -574,7 +590,7 @@ namespace WaterProject.EditorTools
             m.SetColor("_SkyZenith", SkyZenith);
             m.SetColor("_SkyHorizon", SkyHorizon);
             m.SetColor("_SunColor", new Color(1.0f, 0.955f, 0.885f));
-            m.SetColor("_DeepColor",    new Color(0.007f, 0.042f, 0.078f));
+            m.SetColor("_DeepColor",    new Color(0.004f, 0.024f, 0.052f));
             m.SetColor("_ShallowColor", new Color(0.115f, 0.470f, 0.495f));
             m.SetColor("_FoamColor",    new Color(0.940f, 0.965f, 0.975f));
 
@@ -610,10 +626,13 @@ namespace WaterProject.EditorTools
             m.SetFloat("_RippleStrength", 0.10f);
             m.SetFloat("_RippleScale", 3.0f);
 
-            m.SetFloat("_FresnelPow", 4.0f);
+            // 4 → 5：让"水面变成镜子"推迟到更掠射的角度，中段多露出水体本身的深蓝
+            m.SetFloat("_FresnelPow", 5.0f);
             // 不给到 1.0：掠射时"完全照镜子"会让海和天在明度上糊成一片，
             // 而"海在天下面一条深色带"正是这张图最需要的对比。
-            m.SetFloat("_SkyReflect", 0.85f);
+            // ⚠ 这个值和 SkyHorizon 是**联动**的：地平色（= 雾色 = 水面反射兜底色）一提亮，
+            //   这里就必须往下收，否则远海跟着一起泛白，海天反而更糊。
+            m.SetFloat("_SkyReflect", 0.56f);
             m.SetFloat("_SpecPower", 420f);
             m.SetFloat("_SpecStrength", 0.7f);
             m.SetFloat("_SunGloss", 200f);

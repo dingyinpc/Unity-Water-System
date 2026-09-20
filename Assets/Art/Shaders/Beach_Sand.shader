@@ -21,6 +21,20 @@ Shader "WaterProject/Beach_Sand"
         _RippleTint ("沙纹深浅", Range(0, 0.4)) = 0.14
         _WetGloss   ("湿沙光滑度", Range(0, 1)) = 0.55
         _SpecPower  ("湿沙反光锐度", Float) = 90
+
+        // ⚠ 与 Water_Ocean 同一组，默认值必须等于 WaterOceanSetup 的 C# 常量。
+        //   必须列进 Properties{} 才会被序列化进 .mat —— 只在 cbuffer 里声明的
+        //   uniform，菜单写了也不落盘，重开工程后湿沙带会按"岸线在 z=0"去算。
+        _Shore      ("岸线基准 X起点/Z基准 (菜单写)", Vector) = (-400, 0, 0, 0)
+        _ShoreA     ("岸线谐波幅度 (菜单写)", Vector) = (22, 9, 3.2, 0)
+        _ShoreB     ("岸线谐波频率 (菜单写)", Vector) = (0.0033333, 0.0083333, 0.0222222, 0)
+        _WindDir    ("浪传播方向 (菜单写)", Vector) = (-0.175, 0, -0.985, 0)
+        _ShoreSlope ("海床坡度 (菜单写)", Float) = 0.055
+        _BeachRise  ("滩面抬升 (菜单写)", Float) = 0.055
+        _BeachCurve ("滩面二次 (菜单写)", Float) = 0.0022
+        _SwashReach ("沫带上冲 (菜单写)", Float) = 9.5
+        _SwashSpeed ("沫带周期 (菜单写)", Float) = 0.13
+        _SwashFade  ("沫带退透 (菜单写)", Float) = 3.0
     }
     SubShader
     {
@@ -39,12 +53,19 @@ Shader "WaterProject/Beach_Sand"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "OceanShore.hlsl"
 
+            // ⚠ 顺序有讲究：OceanShore.hlsl 的函数体直接用这 10 个名字，
+            //   所以它必须在块**之后**才 include。详见该文件头部的契约说明。
             CBUFFER_START(UnityPerMaterial)
+                float4 _Shore, _ShoreA, _ShoreB, _WindDir;
+                float  _ShoreSlope, _BeachRise, _BeachCurve;
+                float  _SwashReach, _SwashSpeed, _SwashFade;
+
                 float4 _DryColor, _WetColor, _FoamColor;
                 float  _RippleTint, _WetGloss, _SpecPower;
             CBUFFER_END
+
+            #include "OceanShore.hlsl"
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
             struct Varyings

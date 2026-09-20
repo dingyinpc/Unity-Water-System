@@ -99,30 +99,43 @@ Shader "WaterProject/Sky_Coast"
                 if (d.y < 0.0) return half4(_GroundColor.rgb, 1.0);
 
                 float up = saturate(d.y);
+                // ⚠ 指数方向容易搞反：pow(up, e) 里 e **越小越偏向天顶（深色）**。
+                //   上一轮为了"提亮"把 2.0 改成 1.45，结果画幅里整段天更暗
+                //   （右上实测 124 → 113）。本机位画幅上缘只有约 21° 仰角，
+                //   e = 2 时那里离天顶色还远，正好让可见这一段停在较亮的地平色上。
                 float3 col = lerp(_HorizonColor.rgb, _ZenithColor.rgb, up * up);
 
                 // 视线投到单位高度的平面上。d.y 越小投影越远 ⇒ 地平方向自动堆成一条密云带
                 float2 plane = d.xz / max(d.y, 0.055);
+                // ⚠ 同一个投影在 d.y→0 时半径趋于无穷，噪声频率跟着爆炸，
+                //   地平那圈就碎成横向拉丝、读成一条霾带而不是一团团云。
+                //   按半径压一下，等于把远处的云"放远放大"。
+                float comp = 1.0 / (1.0 + length(plane) * 0.035);
                 float t = _Time.y * _CloudDrift;
-                float f = Fbm(plane * _CloudScale + float2(t, t * 0.35));
+                float f = Fbm(plane * comp * comp * _CloudScale + float2(t, t * 0.35));
 
                 // fbm 四倍频值噪声的取值集中在 0.55~0.72，阈值映射必须落在这个区间里，
                 // 否则 cover=0.55 再加 0.22 的过渡带几乎没人越得过 —— 云就"不存在"了。
+                // 过渡带 0.14：再窄就会在高空压缩下读成一堆剪纸，云需要一点软边
                 float cover = lerp(0.72, 0.28, _CloudCover);
-                float cloud = smoothstep(cover, cover + 0.16, f);
+                float cloud = smoothstep(cover, cover + 0.14, f);
                 // 贴地平那几朵要压，但压到 9.5° 以上才允许有云就把整片天赶光了
                 cloud *= saturate(d.y * 3.2 + 0.12);
 
-                // 云不是纯白：向阳面亮、底面吃天光偏蓝，靠 f 自身做明暗
-                float3 ccol = lerp(_CloudShadow.rgb, _CloudColor.rgb, saturate(f * 1.4 - 0.2));
+                // 云的明暗必须用"超出阈值的厚度"，不能用 f 的绝对值。
+                // 上一版写 saturate(f*1.9-0.32)：_CloudCover 一抬高，f 几乎处处越过
+                // 那个门槛 ⇒ 整片云都取到最白那端，天上就是一层均匀白洗、没有团块。
+                // 刚过阈值 = 薄 = 吃天光偏蓝暗，越厚越白，边和底才立得起来。
+                float thick = saturate((f - cover) / 0.28);
+                float3 ccol = lerp(_CloudShadow.rgb, _CloudColor.rgb, thick);
                 col = lerp(col, ccol, cloud);
 
                 // 日晕：方向取场景里那盏主光，不在材质里再存一份太阳角。
-                // 锐项刻意又细又暗、宽项负责"太阳那一片天整体发白" ——
-                // 只给锐项会得到一枚贴在天上的硬币。
+                // 宽项原来 pow(sd,9)*0.34 会把半个画幅洗成白，和另一侧的深蓝撞出
+                // 刺眼对比；改成更窄更弱，让"亮"集中在太阳附近而不是铺开。
                 float3 sunDir = GetMainLight().direction;
                 float sd = saturate(dot(d, sunDir));
-                col += _CloudColor.rgb * (pow(sd, 500.0) * 0.45 + pow(sd, 9.0) * 0.34) * _SunGlow;
+                col += _CloudColor.rgb * (pow(sd, 500.0) * 0.45 + pow(sd, 16.0) * 0.18) * _SunGlow;
                 // 云在太阳那一侧会被打亮一点（逆光镶边），不加这个云会像贴上去的纸片
                 col += _CloudColor.rgb * cloud * pow(sd, 5.0) * 0.30;
 

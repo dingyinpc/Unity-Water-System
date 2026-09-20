@@ -1478,6 +1478,12 @@ namespace WaterProject.EditorTools
             }
 
             // —— 3) 水面色调朝亮蓝（用户要求：水必须是蓝色的，别再灰青） ——
+            // ⚠ 归属说明（合理化检测 Tools/audit_materials.py 第①项查出来的）：
+            //   下面 6 个颜色属性在整链第 15 步的**菜单48** 里会被无条件重写，
+            //   所以"菜单48 才是这 6 个的唯一来源"，菜单22 的值只是单独跑 22 时的观感。
+            //   想收口成一处，正确做法是删菜单48 之前的这几行、而不是去同步两边。
+            //   但 _ScatterStrength / _SpecStrength / _SunStrength / _WaveAmpScale
+            //   这 4 个标量**目前只有这里写**，菜单48 不覆盖它们 —— 别顺手整块删掉。
             var wmat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
             if (wmat != null)
             {

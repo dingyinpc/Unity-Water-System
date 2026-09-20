@@ -21,11 +21,13 @@
 //   · 高频皮肤法线按视角衰减，掠射区会混叠成灯芯绒。
 //   · 岸线/剖面/沫带全部来自 OceanShore.hlsl，沙滩材质共用同一份，不会错位。
 //
-// 几何参数（_Shore* / _ShoreSlope / _Beach* / _Swash*）刻意**不进 Properties**：
-//   它们必须与 Beach_Sand 完全一致，只能由菜单80/81 写，给美术手调的口子就是错位口。
-//   代价是 SRP Batcher 会判这些材质"不兼容"（Properties 里有 cbuffer 没收到的项？
-//   不，是 cbuffer 里有 Properties 没收到的项）—— 本场景一共两个水/沙 draw call，
-//   兼容性在这里没有意义。
+// 几何参数（_Shore* / _ShoreSlope / _Beach* / _Swash*）**必须列进 Properties{}**：
+//   只在 cbuffer 里声明的 uniform 不会被 Unity 写进 .mat，菜单 SetFloat 在当前会话
+//   生效、看着一切正常，重开工程却全部归零（这是本文件第一版真实踩到的坑，
+//   由 Tools/audit_materials.py 第⑧项抓到）。
+//   防手调漂移不靠"藏起来"，靠检测项②（磁盘值 ≠ 菜单值就报）。
+//   代价：这些项不在 UnityPerMaterial 里统一收口，SRP Batcher 仍判不兼容 ——
+//   本场景一共两个水/沙 draw call，兼容性在这里没有意义。
 // ============================================================================
 Shader "WaterProject/Water_Ocean"
 {
@@ -78,6 +80,24 @@ Shader "WaterProject/Water_Ocean"
 
         // ── 调试 ──
         _DebugMode        ("调试输出(0关/1水深/2破碎/3沫带)", Float) = 0
+
+        // ⚠ 岸线 / 剖面 / 沫带：默认值必须与 WaterOceanSetup 的 C# 常量一致。
+        //   这一组**必须列进 Properties{}** —— 只在 cbuffer 里声明的 uniform，
+        //   Unity 的材质序列化器根本不写它：菜单 SetFloat 在当前会话里生效、画面
+        //   看着完全正常，但值不落盘，重开工程后岸线退回 z=0、水深恒为 0。
+        //   （合理化检测 Tools/audit_materials.py 第⑧项就是为抓这个写的）
+        //   手调它们不会立刻出事（跑一次菜单84 就冲回来），但会让"磁盘上的材质"
+        //   和"菜单声称的材质"不一致 —— 检测项②会报。
+        _Shore      ("岸线基准 X起点/Z基准 (菜单写)", Vector) = (-400, 0, 0, 0)
+        _ShoreA     ("岸线谐波幅度 (菜单写)", Vector) = (22, 9, 3.2, 0)
+        _ShoreB     ("岸线谐波频率 (菜单写)", Vector) = (0.0033333, 0.0083333, 0.0222222, 0)
+        _WindDir    ("浪传播方向 (菜单写)", Vector) = (-0.175, 0, -0.985, 0)
+        _ShoreSlope ("海床坡度 (菜单写)", Float) = 0.055
+        _BeachRise  ("滩面抬升 (菜单写)", Float) = 0.055
+        _BeachCurve ("滩面二次 (菜单写)", Float) = 0.0022
+        _SwashReach ("沫带上冲 (菜单写)", Float) = 9.5
+        _SwashSpeed ("沫带周期 (菜单写)", Float) = 0.13
+        _SwashFade  ("沫带退透 (菜单写)", Float) = 3.0
     }
 
     SubShader
@@ -102,9 +122,14 @@ Shader "WaterProject/Water_Ocean"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "OceanShore.hlsl"
 
+            // ⚠ 顺序有讲究：OceanShore.hlsl 的函数体直接用这 10 个名字，
+            //   所以它必须在块**之后**才 include。详见该文件头部的契约说明。
             CBUFFER_START(UnityPerMaterial)
+                float4 _Shore, _ShoreA, _ShoreB, _WindDir;
+                float  _ShoreSlope, _BeachRise, _BeachCurve;
+                float  _SwashReach, _SwashSpeed, _SwashFade;
+
                 float4 _DeepColor, _ShallowColor, _FoamColor, _SkyZenith, _SkyHorizon, _SunColor;
                 float  _Absorb, _Opacity, _MaxDepth;
                 float  _SwellAmp, _SwellScale, _SwellSpeed, _WindAlign, _Steep;
@@ -114,6 +139,8 @@ Shader "WaterProject/Water_Ocean"
                 float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
                 float  _DebugMode;
             CBUFFER_END
+
+            #include "OceanShore.hlsl"
 
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings

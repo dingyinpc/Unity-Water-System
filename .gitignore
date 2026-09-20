@@ -50,3 +50,6 @@ Thumbs.db
 desktop.ini
 *.orig
 *.orig.meta
+# ===== 调试过程截图（下划线前缀 = 一次性探针图，随时会被覆盖）=====
+# 验收图不带此前缀（验收_*.png），仍然入库。见《05》附：诊断工具
+Docs/screenshots/_*.png
