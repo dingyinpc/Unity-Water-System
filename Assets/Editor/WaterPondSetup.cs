@@ -122,7 +122,7 @@ namespace WaterProject.EditorTools
                         idx.Add(a); idx.Add(c); idx.Add(b);
                         idx.Add(b); idx.Add(c); idx.Add(d);
                     }
-                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.150f, 0.135f, 0.082f)));
+                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.078f, 0.072f, 0.046f)));
             }
 
             // ── 绿坡环：把"沙漠里一个洞"变成"林间一潭" ──
@@ -151,7 +151,7 @@ namespace WaterProject.EditorTools
                     }
                 }
                 var hills = AttachMesh("PoolHills", WaterProjectSetup.FacetedFrom(v, idx),
-                                       GetMat("Pond_Grass", new Color(0.040f, 0.130f, 0.058f)));
+                                       GetMat("Pond_Grass", new Color(0.026f, 0.082f, 0.040f)));
                 var hmr = hills != null ? hills.GetComponent<MeshRenderer>() : null;
                 if (hmr != null) hmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             }
@@ -657,14 +657,14 @@ namespace WaterProject.EditorTools
             for (int v = 0; v < 3; v++) blobs[v] = WaterProjectSetup.BuildFacetedRock(v, 0.22f);
 
             int n = 0;
-            for (int k = 0; k < 36; k++)
+            for (int k = 0; k < 64; k++)
             {
                 float th = (float)rng.NextDouble() * Mathf.PI * 2f;
-                float r = PondR(th) + 1.2f + (float)rng.NextDouble() * 15f;
+                float r = PondR(th) + 0.8f + (float)rng.NextDouble() * 20f;
                 float y = BankY(r, th) - 0.20f;
                 // 注意：PlaceBoulder 返回的是"本次放置数 1"，索引要从外面传进去
                 WaterProjectSetup.PlaceBoulder(blobs, mat, rng, "PondBush_", n,
-                    new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r), 0.55f, 1.45f);
+                    new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r), 0.50f, 1.60f);
                 n++;
             }
             return n;
