@@ -475,16 +475,103 @@ namespace WaterProject.EditorTools
             // 只清自己这一轮的产物：菜单63 的 PondTree_/PondRock_ 由它自己负责
             foreach (var go in UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None))
                 if (go != null && (go.name.StartsWith("ForestTree_") || go.name.StartsWith("PondBush_")
-                                   || go.name.StartsWith("PoolLog_")))
+                                   || go.name.StartsWith("PoolLog_") || go.name.StartsWith("PoolShaft_")))
                     UnityEngine.Object.DestroyImmediate(go);
 
             int bushes = BuildUndergrowth(rng);
             int trees  = BuildTreeWall();
             int logs   = BuildFallenLogs(rng);
             BuildCanopyDome();
+            int shafts = BuildLightShafts(rng);
 
             EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
-            WriteProbe("MENU68 forest trees " + trees + " bushes " + bushes + " logs " + logs + "\n");
+            WriteProbe("MENU68 forest trees " + trees + " bushes " + bushes
+                       + " logs " + logs + " shafts " + shafts + "\n");
+        }
+
+        // 光柱：把"上方有光透下来"画成一个可见的体积暗示。
+        // 方向直接取场景里那盏太阳的 forward —— 不在这里重算角度，免得和菜单60 漂移。
+        static int BuildLightShafts(System.Random rng)
+        {
+            var sun = UnityEngine.Object.FindFirstObjectByType<Light>();
+            if (sun == null) { WriteProbe("MENU68 没有太阳，跳过光柱\n"); return 0; }
+
+            Vector3 down = sun.transform.forward;              // 光行进方向
+            Vector3 axis = -down;                               // 柱体"向上"轴
+            axis = Vector3.Normalize(new Vector3(axis.x, Mathf.Abs(axis.y), axis.z));
+
+            var mat = ShaftMaterial();
+            var mesh = CrossQuadMesh(1.8f, 9.0f);
+            int n = 0;
+            for (int k = 0; k < 5; k++)
+            {
+                float th = (float)rng.NextDouble() * Mathf.PI * 2f;
+                float r = (float)rng.NextDouble() * 7.5f;
+                var go = new UnityEngine.GameObject("PoolShaft_" + k);
+                var mf = go.AddComponent<MeshFilter>();
+                var mr = go.AddComponent<MeshRenderer>();
+                mf.sharedMesh = mesh;
+                mr.sharedMaterial = mat;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+
+                go.transform.position = new Vector3(Mathf.Cos(th) * r, -0.4f, Mathf.Sin(th) * r);
+                // 绕自身"向上"轴再随机转一点，让五束不完全平行
+                go.transform.rotation = Quaternion.LookRotation(axis, Vector3.up)
+                                      * Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+                float w = 0.7f + (float)rng.NextDouble() * 0.8f;
+                go.transform.localScale = new Vector3(w, 0.8f + (float)rng.NextDouble() * 0.5f, w);
+                n++;
+            }
+            return n;
+        }
+
+        // 两片相差 90° 的双面四边形 —— 从任何水平角度看都有一片是"正对"的，
+        // 单片会在侧视时塌成一条线
+        static Mesh CrossQuadMesh(float w, float h)
+        {
+            var v = new List<Vector3>();
+            var uv = new List<Vector2>();
+            var idx = new List<int>();
+            for (int k = 0; k < 2; k++)
+            {
+                float a = k * Mathf.PI * 0.5f;
+                Vector3 r = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (w * 0.5f);
+                int b = v.Count;
+                v.Add(-r);                  uv.Add(new Vector2(0f, 0f));
+                v.Add(r);                   uv.Add(new Vector2(1f, 0f));
+                v.Add(r + Vector3.up * h);  uv.Add(new Vector2(1f, 1f));
+                v.Add(-r + Vector3.up * h); uv.Add(new Vector2(0f, 1f));
+                idx.Add(b); idx.Add(b + 1); idx.Add(b + 2);
+                idx.Add(b); idx.Add(b + 2); idx.Add(b + 3);
+            }
+            var m = new Mesh { name = "PoolShaftMesh" };
+            m.SetVertices(v);
+            m.SetUVs(0, uv);
+            m.SetTriangles(idx, 0);
+            m.RecalculateBounds();
+            return m;
+        }
+
+        static Material ShaftMaterial()
+        {
+            string p = MatFolder + "/LightShaft.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            var sh = Shader.Find("WaterProject/LightShaft");
+            if (sh == null) { WriteProbe("MENU68 ⚠ WaterProject/LightShaft 没编译过，光柱会走内建默认材质\n"); }
+            if (m == null && sh != null)
+            {
+                m = new Material(sh) { name = "LightShaft" };
+                AssetDatabase.CreateAsset(m, p);
+            }
+            else if (m != null && sh != null) m.shader = sh;
+            if (m == null) return null;
+            m.SetColor("_ShaftColor", new Color(1.0f, 0.92f, 0.72f));
+            m.SetFloat("_Intensity", 0.14f);
+            m.SetFloat("_Softness", 1.6f);
+            m.SetFloat("_Flicker", 0.12f);
+            EditorUtility.SetDirty(m);
+            return m;
         }
 
         // 冠层穹顶：一块"有洞的天花板"。
