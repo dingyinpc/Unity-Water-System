@@ -204,11 +204,12 @@ Shader "WaterProject/Water_Pond"
             }
 
             // 两层：中频缓波 + 高频毛细涟漪。没有低频大平片 —— 那正是"整块一起亮"的元凶
-            float3 SkinNormal(float3 wp, float t)
+            // fineW 把高频层单独拉出一个旋钮：掠射时它必须衰减，见片元里的注释。
+            float3 SkinNormal(float3 wp, float t, float fineW)
             {
                 float2 mid   = NoiseSlope(wp.xz, _DetailScale, float2(t * _DetailFlow, t * _DetailFlow * 0.7));
                 float2 fine  = NoiseSlope(wp.xz, _RippleScale, float2(-t * _DetailFlow * 1.6, t * _DetailFlow * 1.2));
-                float2 total = mid * _DetailStrength + fine * _RippleStrength;
+                float2 total = mid * _DetailStrength + fine * (_RippleStrength * fineW);
                 return normalize(float3(-total.x, 1.0, -total.y));
             }
 
@@ -235,10 +236,15 @@ Shader "WaterProject/Water_Pond"
                 // ⚠ 皮肤法线必须**逐像素**算。水面网格顶点间距 0.3~0.6m，而涟漪噪声的
                 //    特征尺度约 0.1m —— 放到顶点里算再插值会严重欠采样，
                 //    整个潭面会裂成一圈圈明暗相间的"风车"扇区。
-                float3 skin = SkinNormal(worldPos, t);
-                float3 N = normalize(lerp(normalize(IN.normalWS), skin, 0.6));
-
                 float3 V = normalize(_WorldSpaceCameraPos - worldPos);
+
+                // 水面是平面 ⇒ |V.y| 越小就是越远、越掠射。此时 1/_RippleScale≈0.18m 的
+                // 毛细格在屏幕上只剩 1~2 px，前向差分梯度直接混叠成一排排等距暗纹
+                // （"灯芯绒"）。所以高频层按视角衰减：脚下全量、远处只剩中频缓波。
+                float fineW = lerp(0.20, 1.0, smoothstep(0.05, 0.40, abs(V.y)));
+                float3 skin = SkinNormal(worldPos, t, fineW);
+
+                float3 N = normalize(lerp(normalize(IN.normalWS), skin, 0.6));
 
                 // ★ 屏幕空间 UV 用 clipPos，不用 SV_Position
                 float4 sp = IN.clipPos * 0.5;

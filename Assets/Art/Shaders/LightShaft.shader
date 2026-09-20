@@ -55,8 +55,12 @@ Shader "WaterProject/LightShaft"
                 float side = abs(IN.uv.x * 2.0 - 1.0);
                 float edge = pow(1.0 - side, _Softness);
 
-                // 顶端最亮（刚出冠层），往下散掉；底部几乎看不见
-                float along = pow(saturate(IN.uv.y), 1.4) * (1.0 - 0.55 * saturate(IN.uv.y - 0.75) * 4.0);
+                // 顶端最亮（刚出冠层），但**中段必须连续可见**。
+                // 原先用 pow(uv.y, 1.4)：uv.y=0.2 处只剩 0.11 的权重，柱体下半段几乎不发光，
+                // 画面上就只剩树冠底下那一小截亮斑，读不出"一根柱子插到地上"。
+                // 换成两端软、中段平直的包络，顶部再轻微收一点。
+                float along = smoothstep(0.0, 0.18, IN.uv.y)
+                            * (1.0 - 0.30 * smoothstep(0.72, 1.0, IN.uv.y));
 
                 float flick = 1.0 + _Flicker * sin(_Time.y * 0.7 + IN.uv.y * 3.0);
 

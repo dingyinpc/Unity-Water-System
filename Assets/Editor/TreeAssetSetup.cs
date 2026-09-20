@@ -162,7 +162,10 @@ namespace WaterProject.EditorTools
 
             var bark = ForceShader(lit, MatFolder + "/M_Tree_Bark.mat", "M_Tree_Bark");
             bark.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(TexFolder + "/T_TreeBark_BaseColor.png"));
-            bark.SetColor("_BaseColor", Color.white);
+            // 交付文档没规定 tint，默认就是纯白；但潭场景把环境光压到约 1/4、太阳抬到 3.0 之后，
+            // 浅驼色贴图在暗底里亮成一根"白色开瓶器"，枝桩轮廓反而最抢眼。
+            // 给一个暖褐滤镜把它压回中段亮度 —— 只动色，不动 Metallic/Glossiness/法线。
+            bark.SetColor("_BaseColor", new Color(0.60f, 0.54f, 0.48f, 1f));
             bark.SetFloat("_Surface", 0f);      // Opaque
             bark.SetFloat("_Cull", 2f);         // Front
             bark.SetFloat("_Metallic", 0f);     // 工作流 Metallic，不用 Mask Map

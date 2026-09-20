@@ -26,8 +26,8 @@ Material:
     m_Ints: []
     m_Floats:
     - _Flicker: 0.12
-    - _Intensity: 0.14
-    - _Softness: 1.6
+    - _Intensity: 0.115
+    - _Softness: 1.9
     m_Colors:
     - _ShaftColor: {r: 1, g: 0.92, b: 0.72, a: 1}
   m_BuildTextureStacks: []

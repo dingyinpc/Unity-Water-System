@@ -122,7 +122,7 @@ namespace WaterProject.EditorTools
                         idx.Add(a); idx.Add(c); idx.Add(b);
                         idx.Add(b); idx.Add(c); idx.Add(d);
                     }
-                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.078f, 0.072f, 0.046f)));
+                AttachMesh("PoolBank", WaterProjectSetup.FacetedFrom(v, idx), GetMat("Pond_Sand", new Color(0.050f, 0.044f, 0.030f)));
             }
 
             // ── 绿坡环：把"沙漠里一个洞"变成"林间一潭" ──
@@ -258,7 +258,7 @@ namespace WaterProject.EditorTools
             // 倒影要有内容，否则"平面反射"这件事根本看不出来。
             var rng = new System.Random(202609242);
 
-            var rockMat = GetMat("Pond_Rock", new Color(0.110f, 0.165f, 0.135f));
+            var rockMat = GetMat("Pond_Rock", new Color(0.066f, 0.074f, 0.062f));
             var rocks = new Mesh[3];
             for (int v = 0; v < 3; v++)
                 rocks[v] = WaterProjectSetup.BuildFacetedRock(v, 1f);
@@ -312,8 +312,10 @@ namespace WaterProject.EditorTools
             }
 
             EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
-            WriteProbe("MENU63 props " + n + " rocks/trees " + placed
-                       + (placed < 7 ? " TREE-PREFAB-MISSING" : "") + "\n");
+            // placed<7 有两种原因：缺 Prefab，或被 PlacePondTree 的 6m 相机闸门剔掉。
+            // 具体是哪几株、为什么，看同一份探针里的 PLACE-MISSING / SKIP-CAM 行。
+            WriteProbe("MENU63 props " + n + " rocks/trees " + placed + "/7"
+                       + (placed < 7 ? " (见 PLACE-MISSING / SKIP-CAM 行)" : "") + "\n");
         }
 
         // ═════════════════════════ 64 ═════════════════════════
@@ -351,11 +353,48 @@ namespace WaterProject.EditorTools
             if (!UnityEngine.Application.isPlaying)
             { WriteProbe("MENU65 REFUSED: 不在 Play 模式\n"); return; }
 
+            // ⚠ 本工程 Project Settings 里 runInBackground = 0 ⇒ 编辑器一失焦，Play 循环就停，
+            //   GameView 的 m_RenderTexture 永远停在最后一次前台渲染。
+            //   实测连续三次抓到的 PNG md5 完全相同、Time.frameCount 冻在 3 ——
+            //   看到的一切改动（关掉 5 个光柱物体）都不生效，因为那是张过期照片。
+            Application.runInBackground = true;
+
+            if (s_grabPending) { WriteProbe("MENU65 已有一次抓取在排队，忽略\n"); return; }
+            s_grabPending = true;
+            int from = Time.renderedFrameCount;
+            s_grabTarget = from + 3;                       // 至少前进 3 帧，RT 才可能是新的
+            s_grabDeadline = EditorApplication.timeSinceStartup + 8.0;
+            WriteProbe("MENU65 request renderedFrame=" + from + "\n");
+            EditorApplication.update += GrabWhenFresh;
+        }
+
+        static bool s_grabPending;
+        static int s_grabTarget;
+        static double s_grabDeadline;
+
+        static void GrabWhenFresh()
+        {
+            int now = Time.renderedFrameCount;
+            bool fresh = now >= s_grabTarget;
+            bool timedOut = EditorApplication.timeSinceStartup > s_grabDeadline;
+            if (!fresh && !timedOut) return;
+
+            EditorApplication.update -= GrabWhenFresh;
+            s_grabPending = false;
+
+            string outPath = "Docs/screenshots/_pond_view.png";
+            if (!fresh)
+            {
+                // 宁可不出图，也不能拿过期画面当验收依据
+                WriteProbe("MENU65 STALE renderedFrame=" + now
+                           + " 目标 " + s_grabTarget + " —— 未覆盖旧图\n");
+                return;
+            }
+
             // 不在 Play 里 OpenScene —— 那会直接打断 Play 模式，截图永远拿不到。
             // 只报当前场景名，取错场景仍然能从探针看出来。
             string cur = UnityEngine.SceneManagement.SceneManager.GetActiveScene().path;
-            string outPath = "Docs/screenshots/_pond_view.png";
-            WriteProbe("MENU65 enter frame=" + UnityEngine.Time.frameCount + " scene=" + cur + "\n");
+            WriteProbe("MENU65 grab at renderedFrame=" + now + " scene=" + cur + "\n");
 
             // 主路径：直接从 Game 视图自己的渲染纹理里取。
             // ScreenCapture 只在编辑器处于前台时才落盘，而这条是同步写文件，不依赖焦点。
@@ -463,6 +502,69 @@ namespace WaterProject.EditorTools
             WriteProbe("MENU67 rt " + rt.width + "x" + rt.height + " -> " + outPath + "\n");
         }
 
+        // ═════════════════════════ 69 ═════════════════════════
+        // 像素→物体探针。画面里出现一个说不清来源的形状时，靠肉眼一个个隐藏去二分是最慢的路
+        // （这一轮已经这样排除了光柱/倒木/林线/冠层/绿坡/沙岸，六个组都不是）。
+        // 这里直接把屏幕像素射出的射线和所有启用 Renderer 的世界 AABB 求交，按距离排序写探针。
+        // AABB 必然有假阳性（细长斜物体的盒子很大），但"最近的候选"一定在列表里。
+        [MenuItem("Tools/WaterPond/69 像素探针(射线命中的Renderer列表)")]
+        public static void PixelProbe()
+        {
+            var camGo = UnityEngine.GameObject.Find("Main Camera");
+            var c = camGo != null ? camGo.GetComponent<Camera>() : null;
+            if (c == null) { WriteProbe("MENU69 REFUSED: 没有 Main Camera\n"); return; }
+
+            // 那根暗条的中点与偏下一点，两个点互相印证
+            var pts = new Vector2[]
+            {
+                new Vector2(190f / 896f, 1f - 450f / 508f),
+                new Vector2(150f / 896f, 1f - 420f / 508f),
+            };
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in pts)
+            {
+                Ray ray = c.ViewportPointToRay(p);
+                var hits = new List<UnityEngine.Renderer>();
+                var dists = new List<float>();
+                foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.Renderer>(FindObjectsSortMode.None))
+                {
+                    if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+                    float enter;
+                    if (r.bounds.IntersectRay(ray, out enter) && enter < 200f) { hits.Add(r); dists.Add(enter); }
+                }
+                var order = new List<int>();
+                for (int i = 0; i < hits.Count; i++) order.Add(i);
+                order.Sort((x, y) => dists[x].CompareTo(dists[y]));
+
+                sb.Append("MENU69 vp(").Append(p.x.ToString("F3")).Append(',').Append(p.y.ToString("F3"))
+                  .Append(") dir(").Append(V3(ray.direction)).Append(") hits ").Append(order.Count).Append('\n');
+                for (int k = 0; k < Mathf.Min(order.Count, 12); k++)
+                {
+                    int i = order[k];
+                    var r = hits[i];
+                    sb.Append("   ").Append(dists[i].ToString("F2")).Append("m ").Append(r.name)
+                      .Append(" [").Append(r.sharedMaterial != null ? r.sharedMaterial.name : "?").Append("] ")
+                      .Append("size(").Append(V3(r.bounds.size)).Append(")\n");
+                }
+                if (order.Count == 0) sb.Append("   (nothing)\n");
+            }
+            WriteProbe(sb.ToString());
+        }
+
+        static string V3(Vector3 v)
+        {
+            return v.x.ToString("F1") + "," + v.y.ToString("F1") + "," + v.z.ToString("F1");
+        }
+
+        // 摆放时的"离镜头多远"一律用 XZ 量：机位高度只有 1.9m，垂直分量在这里没有意义
+        static Vector2 CamXZ()
+        {
+            var camT = UnityEngine.GameObject.Find("Main Camera");
+            if (camT == null) return new Vector2(0f, 0f);
+            var p = camT.transform.position;
+            return new Vector2(p.x, p.z);
+        }
+
         // ═════════════════════════ 68 ═════════════════════════
         [MenuItem("Tools/WaterPond/68 森林化(冠层+密树环+灌木+倒木)")]
         public static void BuildForest()
@@ -473,11 +575,14 @@ namespace WaterProject.EditorTools
             var rng = new System.Random(202609247);
 
             // 只清自己这一轮的产物：菜单63 的 PondTree_/PondRock_ 由它自己负责
+            // 树脚裙叫 ForestTree_NN_skirt / PondTree_N_skirt，前缀已经覆盖到
             foreach (var go in UnityEngine.Object.FindObjectsByType<UnityEngine.GameObject>(FindObjectsSortMode.None))
                 if (go != null && (go.name.StartsWith("ForestTree_") || go.name.StartsWith("PondBush_")
-                                   || go.name.StartsWith("PoolLog_") || go.name.StartsWith("PoolShaft_")))
+                                   || go.name.StartsWith("PoolLog_") || go.name.StartsWith("PoolShaft_")
+                                   || go.name.StartsWith("PoolTreeline")))
                     UnityEngine.Object.DestroyImmediate(go);
 
+            int far    = BuildTreeline();
             int bushes = BuildUndergrowth(rng);
             int trees  = BuildTreeWall();
             int logs   = BuildFallenLogs(rng);
@@ -485,8 +590,51 @@ namespace WaterProject.EditorTools
             int shafts = BuildLightShafts(rng);
 
             EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
-            WriteProbe("MENU68 forest trees " + trees + " bushes " + bushes
+            WriteProbe("MENU68 forest treeline " + far + " trees " + trees + " bushes " + bushes
                        + " logs " + logs + " shafts " + shafts + "\n");
+        }
+
+        // 远景林线：天空那条带的唯一"内容"来源。
+        // 机位 fov 46°、俯 7° ⇒ 画幅上缘只到仰角 16°，而绿坡脊线只顶到约 5°，
+        // 中间 11° 是一整条空天。要在近处闭合就得 r<25m 连一排 12m 高的树，
+        // 那会把中圈树墙和潭岸全挡死。所以往远处挂幕帘：
+        // r=50/66 处雾透过率只剩 13%/8%，颜色被自动压成雾色 ⇒ 天然读成"雾里的树梢"，
+        // 不需要任何额外着色器技巧。顶缘用三个倍频 + 一个林窗包络，避免读成一堵墙。
+        static int BuildTreeline()
+        {
+            var mat = GetMat("Pond_FarTrees", new Color(0.028f, 0.062f, 0.042f));
+            const int SEG = 240;
+            int layers = 0;
+
+            for (int L = 0; L < 2; L++)
+            {
+                float radius = L == 0 ? 50f : 66f;
+                float baseY  = L == 0 ? 3.0f : 4.6f;   // 都低于该半径处的绿坡面，底边自然被挡住
+                var v = new List<Vector3>(); var idx = new List<int>();
+                for (int i = 0; i <= SEG; i++)
+                {
+                    float th = Mathf.PI * 2f * i / SEG;
+                    float r = radius * (1f + 0.035f * Mathf.Sin(th * 6f + L * 2.2f));
+                    float top = 19f + 4.6f * Mathf.Sin(th * 3f + L * 2.1f)
+                                   + 2.8f * Mathf.Sin(th * 9f + 0.7f)
+                                   + 1.6f * Mathf.Sin(th * 21f + 2.3f);
+                    // 林窗：某些方位整片矮下去，让天还能透出来，否则画面变成一只盒子
+                    float win = Mathf.Sin(th * 2f + L * 1.3f);
+                    top *= Mathf.Lerp(0.52f, 1.0f, Mathf.SmoothStep(-0.25f, 0.55f, win));
+                    var c = new Vector3(Mathf.Cos(th) * r, 0f, Mathf.Sin(th) * r);
+                    v.Add(c + Vector3.up * baseY);
+                    v.Add(c + Vector3.up * top);
+                    if (i == SEG) break;
+                    int a = i * 2;
+                    idx.Add(a); idx.Add(a + 2); idx.Add(a + 1);
+                    idx.Add(a + 1); idx.Add(a + 2); idx.Add(a + 3);
+                }
+                var go = AttachMesh("PoolTreeline" + L, WaterProjectSetup.FacetedFrom(v, idx), mat);
+                var mr = go != null ? go.GetComponent<MeshRenderer>() : null;
+                if (mr != null) mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                layers++;
+            }
+            return layers;
         }
 
         // 光柱：把"上方有光透下来"画成一个可见的体积暗示。
@@ -567,8 +715,10 @@ namespace WaterProject.EditorTools
             else if (m != null && sh != null) m.shader = sh;
             if (m == null) return null;
             m.SetColor("_ShaftColor", new Color(1.0f, 0.92f, 0.72f));
-            m.SetFloat("_Intensity", 0.14f);
-            m.SetFloat("_Softness", 1.6f);
+            // along 改成中段平直后，柱体平均亮度自己就上来了约 2.4 倍，
+            // 所以强度反而要往下调 —— 否则加性混合会把树冠洗成一片白。
+            m.SetFloat("_Intensity", 0.115f);
+            m.SetFloat("_Softness", 1.9f);
             m.SetFloat("_Flicker", 0.12f);
             EditorUtility.SetDirty(m);
             return m;
@@ -624,9 +774,6 @@ namespace WaterProject.EditorTools
         // 两圈密植：中圈把对岸封成树墙（也是倒影主体），外圈在雾里读成"林子还有多深"。
         static int BuildTreeWall()
         {
-            var camT = UnityEngine.GameObject.Find("Main Camera");
-            Vector3 camXZ = camT != null ? camT.transform.position : new Vector3(-2.2f, 1.9f, -9.6f);
-
             var rng = new System.Random(202609248);
             int n = 0;
             for (int ring = 0; ring < 3; ring++)
@@ -640,8 +787,7 @@ namespace WaterProject.EditorTools
                     float th = Mathf.PI * 2f * k / count + (float)rng.NextDouble() * 0.42f;
                     float r = PondR(th) + lo + (float)rng.NextDouble() * span;
                     var at = new Vector3(Mathf.Cos(th) * r, BankY(r, th), Mathf.Sin(th) * r);
-                    // 别把树长在相机身上
-                    if (new Vector2(at.x - camXZ.x, at.z - camXZ.z).magnitude < 3.5f) continue;
+                    // "离镜头太近就不种"由 PlacePondTree 统一把关，这里不再重复一份判据
                     if (PlacePondTree("ForestTree_" + n.ToString("00"), at, rng, n,
                                       sLo, sLo + 0.30f) != null) n++;
                 }
@@ -649,25 +795,114 @@ namespace WaterProject.EditorTools
             return n;
         }
 
-        // 林下灌木：同一套石头机器，把噪声模块压到 0.22 → 读成一团圆叶而不是岩石
+        // 林下灌木：单块扁石只会读成"绿色铺路石"，灌木的轮廓必须靠几团错开的叶丘叠出来。
+        // 合并成单一网格而不是放 4 个子物体 —— 92 丛 × 4 = 368 个 Renderer 没必要。
         static int BuildUndergrowth(System.Random rng)
         {
-            var mat = GetMat("Pond_Bush", new Color(0.030f, 0.098f, 0.044f));
-            var blobs = new Mesh[3];
-            for (int v = 0; v < 3; v++) blobs[v] = WaterProjectSetup.BuildFacetedRock(v, 0.22f);
+            var clusters = BushClusters();
+            var mat = GetMat("Pond_Bush", BushCol);
 
             int n = 0;
-            for (int k = 0; k < 64; k++)
+            for (int k = 0; k < 92; k++)
             {
                 float th = (float)rng.NextDouble() * Mathf.PI * 2f;
                 float r = PondR(th) + 0.8f + (float)rng.NextDouble() * 20f;
-                float y = BankY(r, th) - 0.20f;
-                // 注意：PlaceBoulder 返回的是"本次放置数 1"，索引要从外面传进去
-                WaterProjectSetup.PlaceBoulder(blobs, mat, rng, "PondBush_", n,
-                    new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r), 0.50f, 1.60f);
+                float y = BankY(r, th) - 0.16f;
+                var at = new Vector3(Mathf.Cos(th) * r, y, Mathf.Sin(th) * r);
+                // 灌木可以贴近镜头当前景框景，但糊在 0.1m 近裁剪面上就是一团糊
+                if (Vector2.Distance(new Vector2(at.x, at.z), CamXZ()) < 1.8f) continue;
+                PlaceBush("PondBush_" + n.ToString("00"), at, rng, clusters, mat, 0.34f, 0.80f);
                 n++;
             }
             return n;
+        }
+
+        static Mesh[] s_bushClusters;
+
+        // 灌木与树脚裙共用同一份色值，写两处一定会漂移
+        static readonly Color BushCol = new Color(0.020f, 0.060f, 0.030f);
+
+        // 叶丘团：6 个固定变体，落盘成 6 个网格资产给 92 丛 + 83 个树脚裙共用
+        static Mesh[] BushClusters()
+        {
+            // Unity 的 == null 对"托管引用还在、原生对象已销毁"也成立，所以只查第 0 个就够
+            if (s_bushClusters != null && s_bushClusters[0] != null) return s_bushClusters;
+            var arr = new Mesh[6];
+            for (int v = 0; v < 6; v++)
+            {
+                string p = MeshFolder + "/PoolBushCluster_" + v + ".asset";
+                var m = BushClusterMesh(v);
+                SaveMeshAsset(m, p, "PoolBushCluster_" + v);
+                // ⚠ 别 DestroyImmediate(m)：首次创建走的是 CreateAsset(m)，
+                //   那一刻 m 就是资产本身，销毁它等于把刚存的文件删了。
+                arr[v] = AssetDatabase.LoadAssetAtPath<Mesh>(p);
+            }
+            s_bushClusters = arr;
+            WriteProbe("BUSH clusters rebuilt: " + arr[0].vertexCount + " verts in variant 0\n");
+            return arr;
+        }
+
+        static void PlaceBush(string nm, Vector3 at, System.Random rng,
+                              Mesh[] clusters, Material mat, float sMin, float sMax)
+        {
+            var go = new UnityEngine.GameObject(nm);
+            go.transform.position = at;
+            go.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+            float s = sMin + (float)rng.NextDouble() * (sMax - sMin);
+            // y 必须 ≥ xz：扁的一读就是石头，高一点的读才是丛
+            go.transform.localScale = new Vector3(s * (0.86f + (float)rng.NextDouble() * 0.30f),
+                                                  s * (0.95f + (float)rng.NextDouble() * 0.55f),
+                                                  s * (0.86f + (float)rng.NextDouble() * 0.30f));
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = clusters[rng.Next(clusters.Length)];
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        // 一团"灌木"= 3~5 个扁叶丘绕中心错开叠起来。种子只由 variant 决定，
+        // 所以同一变体每次重建完全一致，摆位随机由外层 rng 负责。
+        static Mesh BushClusterMesh(int variant)
+        {
+            var rng = new System.Random(4409 + variant * 977);
+            var v = new List<Vector3>(); var n = new List<Vector3>(); var t = new List<int>();
+            int loaves = 3 + rng.Next(3);
+            for (int k = 0; k < loaves; k++)
+            {
+                var src = WaterProjectSetup.BuildFacetedRock(variant * 13 + k, 0.34f);
+                float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+                float rad = k == 0 ? 0f : 0.32f + (float)rng.NextDouble() * 0.38f;
+                var xform = Matrix4x4.TRS(
+                    new Vector3(Mathf.Cos(a) * rad, (float)rng.NextDouble() * 0.24f, Mathf.Sin(a) * rad),
+                    Quaternion.Euler((float)(rng.NextDouble() - 0.5) * 20f, a * Mathf.Rad2Deg,
+                                     (float)(rng.NextDouble() - 0.5) * 20f),
+                    new Vector3(0.50f + (float)rng.NextDouble() * 0.26f,
+                                0.44f + (float)rng.NextDouble() * 0.30f,
+                                0.50f + (float)rng.NextDouble() * 0.26f));
+                AppendMesh(src, xform, v, n, t);
+                UnityEngine.Object.DestroyImmediate(src);
+            }
+            var mesh = new Mesh();
+            mesh.SetVertices(v);
+            mesh.SetNormals(n);
+            mesh.SetTriangles(t, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        static void AppendMesh(Mesh src, Matrix4x4 xform, List<Vector3> v, List<Vector3> n, List<int> t)
+        {
+            int b = v.Count;
+            var sv = src.vertices;
+            var sn = src.normals;
+            var st = src.triangles;
+            var nm = Matrix4x4.Transpose(Matrix4x4.Inverse(xform));
+            for (int i = 0; i < sv.Length; i++)
+            {
+                v.Add(xform.MultiplyPoint3x4(sv[i]));
+                n.Add(Vector3.Normalize(nm.MultiplyVector(sn[i])));
+            }
+            for (int i = 0; i < st.Length; i++) t.Add(st[i] + b);
         }
 
         // 倒木：把棱角巨石沿长轴拉成一条脊，一头搭进水里 —— 低多边形里最省事的"横倒的树"
@@ -703,6 +938,12 @@ namespace WaterProject.EditorTools
         static UnityEngine.GameObject PlacePondTree(string nm, Vector3 target, System.Random rng,
                                                     int variant, float sMin, float sMax)
         {
+            // 离相机太近就不种。像素探针（菜单69）抓到过一株落在 4.4m 的树，
+            // 它一根约 2m 长的枝桩在 46° 画幅上占了 310px，横穿画面左下读成一道锥形暗条。
+            // 交付树的枝桩是真实几何，不是贴图，近到一定程度必然穿帮。
+            if (Vector2.Distance(new Vector2(target.x, target.z), CamXZ()) < 6.0f)
+            { WriteProbe("SKIP-CAM " + nm + " at " + V3(target) + "\n"); return null; }
+
             string ap = "Assets/Trees/Prefabs/Prefab_SM_Tree_Broadleaf_"
                       + (variant % 5 + 1).ToString("00") + ".prefab";
             var pf = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(ap);
@@ -728,6 +969,14 @@ namespace WaterProject.EditorTools
                     if (m != null && m.name.Contains("Leaf"))
                     { r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; break; }
             }
+
+            // 树脚裙：交付树的下树干带着一圈浅色枝桩，埋 0.45m 之后仍有露出来的，
+            // 在地表压一团同材质的低矮叶丘 —— 读成"从灌木里长出来"，
+            // 而不是"一根棍子插在地板上"。名字沿用树前缀，菜单63/68 的前缀清理顺带带走。
+            PlaceBush(nm + "_skirt",
+                      target + new Vector3((float)(rng.NextDouble() - 0.5) * 0.5f, 0.02f,
+                                           (float)(rng.NextDouble() - 0.5) * 0.5f),
+                      rng, BushClusters(), GetMat("Pond_Bush", BushCol), 0.42f, 0.70f);
             return inst;
         }
 
@@ -792,9 +1041,11 @@ namespace WaterProject.EditorTools
             if (m == null) { m = new Material(sh) { name = "Sky_ForestCanopy" }; AssetDatabase.CreateAsset(m, p); }
             else m.shader = sh;
             m.SetColor("_ZenithColor",  new Color(0.660f, 0.700f, 0.560f));  // 天窗里的天
-            // 地平带必须是画面里最亮的区域之一 —— 幽深靠"整体暗 + 几处亮"，不是"全都一样暗"。
-            // 压到 0.185 时它与树冠实测几乎同值（(42,59,36) vs (40,62,30)），整幅掉进一条窄绿带。
-            m.SetColor("_HorizonColor", new Color(0.225f, 0.320f, 0.300f));  // 远处透光树冠墙（偏冷，与幽蓝水同调）
+            // 幽深靠"整体暗 + 几处亮"，不是"全都一样暗"：上一次把它压到 0.185 时，
+            // 它与树冠实测几乎同值（(42,59,36) vs (40,62,30)），整幅掉进一条窄绿带。
+            // 这一轮天空带的内容改由菜单68 的远景林线承担，所以这里只微退一档、
+            // 让剩余天空往后退，而不是靠它自己撑住那条带。
+            m.SetColor("_HorizonColor", new Color(0.196f, 0.286f, 0.276f));  // 远处透光树冠墙（偏冷，与幽蓝水同调）
             m.SetColor("_GroundColor",  new Color(0.035f, 0.048f, 0.030f));  // 腐殖质
             EditorUtility.SetDirty(m);
             return m;
@@ -851,8 +1102,14 @@ namespace WaterProject.EditorTools
             if (m == null) { m = new Material(sh) { name = "Water_Pond" }; AssetDatabase.CreateAsset(m, p); }
             else m.shader = sh;
 
-            m.SetColor("_SkyZenith",    new Color(0.660f, 0.700f, 0.560f));   // = Sky_ForestCanopy 天顶
-            m.SetColor("_SkyHorizon",   new Color(0.225f, 0.320f, 0.300f));   // = Sky_ForestCanopy 地平
+            // 天空两色从天空材质现读，不再抄第二份字面量 —— 之前注释写着"= Sky_ForestCanopy"，
+            // 但那是人肉同步，改一处忘一处就会让"水面倒的天"和"真实的天"对不上。
+            var sky = ForestSkyMaterial();
+            if (sky != null)
+            {
+                m.SetColor("_SkyZenith",  sky.GetColor("_ZenithColor"));
+                m.SetColor("_SkyHorizon", sky.GetColor("_HorizonColor"));
+            }
             m.SetColor("_SunColor",     new Color(1.000f, 0.880f, 0.620f));   // = 灯的暖金色
             m.SetColor("_FoamColor",    new Color(0.620f, 0.680f, 0.560f));
 
@@ -874,8 +1131,10 @@ namespace WaterProject.EditorTools
             m.SetFloat("_DetailStrength", 0.28f);
             m.SetFloat("_DetailScale", 1.9f);
             m.SetFloat("_DetailFlow", 0.10f);
-            m.SetFloat("_RippleStrength", 0.085f);
-            m.SetFloat("_RippleScale", 5.5f);
+            // 掠射衰减已经交给 shader 的 fineW，这里只是"正下方"那一档的上限值。
+            // 尺度从 5.5 抬到 6.5：格子更密，未衰减区间的条纹更细、不再像灯芯绒。
+            m.SetFloat("_RippleStrength", 0.075f);
+            m.SetFloat("_RippleScale", 6.5f);
 
             m.SetFloat("_RefractStrength", 0.12f);
             m.SetFloat("_MaxUVOffset", 0.012f);
@@ -885,7 +1144,9 @@ namespace WaterProject.EditorTools
             // 恰好在"唯一值得倒的东西"那里把它抹掉一半 —— 淡出是为了远处没内容时兜底，
             // 不是为了削掉主体。
             m.SetFloat("_PlanarStrength", 1.6f);
-            m.SetFloat("_ReflDistort", 0.016f);
+            // 掠射时 reflDir.xz 本身就接近 1，而镜像 RT 在那个角度上被压得极扁，
+            // 同样的 UV 偏移跨过的世界距离大得多 —— 0.016 会把倒影推成条纹，收到 0.012。
+            m.SetFloat("_ReflDistort", 0.012f);
             m.SetFloat("_ReflFade", 120.0f);
             m.SetFloat("_FresnelPow", 4.0f);
             // 林底不是一面干净的镜子：四周都在遮天，反射权重给不到 1；

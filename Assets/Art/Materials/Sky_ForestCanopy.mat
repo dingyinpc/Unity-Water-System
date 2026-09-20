@@ -27,6 +27,6 @@ Material:
     m_Floats: []
     m_Colors:
     - _GroundColor: {r: 0.035, g: 0.048, b: 0.03, a: 1}
-    - _HorizonColor: {r: 0.225, g: 0.32, b: 0.3, a: 1}
+    - _HorizonColor: {r: 0.196, g: 0.286, b: 0.276, a: 1}
     - _ZenithColor: {r: 0.66, g: 0.7, b: 0.56, a: 1}
   m_BuildTextureStacks: []
