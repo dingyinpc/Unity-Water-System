@@ -346,126 +346,16 @@ namespace WaterProject.EditorTools
             WriteProbe("MENU64 done -> " + ScenePath + "\n");
         }
 
-        // ═════════════════════════ 65 ═════════════════════════
+        // ================ 65 ================
         [MenuItem("Tools/WaterPond/65 Play 中截图 Game 视图")]
         public static void CapturePond()
         {
-            if (!UnityEngine.Application.isPlaying)
-            { WriteProbe("MENU65 REFUSED: 不在 Play 模式\n"); return; }
-
-            // ⚠ 本工程 Project Settings 里 runInBackground = 0 ⇒ 编辑器一失焦，Play 循环就停，
-            //   GameView 的 m_RenderTexture 永远停在最后一次前台渲染。
-            //   实测连续三次抓到的 PNG md5 完全相同、Time.frameCount 冻在 3 ——
-            //   看到的一切改动（关掉 5 个光柱物体）都不生效，因为那是张过期照片。
-            Application.runInBackground = true;
-
-            if (s_grabPending) { WriteProbe("MENU65 已有一次抓取在排队，忽略\n"); return; }
-            s_grabPending = true;
-            int from = Time.renderedFrameCount;
-            s_grabTarget = from + 3;                       // 至少前进 3 帧，RT 才可能是新的
-            s_grabDeadline = EditorApplication.timeSinceStartup + 8.0;
-            WriteProbe("MENU65 request renderedFrame=" + from + "\n");
-            EditorApplication.update += GrabWhenFresh;
+            // 取帧实现收进 GameViewCapture：三条踩过的坑（cam.Render() 不走后处理、
+            // 子相机 RT 的残帧、runInBackground=0 的过期照片）见《05》G-15 / G-18 / G-19。
+            // 海岸线菜单85 共用同一份，不再各写一遍。
+            GameViewCapture.Request("MENU65", "Docs/screenshots/_pond_view.png");
         }
 
-        static bool s_grabPending;
-        static int s_grabTarget;
-        static double s_grabDeadline;
-
-        static void GrabWhenFresh()
-        {
-            int now = Time.renderedFrameCount;
-            bool fresh = now >= s_grabTarget;
-            bool timedOut = EditorApplication.timeSinceStartup > s_grabDeadline;
-            if (!fresh && !timedOut) return;
-
-            EditorApplication.update -= GrabWhenFresh;
-            s_grabPending = false;
-
-            string outPath = "Docs/screenshots/_pond_view.png";
-            if (!fresh)
-            {
-                // 宁可不出图，也不能拿过期画面当验收依据
-                WriteProbe("MENU65 STALE renderedFrame=" + now
-                           + " 目标 " + s_grabTarget + " —— 未覆盖旧图\n");
-                return;
-            }
-
-            // 不在 Play 里 OpenScene —— 那会直接打断 Play 模式，截图永远拿不到。
-            // 只报当前场景名，取错场景仍然能从探针看出来。
-            string cur = UnityEngine.SceneManagement.SceneManager.GetActiveScene().path;
-            WriteProbe("MENU65 grab at renderedFrame=" + now + " scene=" + cur + "\n");
-
-            // 主路径：直接从 Game 视图自己的渲染纹理里取。
-            // ScreenCapture 只在编辑器处于前台时才落盘，而这条是同步写文件，不依赖焦点。
-            bool viaView = false;
-            try { viaView = GrabFromGameView(outPath); }
-            catch (System.Exception e)
-            { WriteProbe("MENU65 grab THREW " + e.GetType().Name + " :: " + e.Message + "\n"); }
-
-            if (!viaView)
-            {
-                ScreenCapture.CaptureScreenshot(outPath);
-                WriteProbe("MENU65 ⚠ 没拿到 GameView 渲染纹理，退回 ScreenCapture（需要编辑器在前台才会落盘）\n");
-            }
-            WriteProbe("MENU65 " + (viaView ? "grabbed" : "captured") + " " + outPath + "\n");
-        }
-
-        static bool GrabFromGameView(string outPath)
-        {
-            const System.Reflection.BindingFlags F =
-                System.Reflection.BindingFlags.NonPublic
-              | System.Reflection.BindingFlags.Public
-              | System.Reflection.BindingFlags.Instance;
-
-            // GameView 是 internal 类型，只能全程反射
-            var gvType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
-            if (gvType == null) { WriteProbe("MENU65 找不到 UnityEditor.GameView 类型\n"); return false; }
-
-            var views = UnityEngine.Resources.FindObjectsOfTypeAll(gvType);
-            if (views == null || views.Length == 0) { WriteProbe("MENU65 没有打开的 GameView\n"); return false; }
-
-            // 只读字段，不 Invoke 任何方法 —— 2022.3 的 GameView.RenderView() 是带参数的，
-            // Invoke(null) 会抛 TargetParameterCountException
-            var rtField = gvType.GetField("m_RenderTexture", F);
-            if (rtField == null) { WriteProbe("MENU65 GameView 没有 m_RenderTexture 字段\n"); return false; }
-
-            RenderTexture rt = null;
-            foreach (var v in views)
-            {
-                rt = rtField.GetValue(v) as RenderTexture;
-                if (rt != null && rt.IsCreated() && rt.width > 16 && rt.height > 16) break;
-                rt = null;
-            }
-            if (rt == null) { WriteProbe("MENU65 m_RenderTexture 里没有有效 RT\n"); return false; }
-
-            var prev = RenderTexture.active;
-            RenderTexture.active = rt;
-            var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
-            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-            tex.Apply();
-            RenderTexture.active = prev;
-
-            // GameView 的 RT 是底朝上的行序，直接编码会上下颠倒
-            var px = tex.GetPixels32();
-            var flipped = new Color32[px.Length];
-            int row = tex.width;
-            for (int y = 0; y < tex.height; y++)
-                System.Array.Copy(px, (tex.height - 1 - y) * row, flipped, y * row, row);
-            var outTex = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
-            outTex.SetPixels32(flipped);
-            outTex.Apply();
-            System.IO.File.WriteAllBytes(outPath, outTex.EncodeToPNG());
-            UnityEngine.Object.Destroy(outTex);
-            UnityEngine.Object.Destroy(tex);
-
-            // 只报格式；"后处理有没有吃到"用与已知前台截图比色调特性来判断，
-            // 不拿"四角比中心暗"当判据 —— 这台机位中心是暗水面、四角本来就是亮树与天，
-            // Vignette 压三成仍然 ratio>1（实测 1.451），那条判据是错的。
-            WriteProbe("MENU65 rt " + rt.width + "x" + rt.height
-                       + " fmt=" + rt.graphicsFormat + " -> " + outPath + "\n");
-            return true;
-        }
 
         [MenuItem("Tools/WaterPond/66 切换反射调试(0关/1只看平面反射)")]
         public static void TogglePondDebug()

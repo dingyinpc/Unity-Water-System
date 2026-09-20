@@ -1,0 +1,359 @@
+// ============================================================================
+// Water_Ocean.shader — 开阔海岸的水面
+//
+// 三条水线是三个不同的物理尺度，不是同一份代码改颜色：
+//
+//   Water_Advanced      Water_Pond          Water_Ocean
+//   ────────────────    ─────────────────   ──────────────────────────
+//   λ 1.2~12.6m         λ 1.5~3.9m          λ 24~150m（涌）+ 浅水放大
+//   浪漫化的池水         fetch 正确的细波     风区够长的真涌
+//   反射 = 天空渐变      反射 = 平面镜像 RT    反射 = 天空渐变（海没有可倒的近物）
+//   无雾                无雾（16m 用不上）    **必须带雾**，否则地平线是一条硬边
+//
+//   海的主角不是波纹，是**浪走向岸、变陡、碎掉、变成一道白沫冲上沙滩再退回去**。
+//   缺了这条，多大面积的水都只会读成"大池塘"。所以本文件有三段别人没有的东西：
+//     ① 波高随水深放大（浅水变形）+ 有界陡度 Q 让浪头变尖
+//     ② 破碎判据 H/depth > breakerIndex（哪里该白）
+//     ③ 一层贴着沙面上冲再退回的水膜（swash），湿沙边界会呼吸
+//
+// 纪律（来自本项目踩过的坑，见《05》A-1、D-13、D-17）：
+//   · 反射/透射/泡沫全部 lerp，不用 +=（无界累加只会单调变亮）。
+//   · 高频皮肤法线按视角衰减，掠射区会混叠成灯芯绒。
+//   · 岸线/剖面/沫带全部来自 OceanShore.hlsl，沙滩材质共用同一份，不会错位。
+//
+// 几何参数（_Shore* / _ShoreSlope / _Beach* / _Swash*）刻意**不进 Properties**：
+//   它们必须与 Beach_Sand 完全一致，只能由菜单80/81 写，给美术手调的口子就是错位口。
+//   代价是 SRP Batcher 会判这些材质"不兼容"（Properties 里有 cbuffer 没收到的项？
+//   不，是 cbuffer 里有 Properties 没收到的项）—— 本场景一共两个水/沙 draw call，
+//   兼容性在这里没有意义。
+// ============================================================================
+Shader "WaterProject/Water_Ocean"
+{
+    Properties
+    {
+        // ── 颜色 ──
+        _DeepColor        ("远海深色", Color) = (0.012, 0.075, 0.130, 1)
+        _ShallowColor     ("近岸浅水色", Color) = (0.150, 0.560, 0.580, 1)
+        _FoamColor        ("浪沫色", Color) = (0.94, 0.97, 0.98, 1)
+        _SkyZenith        ("天空顶部色", Color) = (0.240, 0.520, 0.860, 1)
+        _SkyHorizon       ("天空地平色", Color) = (0.700, 0.820, 0.920, 1)
+        _SunColor         ("太阳高光色", Color) = (1.0, 0.96, 0.88, 1)
+
+        // ── 着色 ──
+        _Absorb           ("吸收系数", Float) = 0.16
+        _Opacity          ("整体不透明度", Float) = 0.95
+        _MaxDepth         ("归一化最大水深(米)", Float) = 10.0
+
+        // ── 几何涌浪（3 波，λ 24~150m）──
+        _SwellAmp         ("涌浪总幅(米)", Float) = 1.5
+        _SwellScale       ("波长倍率", Float) = 1.0
+        _SwellSpeed       ("传播速度倍率", Float) = 1.0
+        _WindAlign        ("浪向对齐岸线的程度", Range(0, 1)) = 0.80
+        _Steep            ("浪头尖度", Range(0, 1)) = 0.62
+
+        // ── 浅水变形与碎浪 ──
+        _ShoalGain        ("浅水放大增益", Range(1, 4)) = 2.1
+        _ShoalRange       ("开始变形的深度(米)", Float) = 7.0
+        _BreakerIndex     ("破碎阈值 H/水深", Range(0.4, 1.4)) = 0.82
+        _BreakFoam        ("碎浪泡沫强度", Range(0, 1)) = 0.85
+        _Whitecap         ("远海白帽强度", Range(0, 1)) = 0.20
+
+        // ── 冲滩沫带的"样子"（"能冲多远"在 OceanShore 里，与沙滩共用）──
+        _SwashFoam        ("沫带强度", Range(0, 1)) = 0.75
+
+        // ── 表面皮肤（法线）──
+        _DetailStrength   ("中频法线强度", Float) = 0.34
+        _DetailScale      ("中频法线尺度", Float) = 0.30
+        _DetailFlow       ("流动速度", Float) = 0.16
+        _RippleStrength   ("高频皮肤强度", Float) = 0.16
+        _RippleScale      ("高频皮肤尺度", Float) = 1.1
+
+        // ── 反射与高光 ──
+        _FresnelPow       ("菲涅尔指数", Float) = 4.0
+        _SkyReflect       ("天空反射权重", Range(0, 2)) = 1.0
+        _SpecPower        ("镜面高光锐度", Float) = 420
+        _SpecStrength     ("镜面高光强度", Range(0, 2)) = 0.7
+        _SunGloss         ("太阳碎闪锐度", Float) = 200
+        _SunStrength      ("太阳碎闪强度", Range(0, 3)) = 1.5
+
+        // ── 调试 ──
+        _DebugMode        ("调试输出(0关/1水深/2破碎/3沫带)", Float) = 0
+    }
+
+    SubShader
+    {
+        Tags { "RenderType"="Transparent" "Queue"="Transparent" "IgnoreProjector"="True"
+               "RenderPipeline"="UniversalPipeline" }
+
+        Pass
+        {
+            Name "OceanForward"
+            Tags { "LightMode"="UniversalForward" }
+
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 3.5
+            #pragma multi_compile_fog
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "OceanShore.hlsl"
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _DeepColor, _ShallowColor, _FoamColor, _SkyZenith, _SkyHorizon, _SunColor;
+                float  _Absorb, _Opacity, _MaxDepth;
+                float  _SwellAmp, _SwellScale, _SwellSpeed, _WindAlign, _Steep;
+                float  _ShoalGain, _ShoalRange, _BreakerIndex, _BreakFoam, _Whitecap;
+                float  _SwashFoam;
+                float  _DetailStrength, _DetailScale, _DetailFlow, _RippleStrength, _RippleScale;
+                float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
+                float  _DebugMode;
+            CBUFFER_END
+
+            struct Attributes { float4 positionOS : POSITION; };
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 worldPos   : TEXCOORD0;
+                float  offDist    : TEXCOORD1;   // 有符号离岸距离：>0 海侧，<0 岸侧
+                float  fogCoord   : TEXCOORD2;
+            };
+
+            // ───────── 涌浪：GPU Gems 1 累加 Gerstner ─────────
+            // 三条浪分开写，不用数组：方向里含运行期量，初始化列表在部分编译
+            // 平台上会退化成分支。
+            struct WaveOut { float3 pos; float3 normal; float hSum; };
+
+            void AddWave(float3 dir, float waveLen, float amp, float speed, float t,
+                         float gain, inout float3 p, inout float3 tang, inout float3 binor,
+                         inout float hSum)
+            {
+                float k = 6.2831853 / max(waveLen * _SwellScale, 0.1);
+                float a = amp * gain;
+                // 有界陡度：Q*A*k*N <= 1 才不会打环。N = 3 条浪。
+                float q = min(_Steep / max(3.0 * k * a, 1e-4), 1.0);
+                float c = sqrt(9.81 / k) * speed * _SwellSpeed;
+                float ph = k * dot(dir.xz, p.xz) - c * k * t;
+                float s = sin(ph), co = cos(ph);
+
+                p.xz += q * a * dir.xz * co;
+                p.y  += a * s;
+                tang += float3(-q * a * k * dir.x * dir.x * s,  a * k * dir.x * co,
+                               -q * a * k * dir.x * dir.y * s);
+                binor+= float3(-q * a * k * dir.x * dir.y * s,  a * k * dir.y * co,
+                               -q * a * k * dir.y * dir.y * s);
+                hSum += 2.0 * a;
+            }
+
+            WaveOut Swell(float3 wp, float t, float gain)
+            {
+                float3 dir0 = _WindDir.xyz;
+                float3 dir1 = normalize(lerp(dir0, float3( 0.36, 0.0, -0.93), 1.0 - _WindAlign));
+                float3 dir2 = normalize(lerp(dir0, float3(-0.71, 0.0,  0.70), 1.0 - _WindAlign));
+
+                float3 p = wp;
+                float3 tang = float3(1.0, 0.0, 0.0);
+                float3 binor = float3(0.0, 0.0, 1.0);
+                float hSum = 0.0;
+
+                AddWave(dir0, 150.0, 0.62 * _SwellAmp, 1.00, t, gain, p, tang, binor, hSum);
+                AddWave(dir1,  74.0, 0.40 * _SwellAmp, 0.88, t, gain, p, tang, binor, hSum);
+                AddWave(dir2,  24.0, 0.26 * _SwellAmp, 1.22, t, gain, p, tang, binor, hSum);
+
+                WaveOut o;
+                o.pos = p;
+                o.normal = normalize(cross(binor, tang));
+                o.hSum = hSum;
+                return o;
+            }
+
+            // ───────── 皮肤法线（逐像素）─────────
+            float Hash12(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * 0.1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.x + p3.y) * p3.z);
+            }
+            float ValueNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                float a = Hash12(i), b = Hash12(i + float2(1,0));
+                float c = Hash12(i + float2(0,1)), e = Hash12(i + float2(1,1));
+                float va = dot(float2(cos(a*6.28318), sin(a*6.28318)), f);
+                float vb = dot(float2(cos(b*6.28318), sin(b*6.28318)), f - float2(1,0));
+                float vc = dot(float2(cos(c*6.28318), sin(c*6.28318)), f - float2(0,1));
+                float vd = dot(float2(cos(e*6.28318), sin(e*6.28318)), f - float2(1,1));
+                return lerp(lerp(va, vb, u.x), lerp(vc, vd, u.x), u.y);
+            }
+            // 梯度用前向差分，不用解析导数 —— 解析导数在格边界归零会画成棋盘格（《05》D-9）
+            float2 NoiseSlope(float2 xz, float scale, float2 flow)
+            {
+                float2 q = xz * scale + flow;
+                const float eps = 0.25;
+                float n0 = ValueNoise(q);
+                return float2(ValueNoise(q + float2(eps, 0)) - n0,
+                              ValueNoise(q + float2(0, eps)) - n0) / eps;
+            }
+            float3 SkinNormal(float3 wp, float t, float fineW)
+            {
+                float2 mid  = NoiseSlope(wp.xz, _DetailScale, float2(t * _DetailFlow, t * _DetailFlow * 0.7));
+                float2 fine = NoiseSlope(wp.xz, _RippleScale, float2(-t * _DetailFlow * 1.6, t * _DetailFlow * 1.2));
+                float2 tot  = mid * _DetailStrength + fine * (_RippleStrength * fineW);
+                return normalize(float3(-tot.x, 1.0, -tot.y));
+            }
+
+            Varyings vert(Attributes v)
+            {
+                Varyings o;
+                float3 wp = TransformObjectToWorld(v.positionOS.xyz);
+                float t = _Time.y;
+
+                float offDist = OffDist(wp);
+                float depth = WaterDepth(wp.x, offDist);
+
+                // 浅水变形：水变浅 → 波速降、波高升（能量通量守恒的粗略形式）
+                float gain = lerp(1.0, _ShoalGain, saturate(1.0 - depth / max(_ShoalRange, 0.1)));
+                WaveOut w = Swell(wp, t, gain);
+
+                // 关键一行：岸上沙面会顶到 waveY 之上，取 max 就让水自动"改贴沙面"。
+                // 不需要分支、不需要第二套网格，水陆交界就是天然的解析水线。
+                w.pos.y = max(w.pos.y, SandY(wp.x, offDist) + 0.035);
+
+                o.positionCS = TransformWorldToHClip(w.pos);
+                o.worldPos   = w.pos;
+                o.offDist    = offDist;
+                o.fogCoord   = ComputeFogFactor(o.positionCS.z);
+                return o;
+            }
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                float3 worldPos = IN.worldPos;
+                float t = _Time.y;
+                float offDist = IN.offDist;
+                float depth = WaterDepth(worldPos.x, offDist);
+                float up = max(-offDist, 0.0);                 // 往岸上爬了多远
+
+                float3 V = normalize(_WorldSpaceCameraPos - worldPos);
+
+                // 掠射即等价于远处：高频皮肤要按视角衰减，否则混叠成灯芯绒（《05》D-17）。
+                // 但**地板比潭线高得多（0.45 而不是 0.20）**：海远处必须还读得出纹理，
+                // 压太狠就变成一片光滑渐变、和天糊在一起。这里格子本身 0.3~1m，
+                // 掠射时还有十几个像素，混叠风险比潭的 0.18m 低一个量级。
+                float fineW = lerp(0.45, 1.0, smoothstep(0.03, 0.30, abs(V.y)));
+
+                float gain = lerp(1.0, _ShoalGain, saturate(1.0 - depth / max(_ShoalRange, 0.1)));
+                WaveOut w = Swell(worldPos, t, gain);
+                float3 skin = SkinNormal(worldPos, t, fineW);
+                float3 N = normalize(lerp(w.normal, skin, 0.5));
+
+                Light mainLight = GetMainLight();
+
+                // ──  水色：Beer–Lambert 按【垂直】水深 ──
+                float depthMix = 1.0 - exp(-depth * _Absorb);
+                float3 waterBase = lerp(_ShallowColor.rgb, _DeepColor.rgb, depthMix);
+                float ndl = saturate(dot(N, mainLight.direction));
+                float3 col = waterBase * (SampleSH(N) + mainLight.color * ndl * 0.30);
+
+                // 浅水透光：阳光打到沙底再返上来
+                float trans = exp(-depth * _Absorb * 0.5);
+                col = lerp(col, _ShallowColor.rgb * 1.30, saturate(trans - 0.45) * 0.7);
+
+                // ── ② 反射：开阔海没有可倒的近物，双色天空渐变就够 ──
+                float fres = pow(1.0 - saturate(dot(V, N)), _FresnelPow);
+                float3 reflDir = reflect(-V, N);
+                reflDir.y = max(reflDir.y, 0.02);
+                float3 skyCol = lerp(_SkyHorizon.rgb, _SkyZenith.rgb, saturate(reflDir.y * 2.2));
+                col = lerp(col, skyCol, saturate(fres * _SkyReflect));
+
+                // ── ③ 太阳碎闪：pow 自带衰减，累加是合法的 ──
+                col += _SunColor.rgb * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss)
+                     * _SunStrength * saturate(0.2 + fres);
+                float3 H = normalize(mainLight.direction + V);
+                col = lerp(col, _SunColor.rgb,
+                           saturate(pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength));
+
+                // ── ④ 碎浪 —— 这是"海"最硬的识别特征 ──
+                // 破碎深度按**主浪**的波高算（γ = H/d ≈ _BreakerIndex）。
+                // ⚠ 不能用三条浪的波高之和：那会把破碎线推到离岸几十米外，
+                //   配上 0.055 的缓坡就等于"整片海都在碎"，画面直接变一张白纸
+                //   （第一版就是这么翻车的）。
+                // ⚠ 条带相位挂在**最短那条浪**上，不是主涌。破碎带从外缘到水线只有
+                //   几十米，λ=150m 在这个区间里连一个波峰都放不下 ⇒ 读不出"一排排白线"，
+                //   只剩水线边一道糊白。λ=24m 能塞进 2~3 个波峰，而海滩上真正先碎的
+                //   本来就是沙坝上的短浪。破碎深度仍按主浪算，两者各管各的。
+                float k0 = 6.2831853 / max(24.0 * _SwellScale, 0.1);
+                float c0 = sqrt(9.81 / k0) * 1.22 * _SwellSpeed;
+                float ph0 = k0 * dot(_WindDir.xz, worldPos.xz) - c0 * k0 * t;
+                // 白沫只挂在浪头上：pow 把 0~1 的相位压成窄峰
+                float crest = pow(0.5 + 0.5 * sin(ph0), 2.2);
+                float hDom = 2.0 * 0.62 * _SwellAmp * gain;
+                float dBreak = hDom / max(_BreakerIndex, 0.1);
+                float inSurf = saturate((dBreak - depth) / max(dBreak * 0.5, 0.25));
+                // 破碎带不是干净的一条线，用噪声把它咬成指状
+                float bite = ValueNoise(float2(worldPos.x * 0.05, t * 0.30)) * 0.6 + 0.4;
+                float breakage = saturate(inSurf * (0.18 + 1.5 * crest) * bite);
+                float breakFoam = breakage * _BreakFoam;
+
+                // 远海白帽：只在够深的地方出现，否则会和碎浪带糊成一片
+                float wc = ValueNoise(worldPos.xz * 0.07 + float2(t * 0.20, t * 0.05));
+                float whitecap = saturate((wc - 0.55) * 3.2) * _Whitecap * saturate(depth - 3.0) * 0.6;
+
+                // ── ⑤ 冲滩沫带：会呼吸的湿沙边界 ──
+                // ⚠ 必须用**有符号**的 offDist。上一版写的是 `1 - up/reach`，
+                //   而 up = max(-offDist, 0) 在海侧恒为 0 ⇒ swash 恒为 1 ⇒
+                //   整片洋面被盖一层沫、海直接变成一张白纸。
+                // 沫带真正的形状：岸上往回衰减 reach 米，海侧只留几米（刚退下去的
+                // 那层湿沫），再往外就该是干净的水。
+                float reach = SwashReach(t);
+                float swash = (offDist <= 0.0)
+                            ? saturate(1.0 + offDist / max(reach, 0.5))
+                            : saturate(1.0 - offDist / 3.0);
+                float sn = ValueNoise(float2(worldPos.x * 0.09, offDist * 0.5 - t * 0.8));
+                // 卡阈值出蕾丝前缘，而不是平滑渐变的雾白 —— 后者会被浅水提亮整个盖掉，
+                // 于是"浪冲到哪儿了"这条信息在画面上根本读不出来。
+                float washFoam = smoothstep(0.30, 0.92, swash * (0.30 + 1.15 * sn)) * _SwashFoam;
+
+                float foam = saturate(breakFoam + whitecap + washFoam);
+                col = lerp(col, _FoamColor.rgb, foam);
+
+                // ── 调试通道：先看通道通不通，再解释数值（《06》附 B）──
+                if (_DebugMode > 2.5) return half4(saturate(washFoam), saturate(breakFoam), saturate(foam), 1.0);
+                if (_DebugMode > 1.5) return half4(saturate(breakage), saturate(gain / _ShoalGain), saturate(swash), 1.0);
+                if (_DebugMode > 0.5) return half4(saturate(depth / _MaxDepth), saturate(trans), saturate(fres), 1.0);
+
+                // 水膜在"上冲极限"处透过去，露出干沙 —— 边界因此会随潮汐呼吸。
+                // 岸上（up>0）才需要这个衰减；海侧始终实心，否则近岸浅水会莫名变淡。
+                float edge = saturate((reach + _SwashFade - up) / max(_SwashFade, 0.3));
+                float alpha = saturate(_Opacity * lerp(1.0, edge, step(0.001, up))
+                                       + fres * 0.05 - washFoam * 0.20);
+                // 冲上来的那圈沫本身要更接近实心白，否则薄薄一层看不出"水到过这里"
+                alpha = max(alpha, washFoam * 0.85 * step(0.001, up));
+
+                col = MixFog(col, IN.fogCoord);
+                return half4(col, alpha);
+            }
+            ENDHLSL
+        }
+    }
+    FallBack "Universal Render Pipeline/Unlit"
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 为什么水深走解析而不是 SampleSceneDepth（潭线用的是后者）：
+//   潭只有 16m，深度纹理分辨率够用，而且潭底是任意网格、写不出解析式。
+//   海的剖面是**我们自己按 ShoreZ(x) + SandY(v) 造出来的**，再回头去深度缓冲里
+//   "猜"它，等于把已知量换成噪声量：掠射区一个纹素跨好几米，湿沙边界会糊成一团，
+//   而湿沙边界正是这张图里最该锐利的地方。
+// 代价：岸线必须是"z = f(x)"的单值函数（不能有岬角把海遮在后面）。远岬单独
+//   用一个不透明网格画，不参与水的深度计算。
+// 已知不精确处：顶点里那个 max() 会在"浪面 = 沙面+3.5cm"处折一道硬棱，而片元的
+//   法线来自没被裁的解析浪面，所以水线附近明暗与几何会有轻微不一致。那里恰好
+//   被沫带整片盖住，肉眼读不出来 —— 记下来，别在别的水体上照抄这个 max()。
+// ────────────────────────────────────────────────────────────────────────────
