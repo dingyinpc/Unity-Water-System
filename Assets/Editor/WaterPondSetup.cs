@@ -355,9 +355,77 @@ namespace WaterProject.EditorTools
             // 只报当前场景名，取错场景仍然能从探针看出来。
             string cur = UnityEngine.SceneManagement.SceneManager.GetActiveScene().path;
             string outPath = "Docs/screenshots/_pond_view.png";
-            ScreenCapture.CaptureScreenshot(outPath);
-            WriteProbe("MENU65 captured " + outPath + " scene=" + cur +
-                       " frame=" + UnityEngine.Time.frameCount + "\n");
+            WriteProbe("MENU65 enter frame=" + UnityEngine.Time.frameCount + " scene=" + cur + "\n");
+
+            // 主路径：直接从 Game 视图自己的渲染纹理里取。
+            // ScreenCapture 只在编辑器处于前台时才落盘，而这条是同步写文件，不依赖焦点。
+            bool viaView = false;
+            try { viaView = GrabFromGameView(outPath); }
+            catch (System.Exception e)
+            { WriteProbe("MENU65 grab THREW " + e.GetType().Name + " :: " + e.Message + "\n"); }
+
+            if (!viaView)
+            {
+                ScreenCapture.CaptureScreenshot(outPath);
+                WriteProbe("MENU65 ⚠ 没拿到 GameView 渲染纹理，退回 ScreenCapture（需要编辑器在前台才会落盘）\n");
+            }
+            WriteProbe("MENU65 " + (viaView ? "grabbed" : "captured") + " " + outPath + "\n");
+        }
+
+        static bool GrabFromGameView(string outPath)
+        {
+            const System.Reflection.BindingFlags F =
+                System.Reflection.BindingFlags.NonPublic
+              | System.Reflection.BindingFlags.Public
+              | System.Reflection.BindingFlags.Instance;
+
+            // GameView 是 internal 类型，只能全程反射
+            var gvType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
+            if (gvType == null) { WriteProbe("MENU65 找不到 UnityEditor.GameView 类型\n"); return false; }
+
+            var views = UnityEngine.Resources.FindObjectsOfTypeAll(gvType);
+            if (views == null || views.Length == 0) { WriteProbe("MENU65 没有打开的 GameView\n"); return false; }
+
+            // 只读字段，不 Invoke 任何方法 —— 2022.3 的 GameView.RenderView() 是带参数的，
+            // Invoke(null) 会抛 TargetParameterCountException
+            var rtField = gvType.GetField("m_RenderTexture", F);
+            if (rtField == null) { WriteProbe("MENU65 GameView 没有 m_RenderTexture 字段\n"); return false; }
+
+            RenderTexture rt = null;
+            foreach (var v in views)
+            {
+                rt = rtField.GetValue(v) as RenderTexture;
+                if (rt != null && rt.IsCreated() && rt.width > 16 && rt.height > 16) break;
+                rt = null;
+            }
+            if (rt == null) { WriteProbe("MENU65 m_RenderTexture 里没有有效 RT\n"); return false; }
+
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+
+            // GameView 的 RT 是底朝上的行序，直接编码会上下颠倒
+            var px = tex.GetPixels32();
+            var flipped = new Color32[px.Length];
+            int row = tex.width;
+            for (int y = 0; y < tex.height; y++)
+                System.Array.Copy(px, (tex.height - 1 - y) * row, flipped, y * row, row);
+            var outTex = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+            outTex.SetPixels32(flipped);
+            outTex.Apply();
+            System.IO.File.WriteAllBytes(outPath, outTex.EncodeToPNG());
+            UnityEngine.Object.Destroy(outTex);
+            UnityEngine.Object.Destroy(tex);
+
+            // 只报格式；"后处理有没有吃到"用与已知前台截图比色调特性来判断，
+            // 不拿"四角比中心暗"当判据 —— 这台机位中心是暗水面、四角本来就是亮树与天，
+            // Vignette 压三成仍然 ratio>1（实测 1.451），那条判据是错的。
+            WriteProbe("MENU65 rt " + rt.width + "x" + rt.height
+                       + " fmt=" + rt.graphicsFormat + " -> " + outPath + "\n");
+            return true;
         }
 
         [MenuItem("Tools/WaterPond/66 切换反射调试(0关/1只看平面反射)")]
