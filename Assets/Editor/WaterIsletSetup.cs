@@ -25,6 +25,7 @@
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using System.Collections.Generic;       // 水面网格要 List<Vector3>/List<int>
 using UnityEngine;
 using UnityEngine.Rendering;            // AmbientMode / Volume / VolumeProfile 都在这
 using UnityEngine.Rendering.Universal;
@@ -48,16 +49,37 @@ namespace WaterProject.EditorTools
         // 而画幅上缘仰角只有 ~22° ⇒ `up` 最大 0.38，可见那一段**几乎全是地平色**，
         // 天顶色根本进不来。所以要动的是**地平色**（降 R、抬 G/B）+ 渐变指数，
         // 不是天顶色。（《05》C-10 同一类方向错误：先想清楚哪个旋钮真的在管这段。）
-        static readonly Color SkyZenith  = new Color(0.004f, 0.300f, 0.800f);
+        // 天顶/地平色**不能照抄色板的显示值**，中间隔着 ACES + saturation 22，
+        // 而 ACES 在这个量级上压红压得最狠：
+        //   喂进去 HorizonColor (0.30,0.62,0.85) → 屏上地平带实测 (66,150,210)
+        //   —— R 从 0.30 掉到 0.26 线性，B 却几乎没动，蓝色被相对放大了。
+        //   Tools/compare_reference.py 报 horizon_haze (110,163,171) vs 目标
+        //   (165,205,231)、sky_mid (74,153,215) vs (100,182,224)，都是同一个病：
+        //   **不是不够蓝，是红和整体亮度不够**。
+        // 所以这里把地平色的 R 大幅抬、三通道一起抬亮度；天顶补 G（修 sky_upper
+        // 实测 G 只有 149 而目标 174）。
+        static readonly Color SkyZenith  = new Color(0.010f, 0.420f, 0.800f);
         // 地平色在加了 _GradNorm 之后可以回到"淡"：它现在只负责画幅下缘那一小段，
         // 不再被迫承担整片天的颜色（上一版把 R 压到 0.20 就是因为这个）。
-        static readonly Color SkyHorizon = new Color(0.300f, 0.620f, 0.850f);
+        static readonly Color SkyHorizon = new Color(0.500f, 0.700f, 0.870f);
         static readonly Color SkyGround  = new Color(0.180f, 0.230f, 0.260f);
         const float SkyGradPow  = 1.4f;
-        const float SkyGradNorm = 0.42f;   // ≈ 仰角 25°，把天顶色落到画幅上缘
+        // 0.46 是**过头了**：地平色修亮之后确实把 horizon_haze 从偏差 60 拉到 38，
+        // 但放宽的渐变让那片淡色一路爬进画幅顶缘，sky_upper 从 (69,149,215)
+        // 变成 (114,171,219) —— 目标 R 只有 65，红超了 49。
+        // 两个旋钮各管一头：**地平色管下缘亮度，GradNorm 管淡霾有多厚**。
+        // 下缘已经靠颜色修好了，这里就收回去，让饱和天顶重新占住上半幅。
+        const float SkyGradNorm = 0.40f;
         // 雾色 == 天空地平色（唯一来源）。热带空气干净，密度比海岸线低一个量级：
         // 这里要的是"远处岛退成淡影"，不是"整片天糊白"。
         const float FogDensity = 0.00085f;
+        // 天光强度：Skybox 模式积分出来的环境光要压一档，
+        // 否则"太阳 3.2"在立面上根本赢不过那一片蓝。
+        // 0.22 这个数是**量出来的**，不是猜的（Tools/Islet/97 免重建循环）：
+        //   0.50 → 沙滩偏蓝，B 压过 R
+        //   0.00 → 同一片沙 (203,201,187) 暖调正确，但背光面直接死黑
+        // 取一个"暖调刚立得住、背光面还没黑"的中间档。
+        const float AmbientIntensity = 0.22f;
 
         // ───────── 机位 ─────────
         // 对标参考6：左前景一座两棵椰树的小沙洲，右侧带海蚀巨岩的大岛，
@@ -74,7 +96,13 @@ namespace WaterProject.EditorTools
         // "朝太阳的方向"是它的反向，即 y + 180。要让碎闪带正对画面中央，
         // 朝太阳方向必须 ≈ 视线方位 ⇒ y = 180。
         // （海岸线那台相机 yaw 58，所以那边算出 y = 236；同一套算法，不是抄来的。）
-        const float SunPitch = 24f;
+        // ⚠ 俯角从 24° 提到 38°。24° 时太阳几乎只照得到**水平顶面**，
+        //   于是所有朝向相机的那一面只剩蓝色天光 —— 实测沙洲洲顶 (119,141,155)、
+        //   大岛 (43,64,84)，B 都压着 R，沙子渲成了冰。参考1 的沙是 (243,230,203)
+        //   暖调、植被是 (36,122,35) 绿，都要求斜射的暖光真的打到立面上。
+        //   碎闪带不依赖这个俯角：静水镜面点确实只在脚前 1.72/tan(elev)，
+        //   但参考里那条贯穿画面的亮带是**浪面把法线打散**铺开的，抬太阳不会弄丢它。
+        const float SunPitch = 38f;
         const float SunYaw   = 180f;
 
         // ═════════════════════════ 90 ═════════════════════════
@@ -102,6 +130,10 @@ namespace WaterProject.EditorTools
             RenderSettings.fogColor = SkyHorizon;
             RenderSettings.fogDensity = FogDensity;
             RenderSettings.ambientMode = AmbientMode.Skybox;
+            // 天光强度单独压一档：Sky_Tropical 本身很亮又偏蓝，直接按 1.0 积分成
+            // 环境光会把太阳那一路完全压过去 —— 上一版沙地渲成 (119,141,155)
+            // 这种"蓝灰"就是它，不是反照率的问题（反照率当时已经降到 0.62 了）。
+            RenderSettings.ambientIntensity = AmbientIntensity;
             DynamicGI.UpdateEnvironment();
 
             // ── 相机 ──
@@ -135,6 +167,276 @@ namespace WaterProject.EditorTools
                        (RenderSettings.skybox == null ? "NULL" : RenderSettings.skybox.shader.name) +
                        "  camYaw=" + CamEuler.y + "  sunYaw=" + SunYaw +
                        "  -> " + ScenePath + "\n");
+        }
+
+        // ═════════════════════════ 92 ═════════════════════════
+        // 水面高度 = 世界 y=0。这不是随手取的：IsletTerrain.ShoreProfile 把
+        // "离岸距离 s=0" 定义成高度 0，所以 y=0 就是那条潮间线，
+        // 沙/岩/草的分界和水陆分界天然对齐。
+        const float WaterY = 0f;
+        const float WaterR = 3000f;      // 半径：要让水一直铺到雾都吃干净的远处
+        const int   WaterN = 241;        // 单边顶点数 ⇒ 58081 顶点，仍在 uint16 索引内
+
+        [MenuItem("Tools/Islet/92 建潟湖水面(网格+材质)")]
+        public static void BuildWater()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU92 REFUSED: 在 Play 模式\n"); return; }
+
+            // ── 网格：以相机为中心的**二次分布**方格 ──
+            // 为什么不用均匀大平面：6km/65535 顶点 ⇒ 间距 74m，近处浪全没了；
+            // 而把平面做小（比如 1km）又会在远处露出一条直边 ——
+            // 这里雾密度只有 0.00085，1km 处还有 93% 不透明度，根本藏不住。
+            // 二次分布让脚下 ~5cm、100m 处 ~1m、400m 处 ~18m：
+            // 远处的浪本来就小于一个像素，几何粗一点无所谓，法线才是主力。
+            int n = WaterN;
+            var v = new List<Vector3>(n * n);
+            var uv = new List<Vector2>(n * n);
+            for (int j = 0; j < n; j++)
+            {
+                float tz = (2f * j / (n - 1)) - 1f;
+                for (int i = 0; i < n; i++)
+                {
+                    float tx = (2f * i / (n - 1)) - 1f;
+                    float px = Mathf.Sign(tx) * Mathf.Pow(Mathf.Abs(tx), 2f) * WaterR;
+                    float pz = Mathf.Sign(tz) * Mathf.Pow(Mathf.Abs(tz), 2f) * WaterR;
+                    v.Add(new Vector3(CamPos.x + px, WaterY, CamPos.z + pz));
+                    uv.Add(new Vector2(i / (float)(n - 1), j / (float)(n - 1)));
+                }
+            }
+            var idx = new List<int>((n - 1) * (n - 1) * 6);
+            for (int j = 0; j < n - 1; j++)
+                for (int i = 0; i < n - 1; i++)
+                {
+                    int a = j * n + i, b = a + 1;
+                    int c = (j + 1) * n + i, d = c + 1;
+                    idx.Add(a); idx.Add(c); idx.Add(b);
+                    idx.Add(b); idx.Add(c); idx.Add(d);
+                }
+
+            var mesh = new Mesh { name = "IsletLagoonWater" };
+            mesh.SetVertices(v);
+            mesh.SetUVs(0, uv);
+            mesh.SetTriangles(idx, 0);
+            mesh.RecalculateBounds();
+            // 顶点在着色期会被涌推走，包围盒不垫高会被整体裁掉
+            var bb = mesh.bounds; bb.Expand(new Vector3(0f, 4f, 0f)); mesh.bounds = bb;
+
+            string mp = MeshFolder + "/IsletLagoonWater.asset";
+            var old = AssetDatabase.LoadAssetAtPath<Mesh>(mp);
+            if (old != null) AssetDatabase.DeleteAsset(mp);
+            AssetDatabase.CreateAsset(mesh, mp);
+
+            var go = FindOrCreateWater();
+            var mf = go.GetComponent<MeshFilter>();  if (mf == null) mf = go.AddComponent<MeshFilter>();
+            var mr = go.GetComponent<MeshRenderer>(); if (mr == null) mr = go.AddComponent<MeshRenderer>();
+            mf.sharedMesh = AssetDatabase.LoadAssetAtPath<Mesh>(mp);
+            mr.sharedMaterial = LagoonWaterMaterial();
+            mr.shadowCastingMode = ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU92 water built  verts=" + v.Count + "  tris=" + (idx.Count / 3) +
+                       "  y=" + WaterY + "  R=" + WaterR + "  -> " + mp + "\n");
+        }
+
+        static UnityEngine.GameObject FindOrCreateWater()
+        {
+            var go = UnityEngine.GameObject.Find("IsletWater");
+            if (go == null)
+            {
+                go = new UnityEngine.GameObject("IsletWater");
+                go.isStatic = true;
+            }
+            return go;
+        }
+
+        // 水色怎么定：Docs/参考视频帧/海岛目标色板.json 给的是**显示空间**
+        // （已过原作者的色调映射 + 抖音压缩），这里填的是**线性**反照率，
+        // 中间隔着 ACES + postExposure + saturation 22，所以数值必须比目标更饱和。
+        // 判据来自色板自己那句：水是 G≈B 且 R 明显低（青绿），天空是 B>>G（湛蓝）。
+        static Material LagoonWaterMaterial()
+        {
+            string p = MatFolder + "/Islet_LagoonWater.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            var sh = Shader.Find("WaterProject/Water_Lagoon");
+            if (sh == null) { WriteProbe("!! Water_Lagoon NOT FOUND\n"); return null; }
+            if (m == null) { m = new Material(sh) { name = "Islet_LagoonWater" }; AssetDatabase.CreateAsset(m, p); }
+            else m.shader = sh;
+
+            // 实测→目标（**显示空间**，与 Tools/compare_reference.py 同口径）：
+            //   近水  目标 (91,164,183)   v2 (85,191,203)   ← 这一档已经对上了
+            //   中带  目标 (145,207,213)  v2 (73,121,143)   ← 压过头，暗了一整档
+            //   远水  目标 (210,243,217)  v2 (62,95,122)    ← 同上，而且 B>G 反了
+            // 上一版为了修 (157,255,255) 的爆顶，把三档一起往下压，
+            // 结果近水刚好、中远水全塌。真正的病根是**潟湖底做错了方向**
+            // （远处越深 → depthMix 顶到 DeepColor），那个已经在 IsletTerrain 里改成
+            // "近深远浅"；这里只需要把中/远两档抬回亮度，并把反射色做成
+            // **G 略高于 B**（参考的远水是 243/217，不是湛蓝）。
+            // 两个方向相反的偏差同时出现，说明**深度坡度太陡**：
+            //   shallow_over_sand 目标 (120,200,190)  实测 (116,235,227) ← 近处过亮
+            //   lagoon_mid        目标 ( 95,190,196)  实测 ( 83,149,155) ← 中段偏暗
+            // 近处顶上去的是碎闪叠在浅水上，中段塌下去的是 depthMix 已经爬到
+            // Mid/Deep 而沙底返色又已经衰减光。所以：
+            //   _Absorb 0.46→0.30、_SandAbsorb 0.34→0.24 —— 让"亮青绿"这段拉长，
+            //   中段还吃得到沙底；_GlitterStrength 1.6→1.05 收近处的过冲。
+            m.SetColor("_ShallowColor", new Color(0.300f, 0.780f, 0.740f));
+            // ⚠ _MidColor 0.64→0.82 是**拧错了旋钮**：lagoon_mid 只从偏差 45 挪到 43，
+            //   而 shallow_over_sand 从 37 恶化到 57。抬上来的那点亮度全从
+            //   折射/反射链漏到近处去了。回退。
+            //   回头看探针定义才明白：shallow_over_sand 取的是**亮度第 78 分位**，
+            //   量的根本不是"水体的颜色"，而是**碎闪最亮的那批像素**。
+            //   所以近处爆顶该动 _GlitterStrength，动水色一律无效。
+            m.SetColor("_MidColor",     new Color(0.150f, 0.640f, 0.660f));
+            m.SetColor("_DeepColor",    new Color(0.020f, 0.300f, 0.360f));
+            m.SetColor("_SandReturn",   new Color(0.460f, 0.680f, 0.620f));
+            // ⚠ 这条改动**方向搞反了，已回退**：上一轮想把中段抬亮，
+            //   于是把 _Absorb 0.46→0.30、_SandAbsorb 0.34→0.24 —— 但这两个数
+            //   越**小**代表衰减越**慢**，等于把沙底返色在近处也铺满了，
+            //   结果 shallow_over_sand 从偏差 37 恶化到 61，实测 (135,255,251) 顶到爆。
+            //   中段要抬亮不该靠削弱吸收 —— 潟湖底已经改成"近深远浅"
+            //   （IsletTerrain.LagoonFloor），中段本来就是浅水，让它自己亮上来。
+            m.SetFloat("_Absorb",      0.46f);
+            m.SetFloat("_SandAbsorb",  0.34f);
+            m.SetFloat("_Opacity",     0.94f);
+
+            m.SetFloat("_SwellAmp",    0.055f);
+            m.SetFloat("_SwellScale",  1.0f);
+            m.SetFloat("_SwellSpeed",  0.35f);
+            m.SetFloat("_SlopeStrength", 0.26f);
+            m.SetFloat("_SlopeScale",    0.55f);
+            m.SetFloat("_FlowSpeed",     0.22f);
+            // 毛细尺度 2.6→6.5：上一版碎闪是**一大片一大片的白斑**，
+            // 因为 1/2.6≈0.4m 的格在脚前几米就是几十个像素。参考里是细密星点。
+            m.SetFloat("_CapStrength",   0.20f);
+            m.SetFloat("_CapScale",      6.5f);
+
+            m.SetFloat("_RefractStrength", 0.16f);
+            m.SetFloat("_MaxUVOffset",     0.022f);
+            m.SetFloat("_Eta",             1.33f);
+            m.SetFloat("_BottomBlend",     0.45f);
+
+            // 掠射水面反射的是**地平线那一段淡霾**，不是天顶的湛蓝，
+            // 所以这里合法地比 Sky_Tropical 的天顶更淡更偏青绿 ——
+            // 判据是参考1 的远水 (210,243,217)：G 高于 B。
+            // 但仍要贴着天空地平色的量级，否则水面和它正上方那片天之间
+            // 会裂出一条肉眼可见的接缝（《05》C-4 那一类方向错误）。
+            m.SetColor("_SkyZenith",  new Color(0.120f, 0.440f, 0.700f));
+            m.SetColor("_SkyHorizon", new Color(0.700f, 0.860f, 0.840f));
+            m.SetFloat("_FresnelPow",  4.2f);
+            m.SetFloat("_SkyReflect",  1.0f);
+
+            m.SetColor("_SunColor", new Color(1.0f, 0.96f, 0.86f));
+            // ⚠ 碎闪 shader 里**没有**再乘 mainLight.color（那会把 3.2 乘两遍），
+            //   所以这里的强度就是最终峰值。
+            //   1.05 仍然让近处第 78 分位爆到 (114,255,247) —— 探针要的是
+            //   (120,200,190)，也就是说**星点本身不该顶到 255**。降到 0.6。
+            m.SetFloat("_GlitterPow",      700f);
+            m.SetFloat("_GlitterStrength",  0.6f);
+            m.SetFloat("_GlitterBand",       2.4f);
+            m.SetFloat("_SheenPow",          60f);
+            m.SetFloat("_SheenStrength",    0.18f);
+
+            m.SetColor("_FoamColor", new Color(0.94f, 0.98f, 0.98f));
+            m.SetFloat("_FoamBand",     0.30f);
+            m.SetFloat("_FoamStrength", 0.30f);
+            m.SetFloat("_AmbientStrength", 0.40f);
+            m.SetFloat("_DebugMode", 0f);
+
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssets();
+            return m;
+        }
+
+        // ═════════════════════════ 97 ═════════════════════════
+        // 这个菜单只为了一件事：**把"陆地渲成蓝灰"归因到正确的旋钮上**。
+        // 沙的反照率是暖的 (R>G>B)，可实测洲顶渲成 (116,127,131) —— B 压着 R，
+        // 说明照在上面的光里蓝色那一路赢了。赢家要么是太阳（不可能，它是暖的），
+        // 要么是 AmbientMode.Skybox 从天球积分下来的环境光。
+        // 但这两者都不能靠改代码来验证：菜单 90/91/92 一条链跑下来要几分钟，
+        // 而 ambientIntensity 是**运行时就能改**的渲染设置。所以单独开一个
+        // 免重建的循环菜单，截四张图一比就知道该动谁。
+        static readonly float[] AmbientSteps = { 1.00f, 0.50f, 0.25f, 0.00f };
+
+        [MenuItem("Tools/Islet/97 循环天光强度(1.0/0.5/0.25/0)")]
+        public static void CycleAmbient()
+        {
+            float cur = RenderSettings.ambientIntensity;
+            int i = 0;
+            for (int k = 0; k < AmbientSteps.Length; k++)
+                if (Mathf.Abs(AmbientSteps[k] - cur) < 0.02f) { i = k; break; }
+            int nxt = (i + 1) % AmbientSteps.Length;
+            RenderSettings.ambientIntensity = AmbientSteps[nxt];
+            // 不重建 probe 的话，改的只是那个数，采样到的还是旧天球积分
+            DynamicGI.UpdateEnvironment();
+
+            var sun = UnityEngine.Object.FindObjectOfType<Light>();
+            WriteProbe("MENU97 ambient -> " + AmbientSteps[nxt] +
+                       (sun == null ? "  sun=NULL" :
+                        "  sun=" + sun.intensity + " col=" +
+                        Mathf.RoundToInt(sun.color.r * 255) + "," +
+                        Mathf.RoundToInt(sun.color.g * 255) + "," +
+                        Mathf.RoundToInt(sun.color.b * 255) +
+                        " pitch=" + Mathf.RoundToInt(sun.transform.rotation.eulerAngles.x)) + "\n");
+        }
+
+        // ═════════════════════════ 98 ═════════════════════════
+        // 只把**大气相关的常量**重新推一遍进当前场景，不 NewScene、不重建几何。
+        // 存在的理由很实际：菜单 90→91→92 一条链要跑好几分钟还会清空场景，
+        // 而调天空/雾/曝光这轮改的只是几个颜色常数 —— 为了看一眼效果
+        // 付一次全重建的代价不划算。
+        // ⚠ 这些常数（SkyZenith / SkyHorizon / FogDensity / AmbientIntensity …）
+        //   是**编译期**值，所以改了 .cs 之后仍要等重编译，本菜单只负责把
+        //   已经编进去的新值落到场景里，不能替代改代码。
+        [MenuItem("Tools/Islet/98 重刷参数(天空/雾/天光/水体材质，不重建几何)")]
+        public static void RefreshAtmosphere()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU98 REFUSED: 在 Play 模式\n"); return; }
+
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (string.IsNullOrEmpty(scene.path))
+            { WriteProbe("MENU98 REFUSED: 当前场景没存过，先跑 90\n"); return; }
+
+            var sky = TropicalSky();
+            if (sky != null) RenderSettings.skybox = sky;
+
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = SkyHorizon;
+            RenderSettings.fogDensity = FogDensity;
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = AmbientIntensity;
+            DynamicGI.UpdateEnvironment();
+
+            // 太阳俯角/方位也在这里重刷：它和天空是同一组"大气"参数，
+            // 分开刷会出现"改了俯角但要重建地形才看得见"的坑
+            var sun = UnityEngine.Object.FindObjectOfType<Light>();
+            if (sun != null) sun.transform.rotation = Quaternion.Euler(SunPitch, SunYaw, 0f);
+
+            var vol = UnityEngine.Object.FindObjectOfType<Volume>();
+            if (vol != null) vol.sharedProfile = IsletVolume();
+
+            // 水体材质也一起重刷。水色这一组常数改得最频繁，
+            // 而菜单 92 里真正变的只有材质 —— 网格那 5.8 万个顶点重建是白付的时间。
+            string wmat = "none";
+            var waterGo = UnityEngine.GameObject.Find("IsletWater");
+            if (waterGo != null)
+            {
+                var wmr = waterGo.GetComponent<MeshRenderer>();
+                var wm = LagoonWaterMaterial();
+                if (wmr != null && wm != null) { wmr.sharedMaterial = wm; wmat = wm.name; }
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            WriteProbe("MENU98 params refreshed  fog=" + FogDensity +
+                       "  ambient=" + AmbientIntensity +
+                       "  sunPitch=" + SunPitch +
+                       "  sky=" + (RenderSettings.skybox == null ? "NULL" : RenderSettings.skybox.name) +
+                       "  vol=" + (vol == null ? "NONE" : "ok") +
+                       "  water=" + wmat + "\n");
         }
 
         // ═════════════════════════ 95 ═════════════════════════
@@ -178,14 +480,23 @@ namespace WaterProject.EditorTools
             m.SetFloat("_GradNorm",    SkyGradNorm);
             // 云向阳色要**超过 1**：实测云顶只有 (159,191,223)，目标 (228,241,250)。
             // ACES 会把 1.0 上下的线性值压成浅灰蓝，只有给到 HDR 才落得回近白。
-            m.SetColor("_CloudLit",   new Color(1.600f, 1.660f, 1.720f));
+            // 这个 1.42 是**两次过冲之间夹出来的**：
+            //   1.72 → sunlit_top (255,255,255) 整片爆掉（且顶穿 Bloom 阈值 1.25）
+            //   1.18 → sunlit_top (181,233,255) 又太暗，R 差 47
+            // ⚠ 顺带**推翻我自己上一条假设**：我以为是爆云喂给 bloom 才把
+            //   sky_upper 的 R 抬到 108 的，把云压到 1.18 之后 R 还是 108 ——
+            //   说明不是光晕，是**云太多**：sky_upper 取的是画幅顶缘最暗的 15%，
+            //   覆盖率 0.42 时那 15% 里仍然是云而不是蓝缝。要动的是 _CloudCover。
+            m.SetColor("_CloudLit",   new Color(1.420f, 1.500f, 1.600f));
             m.SetColor("_CloudShade", new Color(0.260f, 0.460f, 0.660f));
             m.SetFloat("_CloudBase",   1400f);
             m.SetFloat("_CloudTop",    4200f);
             m.SetFloat("_CloudFreq",   0.00042f);
             // 0.42 而不是 0.55：参考3/4 里云之间是**大片纯蓝**，不是连成片的阴天。
             // 阈值映射 t = lerp(0.74, 0.40, cover)，cover 越小阈值越高、云越碎。
-            m.SetFloat("_CloudCover",  0.42f);
+            // 再降到 0.30：sky_upper 连测三轮 R 都卡在 108~110（目标 65），
+            // 而它取的是顶缘最暗 15% —— 0.42 覆盖率下那 15% 依然是云。
+            m.SetFloat("_CloudCover",  0.30f);
             m.SetFloat("_CloudDetail", 1.0f);
             m.SetVector("_CloudDrift", new Vector4(7f, 0f, 3f, 0f));
             // 消光按**整列光学厚度 ≈ 6** 反推，不是凭手感：

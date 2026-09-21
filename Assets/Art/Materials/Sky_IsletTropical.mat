@@ -26,12 +26,12 @@ Material:
     m_Ints: []
     m_Floats:
     - _CloudBase: 1400
-    - _CloudCover: 0.42
+    - _CloudCover: 0.3
     - _CloudDetail: 1
     - _CloudFreq: 0.00042
     - _CloudTop: 4200
     - _Extinct: 0.0028
-    - _GradNorm: 0.42
+    - _GradNorm: 0.4
     - _GradPow: 1.4
     - _ShadeSteps: 4
     - _SilverLining: 0.55
@@ -41,9 +41,9 @@ Material:
     - _SunPow: 2.6
     m_Colors:
     - _CloudDrift: {r: 7, g: 0, b: 3, a: 0}
-    - _CloudLit: {r: 1.6, g: 1.66, b: 1.72, a: 1}
+    - _CloudLit: {r: 1.42, g: 1.5, b: 1.6, a: 1}
     - _CloudShade: {r: 0.26, g: 0.46, b: 0.66, a: 1}
     - _GroundColor: {r: 0.18, g: 0.23, b: 0.26, a: 1}
-    - _HorizonColor: {r: 0.3, g: 0.62, b: 0.85, a: 1}
-    - _ZenithColor: {r: 0.004, g: 0.3, b: 0.8, a: 1}
+    - _HorizonColor: {r: 0.5, g: 0.7, b: 0.87, a: 1}
+    - _ZenithColor: {r: 0.01, g: 0.42, b: 0.8, a: 1}
   m_BuildTextureStacks: []
