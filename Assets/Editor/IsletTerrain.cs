@@ -37,7 +37,7 @@ namespace WaterProject.EditorTools
     public static class IsletTerrain
     {
         const string ScenePath   = "Assets/Scenes/IsletScene.unity";
-        const string TexFolder   = "Assets/Art/Textures/Islet";
+        public const string TexFolder   = "Assets/Art/Textures/Islet";
         const string LayerFolder = "Assets/Art/TerrainLayers/Islet";
         const string TerrainName = "IsletTerrain";
 
@@ -692,7 +692,7 @@ namespace WaterProject.EditorTools
             return EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single).IsValid();
         }
 
-        static void EnsureFolder(string path)
+        public static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path)) return;
             string parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');

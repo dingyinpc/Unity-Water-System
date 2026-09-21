@@ -439,6 +439,192 @@ namespace WaterProject.EditorTools
                        "  water=" + wmat + "\n");
         }
 
+        // ═════════════════════════ 93 ═════════════════════════
+        // 椰树：Blender 出的 SM_Palm_Coconut_01.fbx（`E:\Blender\Blender工程\palms\`）。
+        // 叶片材质**复用已有的 Tree_Leaf**，不另写一个：它的顶点色契约
+        // （R=flex 根0→梢1 / G=phase / B=flutter 树皮0叶片1）正是建模侧写的，
+        // 换 shader 就等于把背光透光 + 风摆动那套重做一遍。
+        const string PalmFbx = FbxFolder + "/SM_Palm_Coconut_01.fbx";
+
+        [MenuItem("Tools/Islet/93 导入椰树(材质+Prefab+摆到沙洲/大岛)")]
+        public static void PlacePalms()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU93 REFUSED: 在 Play 模式\n"); return; }
+
+            var fbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(PalmFbx);
+            if (fbx == null) { WriteProbe("MENU93 REFUSED: 找不到 " + PalmFbx + "\n"); return; }
+
+            // ── 单位比例：**必须在这里修，且必须在建 Prefab 之前** ──
+            // 两次实测才把这个数定死（单靠猜会一直错下去）：
+            //   原始网格真实尺寸 = **8.73m，本来就是对的**
+            //   ① useFileScale=true , globalScale=1   → boundsLocal (0.08,0.08,0.09)
+            //   ② useFileScale=false, globalScale=100 → boundsLocal (810,808,873)
+            //   ② / ① = 10000 ⇒ FBX 容器自带一个 **0.01** 的文件比例
+            //   （Blender 存的是米，FBX 规范默认单位是厘米，导出时把这个换算写进了文件）。
+            //   所以正解是**忽略文件自带比例**、globalScale 保持 1，
+            //   而不是拿 100 去乘 —— 乘 100 只是把 0.01 补回来，再叠上
+            //   useFileScale=false 就变成乘了两次，直接冲出 873。
+            var mi = AssetImporter.GetAtPath(PalmFbx) as ModelImporter;
+            if (mi != null)
+            {
+                mi.useFileScale = false;
+                mi.globalScale  = 1f;
+                mi.SaveAndReimport();
+                var rm = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(PalmFbx);
+                var rmf = rm != null ? rm.GetComponentInChildren<MeshFilter>() : null;
+                s_palmDiag = " scaleFix(file=off,g=1) reimportBounds=" +
+                             (rmf != null && rmf.sharedMesh != null
+                                 ? rmf.sharedMesh.bounds.size.ToString("F2") : "n/a");
+            }
+
+            IsletTerrain.EnsureFolder(MatFolder + "/Islet");
+            var white = SolidWhiteTex();
+            var leafSh = Shader.Find("WaterProject/TreeLeaf");
+            if (leafSh == null) WriteProbe("!! MENU93 TreeLeaf NOT FOUND —— 叶片会退回 URP Lit，不会随风动\n");
+
+            var bark = ShadedMat("Islet_PalmBark", Shader.Find("Universal Render Pipeline/Lit"),
+                                 new Color(0.230f, 0.170f, 0.128f), 0.72f, 0.05f, white);
+            var coco = ShadedMat("Islet_PalmCoco", Shader.Find("Universal Render Pipeline/Lit"),
+                                 new Color(0.230f, 0.290f, 0.130f), 0.62f, 0.08f, white);
+            var leaf = ShadedMat("Islet_PalmLeaf", leafSh != null ? leafSh
+                                 : Shader.Find("Universal Render Pipeline/Lit"),
+                                 new Color(0.135f, 0.400f, 0.115f), 0.55f, 0.02f, white);
+            if (leafSh != null)
+            {
+                // 风参数：和潭/森林那批树同一档，全场才像被同一阵风吹
+                leaf.SetFloat("_WindStrength", 0.16f);
+                leaf.SetFloat("_WindFreq",     0.95f);
+                leaf.SetVector("_WindDir", new Vector4(0.92f, 0f, 0.32f, 0f));
+                leaf.SetFloat("_TransStrength", 2.0f);   // 椰子叶薄，逆光那一下是它的主要信号
+                leaf.SetFloat("_TransPower",   8.0f);
+                leaf.SetFloat("_Cutoff",       0.35f);
+            }
+
+            string pp = FbxFolder + "/Islet_Palm_Coconut_01.prefab";
+            var tmp = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(fbx);
+            var r = tmp.GetComponentInChildren<MeshRenderer>();
+            if (r == null) { UnityEngine.Object.DestroyImmediate(tmp); WriteProbe("MENU93 REFUSED: FBX 里没有 MeshRenderer\n"); return; }
+            // 按**槽名**认领，不按序号：Blender 导出的槽顺序会随材质创建顺序变
+            var src = r.sharedMaterials;
+            var bound = new Material[src.Length];
+            for (int i = 0; i < src.Length; i++)
+            {
+                string n = src[i] != null ? src[i].name : "";
+                bound[i] = n.Contains("Leaf") ? leaf : n.Contains("Coco") ? coco : bark;
+            }
+            r.sharedMaterials = bound;
+            r.shadowCastingMode = ShadowCastingMode.On;
+            r.receiveShadows = true;
+            PrefabUtility.SaveAsPrefabAsset(tmp, pp);
+            UnityEngine.Object.DestroyImmediate(tmp);
+
+            // ── 摆放 ──
+            // 高度一律问 IsletTerrain.LandHeight，不手写 y：地形是唯一的几何真值，
+            // 手填的 y 在下次菜单91 重长之后就会飘在半空或埋进沙里
+            var prefab = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(pp);
+            int placed = 0;
+            s_palmDiag = "";
+
+            // 重跑要**替换**而不是再叠一排（和建模侧同一个道理）
+            foreach (var old in UnityEngine.Object.FindObjectsOfType<UnityEngine.GameObject>())
+                if (old.name.StartsWith("Palm_")) UnityEngine.Object.DestroyImmediate(old);
+
+            // 参考1 的前景沙洲是**两棵从同一处根部长出来、朝两边反向倾斜**的椰子树
+            PlacePalm(prefab, "Palm_Islet_L", new Vector3(-12.0f, 0f, -8.6f),  38f, -14f, 1.00f, ref placed);
+            PlacePalm(prefab, "Palm_Islet_R", new Vector3(-10.2f, 0f, -7.4f), -34f,  12f, 0.92f, ref placed);
+
+            // 大岛的绿肩膀上撒一圈椰林（参考1 右侧那片）
+            var grove = new Vector3[]
+            {
+                new Vector3(36f, 0f, 74f), new Vector3(45f, 0f, 68f), new Vector3(55f, 0f, 66f),
+                new Vector3(64f, 0f, 72f), new Vector3(41f, 0f, 84f), new Vector3(60f, 0f, 86f),
+                new Vector3(50f, 0f, 78f), new Vector3(70f, 0f, 80f),
+            };
+            for (int i = 0; i < grove.Length; i++)
+                PlacePalm(prefab, "Palm_Isle_" + i, grove[i],
+                          (i * 47f) % 60f - 30f, (i * 83f) % 360f, 0.82f + 0.30f * ((i * 37 % 10) / 9f), ref placed);
+
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU93 palms placed=" + placed + "  leafShader=" +
+                       (leafSh == null ? "FALLBACK-Lit" : "TreeLeaf") + "  prefab=" + pp +
+                       s_palmDiag + "\n");
+        }
+
+        static string s_palmDiag = "";
+
+        static void PlacePalm(UnityEngine.GameObject prefab, string nm, Vector3 xz,
+                              float lean, float yaw, float scale, ref int placed)
+        {
+            float y = IsletTerrain.LandHeight(xz.x, xz.z);
+            // 落在深水里的直接跳过：那是摆到了潟湖底，树会插在水下
+            if (y < 0.25f) return;
+            var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            g.name = nm;
+            g.transform.position = new Vector3(xz.x, y - 0.10f, xz.z);   // 吃进土 10cm，别站在水膜上
+            g.transform.rotation = Quaternion.Euler(lean, yaw, 0f);
+            g.transform.localScale = Vector3.one * scale;
+            placed++;
+
+            // "placed=10" 只证明对象建出来了，**不证明它看得见**。
+            // 上一轮就是这么被骗过一次：10 棵全在场景里，画面上一棵都没有。
+            // 所以第一棵必须把"网格有没有顶点、世界包围盒多大、材质绑没绑上"打出来 ——
+            // 这三种失败（没导入 / 单位比例错了 / 材质不可见）症状一样，只有数字能分开。
+            if (placed == 1)
+            {
+                var mf = g.GetComponent<MeshFilter>();
+                var mr = g.GetComponent<MeshRenderer>();
+                var m = mf != null ? mf.sharedMesh : null;
+                s_palmDiag += " mesh=" + (m == null ? "NULL" : m.name) +
+                             " verts=" + (m == null ? 0 : m.vertexCount) +
+                             " sub=" + (m == null ? 0 : m.subMeshCount) +
+                             " boundsLocal=" + (m == null ? "n/a" : m.bounds.size.ToString("F2")) +
+                             " boundsWorld=" + (mr == null ? "n/a" : mr.bounds.size.ToString("F2")) +
+                             " mats=[" + string.Join(",", System.Array.ConvertAll(
+                                 mr != null ? mr.sharedMaterials : new Material[0],
+                                 x => x == null ? "NULL" : x.name)) + "]";
+            }
+        }
+
+        // 4×4 纯白贴图。存在的理由：Tree_Leaf 要采 _BaseMap 做 alpha 裁剪，
+        // 槽位空着 URP 会渲成品红 —— 那看起来像"shader 坏了"，其实是"没贴图"。
+        // 椰叶是真几何叶片（不是卡片贴图），所以给它一张不裁剪的白底就够了。
+        static Texture2D SolidWhiteTex()
+        {
+            string p = IsletTerrain.TexFolder + "/Islet_SolidWhite.png";
+            var t = AssetDatabase.LoadAssetAtPath<Texture2D>(p);
+            if (t != null) return t;
+            var tmp = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            var px = new Color[16];
+            for (int i = 0; i < 16; i++) px[i] = Color.white;
+            tmp.SetPixels(px); tmp.Apply();
+            System.IO.File.WriteAllBytes(p, tmp.EncodeToPNG());
+            UnityEngine.Object.DestroyImmediate(tmp);
+            AssetDatabase.ImportAsset(p);
+            var imp = (TextureImporter)AssetImporter.GetAtPath(p);
+            imp.wrapMode = TextureWrapMode.Repeat;
+            imp.sRGBTexture = true;
+            imp.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(p);
+        }
+
+        static Material ShadedMat(string nm, Shader sh, Color rgb, float smooth, float metal, Texture2D baseMap)
+        {
+            string p = MatFolder + "/Islet/" + nm + ".mat";
+            if (sh == null) { WriteProbe("!! ShadedMat " + nm + " shader NULL\n"); return null; }
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m == null) { m = new Material(sh) { name = nm }; AssetDatabase.CreateAsset(m, p); }
+            else m.shader = sh;
+            m.SetColor("_BaseColor", rgb);
+            if (baseMap != null) m.SetTexture("_BaseMap", baseMap);
+            if (m.HasProperty("_Smoothness"))  m.SetFloat("_Smoothness", smooth);
+            if (m.HasProperty("_Metallic"))    m.SetFloat("_Metallic", metal);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssets();
+            return m;
+        }
+
         // ═════════════════════════ 95 ═════════════════════════
         [MenuItem("Tools/Islet/95 Play 中截图 Game 视图")]
         public static void CaptureIslet()
