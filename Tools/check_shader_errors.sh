@@ -29,18 +29,33 @@ fi
 [[ -e "$SNAP" ]] || { echo "no baseline — run: $0 mark" >&2; exit 2; }
 
 found=0
-while read -r before f; do
+# ⚠ 必须遍历"现在存在的全部日志"，而不是基线里那几份。
+#   一次刷新会**新起**若干 UnityShaderCompiler.exeN 子进程并新建各自的日志，
+#   只 diff 基线里已有的文件，就会把新进程里的错误整个漏掉 ——
+#   实测 Sky_Tropical 的编译记录同时落在基线里没有的 exe1/exe2 里，
+#   而检查照样报了 clean。基线里没有的文件 = 全新文件 = 偏移量按 0 算。
+for f in Logs/shadercompiler-UnityShaderCompiler.exe*.log; do
     [[ -e "$f" ]] || continue
+    before=$(awk -v p="$f" '$2==p {print $1; f=1} END {if(!f) print 0}' "$SNAP")
     now=$(wc -c < "$f")
     (( now <= before )) && continue
     new=$(tail -c +$((before + 1)) "$f")
     hits=$(printf '%s\n' "$new" | grep -a "error:" || true)
     if [[ -n "$hits" ]]; then
-        found=1
         echo "### $f (+$((now - before)) bytes)"
-        printf '%s\n' "$hits" | sed -E 's/.*(file=[^ ]+ [^ ]*)?.*(error: .*)/\2/' | sort -u
+        # Unity 的分级写在消息里：`error: 1` = 警告，`error: 2` = 硬失败。
+        # 两者都含 "error:" 子串，混在一起会把"pow 底数可能为负"这种警告报成 FAIL，
+        # 于是这个通道很快就不值得信了 —— 必须分开。
+        hard=$(printf '%s\n' "$hits"   | grep -a "error: 2" || true)
+        warn=$(printf '%s\n' "$hits"   | grep -a "error: 1" || true)
+        [[ -n "$warn" ]] && { echo "  WARN:"; printf '%s\n' "$warn" | sed -E 's/.*(error: 1 .*)/    \1/' | sort -u; }
+        if [[ -n "$hard" ]]; then
+            found=1
+            echo "  ERROR:"
+            printf '%s\n' "$hard" | sed -E 's/.*(error: 2 .*)/    \1/' | sort -u
+        fi
     fi
-done < "$SNAP"
+done
 
 if (( found )); then
     echo "=> shader errors: FAIL"

@@ -40,14 +40,37 @@ namespace WaterProject.EditorTools
             // 失焦即停摆的根因就在这行（见文件头 ③）
             Application.runInBackground = true;
 
-            s_pending = true;
+            // s_tag 必须先赋好 —— EnsureGameView 里的日志要用它
             s_tag = tag;
             s_outPath = outPath;
+
+            // 没有 GameView 就没有 m_RenderTexture 可读 —— 而 GameView 会在切场景、
+            // 退出 Play 等操作中被关掉（本轮实际遇到："没有打开的 GameView"）。
+            // 在这里补开一个，让后面等帧的过程顺便把它渲染出来。
+            EnsureGameView();
+
+            s_pending = true;
             int from = Time.renderedFrameCount;
             s_target = from + Mathf.Max(2, framesToWait);
             s_deadline = EditorApplication.timeSinceStartup + timeoutSec;
-            Write(tag + " request renderedFrame=" + from + "\n");
+            Write(tag + " request renderedFrame=" + from
+                  + " isPlaying=" + Application.isPlaying + "\n");
             EditorApplication.update += GrabWhenFresh;
+        }
+
+        static void EnsureGameView()
+        {
+            var gvType = typeof(Editor).Assembly.GetType("UnityEditor.GameView");
+            if (gvType == null) { Write(s_tag + " 找不到 UnityEditor.GameView 类型\n"); return; }
+            var views = Resources.FindObjectsOfTypeAll(gvType);
+            if (views != null && views.Length > 0) return;
+            try
+            {
+                EditorWindow.GetWindow(gvType, false, "Game", false);
+                Write(s_tag + " 没有 GameView，已补开一个\n");
+            }
+            catch (System.Exception e)
+            { Write(s_tag + " 补开 GameView 失败: " + e.GetType().Name + " " + e.Message + "\n"); }
         }
 
         static void GrabWhenFresh()
@@ -82,11 +105,24 @@ namespace WaterProject.EditorTools
 
             if (!viaView)
             {
-                ScreenCapture.CaptureScreenshot(s_outPath);
-                Write(s_tag + " 没拿到 GameView 渲染纹理，退回 ScreenCapture"
-                      + "（需要编辑器在前台才会落盘）\n");
+                // ⚠ 这里**绝不能**写 s_outPath。ScreenCapture 没有"这是新帧"的证明，
+                //   它要么需要编辑器在前台、要么就把上一张缓冲原样吐出来 ——
+                //   本轮正是它把一张过期图写进了验收路径，看起来"改了没反应"。
+                //   退路只写一个明确改名的旁证文件，验收路径保持不动。
+                string alt = s_outPath.EndsWith(".png", System.StringComparison.OrdinalIgnoreCase)
+                           ? s_outPath.Substring(0, s_outPath.Length - 4) + ".unverified.png"
+                           : s_outPath + ".unverified";
+                try
+                {
+                    ScreenCapture.CaptureScreenshot(alt);
+                    Write(s_tag + " UNVERIFIED: GameView RT 拿不到，ScreenCapture 无新鲜度证明，"
+                          + "只写 " + alt + "；**验收路径 " + s_outPath + " 未覆盖**\n");
+                }
+                catch (System.Exception e)
+                { Write(s_tag + " UNVERIFIED 抓取也失败: " + e.GetType().Name + " " + e.Message + "\n"); }
+                return;
             }
-            Write(s_tag + " " + (viaView ? "grabbed " : "captured ") + s_outPath + "\n");
+            Write(s_tag + " grabbed " + s_outPath + "\n");
         }
 
         static void Stop() { s_pending = false; EditorApplication.update -= GrabWhenFresh; }
