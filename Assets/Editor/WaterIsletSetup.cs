@@ -340,6 +340,38 @@ namespace WaterProject.EditorTools
             m.SetFloat("_SandAbsorb",  0.34f);
             m.SetFloat("_Opacity",     0.94f);
 
+            // ── 自产波纹法线贴图 ──
+            // ⚠ 必须先确保导入器是 **NormalMap** 类型再加载。默认(Default)会按
+            //   sRGB 颜色数据解释，shader 里 UnpackNormal 拿到的就是错的向量
+            //   （表现为水面整体朝一个方向歪 / 高光发脏），而且画面看着"像是对的"。
+            //   和 FBX 那个 0.01 文件比例是同一类坑：**导入设置**决定资产含义。
+            const string WaveTex = "Assets/Art/Textures/Islet/T_WaveNormal.png";
+            string waveDiag = "";
+            var wi = AssetImporter.GetAtPath(WaveTex) as TextureImporter;
+            if (wi == null) { waveDiag = " WAVE_TEX_MISSING:" + WaveTex; }
+            else
+            {
+                if (wi.textureType != TextureImporterType.NormalMap)
+                {
+                    wi.textureType = TextureImporterType.NormalMap;
+                    wi.wrapMode = TextureWrapMode.Repeat;   // 无缝平铺靠这个
+                    wi.SaveAndReimport();
+                    waveDiag = " waveTex->NormalMap(已改)";
+                }
+                else waveDiag = " waveTex=NormalMap(本来就对)";
+                var wt = AssetDatabase.LoadAssetAtPath<Texture2D>(WaveTex);
+                m.SetTexture("_WaveMap", wt);
+                // shader 里 _WaveStrength 默认 0（空操作），**是这一行才打开的**。
+                // 0.55 的起点来自贴图自己的量级：生成器实测斜率 p50=0.150/p90=0.272
+                // （≈9°~15°，水面毛细波的正常范围），再乘 0.55 落到 Ng 上。
+                m.SetFloat("_WaveStrength", 0.55f);
+                m.SetFloat("_WaveTileA",    0.55f);
+                m.SetFloat("_WaveTileB",    1.60f);
+                m.SetFloat("_WaveSpeedA",   0.16f);
+                m.SetFloat("_WaveSpeedB",   0.30f);
+            }
+            WriteProbe("WAVE " + waveDiag + " strength=" + m.GetFloat("_WaveStrength") + "\n");
+
             m.SetFloat("_SwellAmp",    0.055f);
             m.SetFloat("_SwellScale",  1.0f);
             m.SetFloat("_SwellSpeed",  0.35f);

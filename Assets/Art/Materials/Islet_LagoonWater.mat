@@ -22,7 +22,11 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _WaveMap:
+        m_Texture: {fileID: 2800000, guid: fbc2ca0dffaf484489aeee6e18f15e9e, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _Absorb: 0.46
@@ -51,6 +55,11 @@ Material:
     - _SwellAmp: 0.055
     - _SwellScale: 1
     - _SwellSpeed: 0.35
+    - _WaveSpeedA: 0.16
+    - _WaveSpeedB: 0.3
+    - _WaveStrength: 0.55
+    - _WaveTileA: 0.55
+    - _WaveTileB: 1.6
     m_Colors:
     - _DeepColor: {r: 0.02, g: 0.3, b: 0.36, a: 1}
     - _FoamColor: {r: 0.94, g: 0.98, b: 0.98, a: 1}

@@ -46,6 +46,17 @@ Shader "WaterProject/Water_Lagoon"
 
         // ── 缓涌（几何位移）──
         _SwellAmp         ("涌幅(米)", Float) = 0.055
+        // ── 波纹法线贴图（两层同图不同缩放/方向/速度）──
+        // ⚠ _WaveStrength 默认 **0**：这份 shader 只被 IsletScene 用，
+        //   但"加了属性就把画面改了"是最难查的回归，所以默认必须是空操作。
+        //   贴图默认 "bump" 是 Unity 内置的中性法线 (0.5,0.5,1)，
+        //   即使忘了赋值也只会得到"不平坦"= 无影响，不会出棋盘格。
+        _WaveMap          ("波纹法线(自产无缝)", 2D) = "bump" {}
+        _WaveStrength     ("波纹强度", Range(0, 2)) = 0
+        _WaveTileA        ("波纹缩放A(每米)", Float) = 0.55
+        _WaveTileB        ("波纹缩放B(每米)", Float) = 1.60
+        _WaveSpeedA       ("波纹速度A", Float) = 0.16
+        _WaveSpeedB       ("波纹速度B", Float) = 0.30
         _SwellScale       ("涌频率倍率", Float) = 1.0
         _SwellSpeed       ("涌速度倍率", Float) = 0.35
 
@@ -109,10 +120,15 @@ Shader "WaterProject/Water_Lagoon"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
+            // 贴图与采样器**不能**进 CBUFFER（那是 uniform 的地盘），单独声明
+            TEXTURE2D(_WaveMap);
+            SAMPLER(sampler_WaveMap);
+
             CBUFFER_START(UnityPerMaterial)
                 float4 _ShallowColor, _MidColor, _DeepColor, _SandReturn;
                 float  _Absorb, _SandAbsorb, _Opacity;
                 float  _SwellAmp, _SwellScale, _SwellSpeed;
+                float  _WaveStrength, _WaveTileA, _WaveTileB, _WaveSpeedA, _WaveSpeedB;
                 float  _SlopeStrength, _SlopeScale, _FlowSpeed, _CapStrength, _CapScale;
                 float  _RefractStrength, _MaxUVOffset, _Eta, _BottomBlend;
                 float4 _SkyZenith, _SkyHorizon;
@@ -233,6 +249,28 @@ Shader "WaterProject/Water_Lagoon"
                 return o;
             }
 
+            // ── 波纹法线 → 本管线用的"斜率" ─────────────────────────────
+            // 两层采**同一张图**，但缩放/方向/速度都不同。
+            // ⚠ 方向必须不同：两层同方向只是把坡度乘二，看着仍是"一叠平行波"；
+            //   方向错开才会互相打断，出现真实水面的交叉波状。
+            float2 WaveSlope(float3 worldPos, float t)
+            {
+                if (_WaveStrength <= 0.0) return float2(0.0, 0.0);   // 默认=空操作
+
+                float2 uvA = worldPos.xz * _WaveTileA + float2( 1.00, 0.37) * (t * _WaveSpeedA);
+                float2 uvB = worldPos.xz * _WaveTileB + float2(-0.62, 1.00) * (t * _WaveSpeedB);
+                float3 a = UnpackNormal(SAMPLE_TEXTURE2D(_WaveMap, sampler_WaveMap, uvA));
+                float3 b = UnpackNormal(SAMPLE_TEXTURE2D(_WaveMap, sampler_WaveMap, uvB));
+                float3 m = normalize(a + b);
+
+                // 水面近似水平面 ⇒ 切线框直接就是 (世界X, 世界Z, 世界Y)，不用真算 TBN。
+                // 贴图切线空间里 x 沿 U、y 沿 V、z 沿法线；这里 U=世界X、V=世界Z，
+                // 所以世界法线 = (m.x, m.z, m.y)。
+                // 而本管线已有的写法是 Ng = normalize(-grad.x, 1, -grad.y)，
+                // 两式对齐 (除以 m.z) 就得到 grad = (-m.x, -m.y) / m.z。
+                return float2(-m.x, -m.y) / max(m.z, 1e-3) * _WaveStrength;
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
                 float3 worldPos = IN.worldPos;
@@ -241,7 +279,10 @@ Shader "WaterProject/Water_Lagoon"
                 float3 V = normalize(_WorldSpaceCameraPos - worldPos);
 
                 float fineW = lerp(0.18, 1.0, smoothstep(0.04, 0.35, abs(V.y)));
-                float2 grad = SkinGrad(worldPos, t, fineW);
+                // 程序化皮肤 + 贴图波纹。加在这里而不是另开一份法线，
+                // 是因为下面 Ng（反射/折射）和 Ns（碎闪）**都**从 grad 派生，
+                // 一处相加就同时拿到"波纹让反射动起来"和"波纹让碎闪跳起来"。
+                float2 grad = SkinGrad(worldPos, t, fineW) + WaveSlope(worldPos, t);
 
                 // 两份法线：反射/折射用温和的，碎闪用放大过的。
                 // 静态混一份的话，pow 420 之下毛细那点坡度会被抹平，碎闪直接消失。
