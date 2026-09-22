@@ -1235,6 +1235,13 @@ namespace WaterProject.EditorTools
             m.SetFloat("_SilverLining",0.55f);
             m.SetFloat("_SunGlow",     0.45f);
             m.SetFloat("_Steps",       48f);
+            // 云积分平均 4 个相位。 shader 里默认是 1（= 单遍，不改画面），
+            // 必须在这里显式抬才生效。
+            // 为什么抬：逐像素抖动是为了打掉等距切片的同心环带，但它换来的细噪点
+            // **并没有**像老注释说的那样"被雾与压缩吃掉" —— 实测天空带高频能量
+            // 3.83，参考帧只有 1.26（3 倍）。多相位平均能在保住"无环带"的同时
+            // 把噪点抵消掉（相位仍逐像素打散，只是每像素取 4 个相位求均值）。
+            m.SetFloat("_MarchPasses", 4f);
             m.SetFloat("_ShadeSteps",  4f);
             // 整链重建一律退回正常视图，别把上一轮调试通道留在盘上
             m.SetFloat("_SkyDebug",    0f);

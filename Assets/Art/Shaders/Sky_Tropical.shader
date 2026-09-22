@@ -61,6 +61,14 @@ Shader "WaterProject/Sky_Tropical"
         _SunGlow      ("日晕强度", Range(0, 2)) = 0.45
         _Steps        ("主步进数", Range(8, 64)) = 32
         _ShadeSteps   ("阴影步数", Range(0, 8)) = 4
+        // 云积分的**平均相位数**。逐像素抖动是必需的（它把等距切片的同心环带
+        // 打散成噪点），但代价就是天空上一层细颗粒 —— 实测高频能量 3.83，
+        // 参考帧只有 1.26，是 3 倍。多相位平均是唯一能**同时**保住
+        // "没有环带"和"没有噪点"的做法：同一个像素用几个不同相位各 march
+        // 一遍再平均，噪点互相抵消，环带也不会回来。
+        // ⚠ 默认 **1 = 与加这个属性之前完全一致**，由调用方显式抬，
+        //   免得共享这份 shader 的别处被静默改掉。
+        _MarchPasses  ("云积分平均相位", Range(1, 4)) = 1
         // 体积云不能靠"看图猜"：密度场空不空、受光对不对、渐变本身合不合格，
         // 三件事混在一张图里永远分不开。先证明通道通，再解释数值（《06》附 B）。
         _SkyDebug     ("调试(0正常/1云遮罩/2云受光/3仅渐变)", Range(0, 3)) = 0
@@ -86,7 +94,7 @@ Shader "WaterProject/Sky_Tropical"
                 float  _CloudBase, _CloudTop, _CloudFreq, _CloudCover, _CloudDetail;
                 float4 _CloudDrift;
                 float  _Extinct, _SunPow, _SilverLining, _SunGlow;
-                float  _Steps, _ShadeSteps;
+                float  _Steps, _ShadeSteps, _MarchPasses;
                 float  _GradPow;
                 float  _GradNorm;
                 float  _SkyDebug;
@@ -198,50 +206,18 @@ Shader "WaterProject/Sky_Tropical"
                 return saturate(tr);
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            // ── 单相位云积分 ──────────────────────────────────────────────
+            // 从 frag 里搬出来的，逻辑一字未改；搬的原因只有一个：
+            // 要能对**同一个像素用不同抖动相位 march 几遍再平均**（见 _MarchPasses）。
+            // 相位 jit 现在是**入参**而不是内部算，其余（能量守恒的混合权重、
+            // 提前退出、步长随距离放大）全部保持原样。
+            void MarchClouds(float3 d, float3 sunDir, float3 wind,
+                             float t0, float t1, float dt, int N, float jit,
+                             out float3 acc, out float trans, out float tEnd, out float maxLit)
             {
-                float3 d = normalize(IN.dir);
-                if (d.y < 0.0) return half4(_GroundColor.rgb, 1.0);
-
-                float3 sunDir = GetMainLight().direction;
-                float up = saturate(d.y);
-                float3 sky = lerp(_HorizonColor.rgb, _ZenithColor.rgb,
-                                  pow(saturate(up / max(_GradNorm, 0.05)), _GradPow));
-
-                // 日晕：锐项给"太阳那枚硬币"，宽项给"那一片天整体发白"
-                float sd = saturate(dot(d, sunDir));
-                sky += _CloudLit.rgb * (pow(sd, 700.0) * 0.55 + pow(sd, 14.0) * 0.16) * _SunGlow;
-
-                // 射线与云层两个平面的交点
-                float camY = _WorldSpaceCameraPos.y;
-                if (d.y < 0.0015) return half4(sky, 1.0);        // 近平视：穿层路径过长，直接当无云
-                float t0 = max((_CloudBase - camY) / d.y, 0.0);
-                float t1 = (_CloudTop - camY) / d.y;
-                if (t1 <= t0) return half4(sky, 1.0);
-                // ⚠ 步进距离截在 45km，不是 260km。掠射方向上射线在云层里要穿
-                //   上百公里，而 coverage 噪声最低一倍的特征尺度就有 ~2.4km ——
-                //   48 步根本采不动它，远处直接糊成一把盐粒（实测就是这样）。
-                //   超过这个距离的云在屏幕上已经不到一个采样点，截掉不可见，
-                //   剩下的透射率交给下面的地平雾接管。
-                t1 = min(t1, 45000.0);
-
-                float3 wind = _CloudDrift.xyz * _Time.y;
-                float dt = (t1 - t0) / max(_Steps, 4.0);
-
-                // 3 = 只留渐变：把云整个关掉，这样"天空蓝到没到目标值"
-                // 是一个可以单独量的数，不会被云的平均效应掩盖
-                if (_SkyDebug > 2.5) return half4(sky, 1.0);
-
-                float trans = 1.0;
-                float3 acc = 0.0;
-                float maxLit = 0.0;
-                // ⚠ 逐像素抖动起点。不抖的话等距切片会在云上留下一圈圈**同心环带**
-                //   （第一版实测就是"千层饼"），因为云边界恰好落在某一片切片上时，
-                //   整片区域的采样相位是一致的。抖动把相位打散，环带变成细噪点，
-                //   再被后面的雾与压缩吃掉。
-                float jit = Hash21(IN.positionCS.xy * 0.6135) ;
+                acc = 0.0; trans = 1.0; maxLit = 0.0;
                 float t = t0 + dt * jit;
-                int N = (int)max(_Steps, 4.0);
+
                 for (int i = 0; i < N; i++)
                 {
                     float3 p = _WorldSpaceCameraPos + d * t;
@@ -278,6 +254,72 @@ Shader "WaterProject/Sky_Tropical"
                     // 云内部根本没被采到几个点，同心环带就是这么来的。
                     t += dt * (1.0 + 0.6 * (t - t0) / max(t1 - t0, 1.0));
                 }
+                tEnd = t;
+            }
+
+            half4 frag(Varyings IN) : SV_Target
+            {
+                float3 d = normalize(IN.dir);
+                if (d.y < 0.0) return half4(_GroundColor.rgb, 1.0);
+
+                float3 sunDir = GetMainLight().direction;
+                float up = saturate(d.y);
+                float3 sky = lerp(_HorizonColor.rgb, _ZenithColor.rgb,
+                                  pow(saturate(up / max(_GradNorm, 0.05)), _GradPow));
+
+                // 日晕：锐项给"太阳那枚硬币"，宽项给"那一片天整体发白"
+                float sd = saturate(dot(d, sunDir));
+                sky += _CloudLit.rgb * (pow(sd, 700.0) * 0.55 + pow(sd, 14.0) * 0.16) * _SunGlow;
+
+                // 射线与云层两个平面的交点
+                float camY = _WorldSpaceCameraPos.y;
+                if (d.y < 0.0015) return half4(sky, 1.0);        // 近平视：穿层路径过长，直接当无云
+                float t0 = max((_CloudBase - camY) / d.y, 0.0);
+                float t1 = (_CloudTop - camY) / d.y;
+                if (t1 <= t0) return half4(sky, 1.0);
+                // ⚠ 步进距离截在 45km，不是 260km。掠射方向上射线在云层里要穿
+                //   上百公里，而 coverage 噪声最低一倍的特征尺度就有 ~2.4km ——
+                //   48 步根本采不动它，远处直接糊成一把盐粒（实测就是这样）。
+                //   超过这个距离的云在屏幕上已经不到一个采样点，截掉不可见，
+                //   剩下的透射率交给下面的地平雾接管。
+                t1 = min(t1, 45000.0);
+
+                float3 wind = _CloudDrift.xyz * _Time.y;
+                float dt = (t1 - t0) / max(_Steps, 4.0);
+
+                // 3 = 只留渐变：把云整个关掉，这样"天空蓝到没到目标值"
+                // 是一个可以单独量的数，不会被云的平均效应掩盖
+                if (_SkyDebug > 2.5) return half4(sky, 1.0);
+
+                int N = (int)max(_Steps, 4.0);
+                // ⚠ 逐像素抖动起点。不抖的话等距切片会在云上留下一圈圈**同心环带**
+                //   （第一版实测就是"千层饼"），因为云边界恰好落在某一片切片上时，
+                //   整片区域的采样相位是一致的。
+                //   这里原注释说"抖动把相位打散，环带变成细噪点，再被后面的雾与
+                //   压缩吃掉" —— **前半句对，后半句被实测否掉了**：噪点根本没被吃掉，
+                //   天空带高频能量 3.83，参考帧只有 1.26（3 倍）。
+                //   所以改成多相位平均：同一个像素用几个错开的相位各 march 一遍再平均。
+                //   噪点互相抵消，而环带**不会**回来 —— 因为相位依旧是逐像素打散的，
+                //   只是每个像素从"取 1 个相位"变成"取 P 个相位求均值"。
+                //   _MarchPasses 默认 1 ⇒ 不显式抬就等于改之前的单遍行为。
+                float base = Hash21(IN.positionCS.xy * 0.6135);
+                int P = (int)max(_MarchPasses, 1.0);
+                float3 acc = 0.0;
+                float trans = 0.0;
+                float maxLit = 0.0;
+                float t = 0.0;                       // 下面算地平雾淡入要用，保持这个名字
+                for (int k = 0; k < P; k++)
+                {
+                    float3 ac2; float tr2, te2, ml2;
+                    MarchClouds(d, sunDir, wind, t0, t1, dt, N,
+                                frac(base + (float)k * 0.37), ac2, tr2, te2, ml2);
+                    acc   += ac2;
+                    trans += tr2;
+                    t     += te2;
+                    maxLit = max(maxLit, ml2);
+                }
+                float invP = 1.0 / (float)P;
+                acc *= invP;  trans *= invP;  t *= invP;
 
                 // 1 = 云遮罩：纯看"这一条射线穿没穿过云"。
                 //   如果整屏是黑的，问题在密度场（高度区间/频率/阈值），

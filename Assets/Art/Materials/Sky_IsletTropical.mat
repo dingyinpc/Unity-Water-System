@@ -33,6 +33,7 @@ Material:
     - _Extinct: 0.0028
     - _GradNorm: 0.4
     - _GradPow: 1.4
+    - _MarchPasses: 4
     - _ShadeSteps: 4
     - _SilverLining: 0.55
     - _SkyDebug: 0
