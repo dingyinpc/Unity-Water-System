@@ -990,13 +990,19 @@ namespace WaterProject.EditorTools
 
             // 撒点：大岛 (52,104) r=44，绿肩在**背对相机**的那半边缓坡。
             // 方位角沿用 PlaceReefAtWaterline 的约定 dir=(sin b, cos b) ⇒ b=0 是 +z（岛背后）。
-            // 只取 b∈[-55°,55°]：相机在 -z 侧，正面那半边要留成参考那样的白沙滩。
+            // 相机在 -z 侧，正面那半边要留成参考那样的白沙滩。
+            //
+            // ⚠ 尺寸/密度这一档是**量出来的**，不是调口味：肩区框量 foliage_lit 时
+            //   只有 **9%** 的像素通过过滤（剩下 91% 还是沙和天），而通过的这部分
+            //   p75 (45,99,63) 已经贴到目标 (50,112,71)、中位却只有 (13,29,22)。
+            //   ⇒ 颜色是对的，**单株太小太稀**：1.3m 的灌木在 160m 外撑不出轮廓，
+            //     岛脊上自然还是白的。所以放大 + 加密 + 放宽方位窗一起给。
             var rnd = new System.Random(20260922);
             int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0;
-            for (int i = 0; i < 900 && placed < 300; i++)
+            for (int i = 0; i < 2200 && placed < 700; i++)
             {
-                float b = (float)(rnd.NextDouble() * 110.0 - 55.0);
-                float rr = (float)(24.0 + rnd.NextDouble() * 21.0);
+                float b = (float)(rnd.NextDouble() * 140.0 - 70.0);
+                float rr = (float)(22.0 + rnd.NextDouble() * 23.0);
                 float x = 52f + Mathf.Sin(b * Mathf.Deg2Rad) * rr;
                 float z = 104f + Mathf.Cos(b * Mathf.Deg2Rad) * rr;
                 tried++;
@@ -1007,12 +1013,13 @@ namespace WaterProject.EditorTools
                 if (Mathf.Sqrt((x - 64f) * (x - 64f) + (z - 130f) * (z - 130f)) < 13f)
                 { rejCore++; continue; }                              // 别把巨岩埋进灌木里
 
-                bool tuft = rnd.NextDouble() < 0.5;
-                float sc  = tuft ? (float)(0.80 + rnd.NextDouble() * 0.70)
-                                 : (float)(0.70 + rnd.NextDouble() * 0.80);
+                bool tuft = rnd.NextDouble() < 0.45;
+                float sc  = tuft ? (float)(1.60 + rnd.NextDouble() * 1.00)
+                                 : (float)(2.20 + rnd.NextDouble() * 1.80);
                 // bury：灌木的**外圈叶是往下垂的**（Blender z 到 -0.45），
                 // 拿 bounds.min 落地等于把垂梢插进沙里、丛心悬空 0.45m。
-                // 所以按"垂深"整体往下埋，让**根**贴地而不是最低点贴地。
+                // 所以按"垂深"整体往下埋，让**根**贴地而不是最低点贴地 ——
+                // 乘 sc 是因为那是网格局部量，缩放后垂深同比变。
                 PlaceRock(tuft ? tuftPrefab : bushPrefab,
                           (tuft ? "Tuft_" : "Bush_") + i,
                           new Vector3(x, 0f, z),
