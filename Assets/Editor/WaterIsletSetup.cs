@@ -1238,7 +1238,12 @@ namespace WaterProject.EditorTools
             //   （量完已把 _SkyDebug 恢复 0。）
             m.SetFloat("_CloudCover",  0.30f);
             m.SetFloat("_CloudDetail", 1.0f);
-            m.SetVector("_CloudDrift", new Vector4(7f, 0f, 3f, 0f));
+            // 云速按用户要求**降 3 倍**：(7,0,3) → (2.333,0,1)。
+            // 顺带解决一个测量问题：云在两帧之间一直在移动，所以凡是"带里含云"的
+            // 天空探针（sky_upper / sunlit_top）都取不到可复现的数 ——
+            // 同一份配置连抓两帧，sunlit_top 能从偏差 19 跳到 69。
+            // 漂得慢，帧与帧之间的云型就更接近，判据才有可比性。
+            m.SetVector("_CloudDrift", new Vector4(2.333f, 0f, 1f, 0f));
             // 消光按**整列光学厚度 ≈ 6** 反推，不是凭手感：
             //   满云列厚 ≈ coverage×(顶-底) ≈ 0.8×2800 ≈ 2240 m
             //   要 tau≈6 ⇒ sigma ≈ 6/2240 ≈ 0.0027 /m
