@@ -71,6 +71,49 @@ def pick(vals, p):
     return s[min(len(s) - 1, int(len(s) * p))]
 
 
+def content_top(im, thresh=60.0):
+    """画幅顶部**暗色 UI 条**下沿的位置（比例）。天空带从这里起算，不从 0 起算。
+
+    为什么必须有：参考帧是抖音视频截图，顶上带一条播放器/标题 UI。
+    实测它的几何是（1920×1080 那张）：
+        第 0~40 行  行均亮度 219~245   ← **是亮的**，不是黑边！
+        第 41~110 行 行均亮度 ≈ 31     ← 暗的中性灰 UI 条，占画幅高 3.8%~10.2%
+    而 `sky_upper` 取的是顶带里**最暗 15%** —— 那条 UI 条正好占顶带的 10.5%，
+    于是分位数整个落在它身上，参考帧自己量出 **(31,31,31)** 纯灰，
+    对目标 (65,174,224) 偏差 193。所谓"天空不合格"其实是量具把 UI 当天采了。
+
+    ⚠ 第一版这里写成"从第 0 行往下找第一行不够亮的"，**测不出来**：
+      第 0 行亮度 235，直接返回 0。暗条是**夹在中间**的一段，不是顶上的黑边。
+      所以改成"在顶部 15% 里找最深的那一行暗行，从它下沿起算"。
+      没有暗行就返回 0，正常截图不受影响。
+    """
+    w, h = im.size
+    px = im.load()
+    xs = list(range(int(0.05 * w), int(0.95 * w), max(1, w // 60)))
+    last_dark = -1
+    for y in range(int(0.15 * h)):
+        s = sum(lum(px[x, y]) for x in xs) / float(max(1, len(xs)))
+        if s < thresh:
+            last_dark = y
+    if last_dark < 0:
+        return 0.0
+    return min(0.15, (last_dark + 6) / float(h))
+
+
+def is_ui_grey(c):
+    """截图里的**播放器/标题 UI**：暗、而且三通道几乎完全相等。
+
+    为什么不用"把整条带往下挪"来躲它：实测参考帧顶部几何是
+        第 0~40 行 均亮 219~245  ← **真内容**（很亮的天/云，sunlit_top 目标就是
+                                     接近纯白的 (228,241,250)，正好来自这一段）
+        第 41~110 行 均亮 ≈31    ← 中性灰 UI 条
+    所以从 110 行起算会把真内容一起扔了（实测 sunlit_top 偏差从 16 恶化到 63）。
+    改成**按像素剔**：又暗、R/G/B 又几乎相等的，不可能是天也不可能是海。
+    """
+    r, g, b = c
+    return max(r, g, b) < 70 and (max(r, g, b) - min(r, g, b)) <= 6
+
+
 def region(im, y0, y1, xa=0.05, xb=0.95):
     w, h = im.size
     y0 = min(max(y0, 0.0), 0.9995)
@@ -83,13 +126,20 @@ def region(im, y0, y1, xa=0.05, xb=0.95):
     out = []
     for y in range(a, b, stride):
         for x in range(x0, x1, 2):
-            out.append(px[x, y])
+            c = px[x, y]
+            if is_ui_grey(c):
+                continue          # 剔掉截图里的中性灰 UI 条，窗口本身不动
+            out.append(c)
     return out
 
 
 def measure(im, horizon):
     H = im.size[1]
     res = {}
+    # 天空带从 0 起算。截图顶部的中性灰 UI 条由 region() 里的 is_ui_grey
+    # **按像素剔掉** —— 不要改成"把整条带往下挪"：实测那样会把参考帧
+    # 顶部第 0~40 行那段**真内容**（均亮 219~245 的亮天，sunlit_top 的
+    # 近白目标 (228,241,250) 正是从它来的）一起扔掉，sunlit_top 偏差 16→63。
     for name, a, b, p in SKY_BANDS:
         xa, xb = BAND_X.get(name, (0.05, 0.95))
         v = region(im, a * horizon, b * horizon, xa, xb)
