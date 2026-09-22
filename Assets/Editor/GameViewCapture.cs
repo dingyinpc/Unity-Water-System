@@ -26,9 +26,17 @@ namespace WaterProject.EditorTools
         static int  s_target;
         static double s_deadline;
         static string s_tag, s_outPath;
+        // 都 >0 表示"按这个尺寸离屏渲染"，而不是去读 GameView 自己的 RT。
+        // ⚠ 加这个的起因：GameView 尺寸会在两次运行之间**自己变**（实测
+        //   957x627 → 1902x836 → 898x379），而 compare_reference 的具名框是按
+        //   **比例**标的 ⇒ 宽高比一变，框就量到别的东西上，前几轮的"偏差"其实
+        //   在量不同的画面。把出图尺寸钉死，比例坐标才有跨次可比性。
+        static int s_fixW, s_fixH;
 
-        /// <summary>异步取帧：置 runInBackground、等 renderedFrameCount 前进若干帧，再抓。</summary>
-        internal static void Request(string tag, string outPath, int framesToWait = 3, double timeoutSec = 8.0)
+        /// <summary>异步取帧：置 runInBackground、等 renderedFrameCount 前进若干帧，再抓。
+        /// fixW/fixH 都 >0 时走固定尺寸离屏渲染（验收取帧应当用它）。</summary>
+        internal static void Request(string tag, string outPath, int framesToWait = 3,
+                                     double timeoutSec = 8.0, int fixW = 0, int fixH = 0)
         {
             if (!Application.isPlaying)
             {
@@ -43,6 +51,7 @@ namespace WaterProject.EditorTools
             // s_tag 必须先赋好 —— EnsureGameView 里的日志要用它
             s_tag = tag;
             s_outPath = outPath;
+            s_fixW = fixW; s_fixH = fixH;
 
             // 没有 GameView 就没有 m_RenderTexture 可读 —— 而 GameView 会在切场景、
             // 退出 Play 等操作中被关掉（本轮实际遇到："没有打开的 GameView"）。
@@ -99,7 +108,11 @@ namespace WaterProject.EditorTools
             Write(s_tag + " grab at renderedFrame=" + now + " scene=" + scene.path + "\n");
 
             bool viaView = false;
-            try { viaView = GrabFromGameView(s_outPath); }
+            try
+            {
+                if (s_fixW > 0 && s_fixH > 0) viaView = GrabViaCamera(s_outPath, s_fixW, s_fixH);
+                else viaView = GrabFromGameView(s_outPath);
+            }
             catch (System.Exception e)
             { Write(s_tag + " grab THREW " + e.GetType().Name + " :: " + e.Message + "\n"); }
 
@@ -126,6 +139,51 @@ namespace WaterProject.EditorTools
         }
 
         static void Stop() { s_pending = false; EditorApplication.update -= GrabWhenFresh; }
+
+        /// <summary>固定尺寸离屏渲染。和 GameView 窗口尺寸**完全解耦**。</summary>
+        static bool GrabViaCamera(string outPath, int w, int h)
+        {
+            var cam = Camera.main;
+            if (cam == null) { Write(s_tag + " FIXED 找不到 Camera.main（场景相机没打 MainCamera 标签？）\n"); return false; }
+
+            // ⚠ 必须是 HDR 格式：后处理里 Bloom 的 threshold=1.25 吃的是**大于 1** 的值，
+            //   用 LDR RT 当目标会在进 post 之前就把高光截到 1.0 ⇒ 云顶不发光、
+            //   画面和 GameView 长得不一样，拿它当验收依据等于自欺。
+            var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGBHalf,
+                                       RenderTextureReadWrite.Default);
+            var prevTarget = cam.targetTexture;
+            var prevActive = RenderTexture.active;
+            float prevAspect = cam.aspect;
+            Texture2D tex = null;
+            try
+            {
+                // ⚠ 投影矩阵用的是 cam.aspect，而它跟着 GameView 走。
+                //   不改的话离屏图是"GameView 的构图硬塞进新尺寸"⇒ 横向拉伸，
+                //   比例坐标照样对不上，等于白做这次改造。
+                cam.aspect = w / (float)h;
+                cam.targetTexture = rt;
+                cam.Render();                       // URP 下走完整 renderer，含后处理
+
+                tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+                tex.Apply();
+                System.IO.File.WriteAllBytes(outPath, tex.EncodeToPNG());
+                Write(s_tag + " FIXED " + rt.width + "x" + rt.height
+                      + " aspect=" + cam.aspect.ToString("F3")
+                      + " fmt=ARGBHalf -> " + outPath + "\n");
+                return true;
+            }
+            finally
+            {
+                cam.targetTexture = prevTarget;
+                cam.aspect = prevAspect;
+                RenderTexture.active = prevActive;
+                if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
+                rt.Release();
+                UnityEngine.Object.DestroyImmediate(rt);
+            }
+        }
 
         static bool GrabFromGameView(string outPath)
         {
