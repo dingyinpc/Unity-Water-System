@@ -136,13 +136,22 @@ def region(im, y0, y1, xa=0.05, xb=0.95):
 def measure(im, horizon):
     H = im.size[1]
     res = {}
-    # 天空带从 0 起算。截图顶部的中性灰 UI 条由 region() 里的 is_ui_grey
-    # **按像素剔掉** —— 不要改成"把整条带往下挪"：实测那样会把参考帧
-    # 顶部第 0~40 行那段**真内容**（均亮 219~245 的亮天，sunlit_top 的
-    # 近白目标 (228,241,250) 正是从它来的）一起扔掉，sunlit_top 偏差 16→63。
+    # 天空带从"内容顶缘"起算。
+    # ⚠ 这条结论**翻过一次**，记清楚免得再翻：
+    #   一开始以为"顶部第 0~40 行均亮 235~245 ⇒ 是真内容（亮天）"，
+    #   于是改成"只按像素剔中性灰"、窗口不动。
+    #   后来逐行查**通道极差**才发现那是错的：
+    #     第   0~37 行  (244,244,244)…(254,254,253)  极差 ≤0.8  ← **白**字栏/留白
+    #     第  38~105 行 (15,15,15)…(55,55,55)        极差 ≤1.8  ← 深灰 UI 条
+    #     第 110 行起  (120,185,207)                 极差 87    ← 这才开始有颜色
+    #   即顶部约 105 行（9.7% 画幅高）**整段是无色 chrome**，
+    #   亮度高不等于有内容。旧目标 sunlit_top (228,241,250) 本身就是从 chrome 量的。
+    #   ⇒ 窗口要跳过 chrome（content_top），同时 is_ui_grey 按像素剔作为第二道保险。
+    ct = content_top(im)
+    span = max(0.001, horizon - ct)
     for name, a, b, p in SKY_BANDS:
         xa, xb = BAND_X.get(name, (0.05, 0.95))
-        v = region(im, a * horizon, b * horizon, xa, xb)
+        v = region(im, ct + a * span, ct + b * span, xa, xb)
         if len(v) >= 40:
             res[name] = pick(v, p)
     for name, a, b, p in WATER_BANDS:
