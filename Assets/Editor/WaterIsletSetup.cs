@@ -709,12 +709,25 @@ namespace WaterProject.EditorTools
                 if (mi == null) continue;
                 mi.useFileScale = false;
                 mi.globalScale  = 1f;
-                // 显式钉死"用文件里的法线"。meta 里根本没有 normals 这个键，
-                // 只有 normalCalculationMode: 4 / normalImportMode: 0，而这两个枚举值
-                // 的含义我不打算靠猜。旁证是顶点数 3262→1805（平滑法线让 Unity
-                // 少拆了一批重复顶点），说明**看起来**已经在吃文件法线了；
-                // 这里显式写一遍是为了把"看起来"变成"确定"，不是因为已确认是它的锅。
-                mi.normals = ModelImporterNormals.Import;
+                // ⚠ 名字全部按 2022.3 的 UnityEditor.xml 核过，不是凭记忆：
+                //   属性叫 **importNormals**（类型 ModelImporterNormals：None/Import/Calculate），
+                //   角度叫 **normalSmoothingAngle**。
+                //   上一版我写的 `mi.normals` / `mi.smoothingAngle` **根本不存在**（CS1061），
+                //   而一个编辑器脚本编译不过会**连带冻住整个 Assembly-CSharp-Editor**，
+                //   于是后面所有菜单都在跑**上一版 dll**，还照样回 "✅ Executed"、
+                //   照样打 MENU94 那行报告 —— 本轮在这上面白烧了三轮。
+                //
+                // **Import 已被实测证伪，改用 Calculate**：
+                //   先按"用文件法线"跑了一轮（建模侧已经 smooth_by_angle 算好、
+                //   导出 mesh_smooth_type="OFF"），竖条纹**一字没变**。
+                //   判据来自逐列色相：各列 H 稳在 ~196°、只有 V 在 0.19~0.87 之间跳
+                //   ⇒ 这是**受光梯度**不是材质边界（之前那次 H 跳到 137° 是灌木挡在前面，
+                //     我一度把它读成"材质槽被按经线切开"，也是错的）。
+                //   结论：Blender 的 mesh_smooth_type="OFF" 并没有把
+                //   normals_split_custom_set 的结果写进 FBX。
+                //   所以不再依赖导出器行为，改成让 **Unity 按角度现算**。
+                mi.importNormals = ModelImporterNormals.Calculate;
+                mi.normalSmoothingAngle = 40f;   // 台肩/底盖 rim 仍保持硬，竖直接缝参与平滑
                 mi.SaveAndReimport();
             }
             cliffFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(CliffFbx);
