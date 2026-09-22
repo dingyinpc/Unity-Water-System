@@ -1222,6 +1222,20 @@ namespace WaterProject.EditorTools
             // 阈值映射 t = lerp(0.74, 0.40, cover)，cover 越小阈值越高、云越碎。
             // 再降到 0.30：sky_upper 连测三轮 R 都卡在 108~110（目标 65），
             // 而它取的是顶缘最暗 15% —— 0.42 覆盖率下那 15% 依然是云。
+            //
+            // ⚠ 上面这段把 _CloudCover 写成"还没验的真旋钮"，其实**已经验过三轮**
+            //   而且没推动。这次改用 shader 自带的 `_SkyDebug=3`（只留渐变、云全关）
+            //   把两件事彻底分开量，拿到的是一个**夹逼区间**：
+            //     云关 → sky_upper = (3,107,203)   R=**3**
+            //     云开 → sky_upper = (129,179,231)  R=**129**
+            //     目标            = (65,174,224)  R=**65**
+            //   ⇒ 那份红**确实是云给的**（不是渐变、不是 bloom 摊的、也不是地平色爬上来，
+            //     这三条分别被 _SkyDebug / scatter 试验 / GradNorm 试验排除了）。
+            //   但**纯渐变又太蓝**（R 只有 3，比目标低 62），所以不能靠"把云去掉/
+            //     压 cover"解决 —— 目标 65 正落在 3 和 129 中间。
+            //   真正要动的是**上部那一条带里的云量或云亮度**，而不是全局 cover 阈值：
+            //     cover 从 0.55 走到 0.30 都没推动 R，说明卡住它的不是阈值。
+            //   （量完已把 _SkyDebug 恢复 0。）
             m.SetFloat("_CloudCover",  0.30f);
             m.SetFloat("_CloudDetail", 1.0f);
             m.SetVector("_CloudDrift", new Vector4(7f, 0f, 3f, 0f));
@@ -1286,6 +1300,16 @@ namespace WaterProject.EditorTools
             { bl = prof.Add<Bloom>(); AssetDatabase.AddObjectToAsset(bl, prof); }
             bl.threshold.overrideState = true;  bl.threshold.value = 1.25f;
             bl.intensity.overrideState = true;  bl.intensity.value = 0.35f;
+            // ⚠ scatter 0.55 → 0.35 的试验**已回退**：假设被证伪了。
+            //   想验的是"天空彩度铺不开是不是 bloom 摊白洗的"，
+            //   实测天空带彩度 p90 **0.433 → 0.434**、p50 0.398 → 0.391 ——
+            //   等于没动。（高频那个数也从 2.32 变 2.66，但这次 GameView
+            //   自己漂到 1902×836 了，二阶差分的量纲随分辨率变，不作数。）
+            //   ⇒ 彩度平不是 bloom 摊的。真正的签名是**上部天空红超标**
+            //     （sky_upper R 129 vs 目标 65、sky_mid R 137 vs 100），
+            //     而 R 高本身就等于 S 低。红从哪来：GradNorm 已实测无关，
+            //     剩下的就是**云铺满了那条带**（本文件 _CloudLit 处早就写着
+            //     "要动的是 _CloudCover"）。下一轮单独验 _CloudCover。
             bl.scatter.overrideState = true;    bl.scatter.value = 0.55f;
 
             EditorUtility.SetDirty(prof);
