@@ -42,6 +42,22 @@ WATER_BANDS = [
     ("shallow_over_sand", 0.60, 0.96, 0.78),
 ]
 
+# 个别带**不能横跨整幅**。本构图里压在地平线上的那两条（天空侧 horizon_haze、
+# 水侧 far_at_horizon）右半段是**远岛 + 白沙嘴**，横向一放开就把白沙和浪花混进来：
+# 实测同一条带两帧之间能从 (141,189,191) 跳到 (45,237,195)，
+# 也就是它根本不在量"开阔海天霾"，而是在量那座岛。
+#
+# ⚠ 但两条带**不能共用同一个窗口** —— 地平线上下压着的东西不一样：
+#   · horizon_haze（地平线**上方**）：左三分之一是干净开阔天，
+#     收进来之后读数从伪中性 (183,185,179) 变回正常蓝 (127,177,219)。
+#   · far_at_horizon（地平线**下方**）：左三分之一正好盖住**左边那座小沙洲
+#     和它的青绿礁石**，量出来是 (33,171,139) 饱和绿 —— 那根本不是海。
+#     开阔水面只在两座陆地中间那道缝里，所以取 0.38~0.62。
+BAND_X = {
+    "horizon_haze":   (0.05, 0.36),
+    "far_at_horizon": (0.38, 0.62),
+}
+
 
 def lum(c):
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
@@ -55,7 +71,7 @@ def pick(vals, p):
     return s[min(len(s) - 1, int(len(s) * p))]
 
 
-def region(im, y0, y1):
+def region(im, y0, y1, xa=0.05, xb=0.95):
     w, h = im.size
     y0 = min(max(y0, 0.0), 0.9995)
     y1 = min(max(y1, y0 + 0.0005), 1.0)
@@ -63,7 +79,7 @@ def region(im, y0, y1):
     rows = max(1, min(60, b - a))
     stride = max(1, (b - a) // rows)
     px = im.load()
-    x0, x1 = int(0.05 * w), int(0.95 * w)
+    x0, x1 = int(xa * w), int(xb * w)
     out = []
     for y in range(a, b, stride):
         for x in range(x0, x1, 2):
@@ -75,11 +91,13 @@ def measure(im, horizon):
     H = im.size[1]
     res = {}
     for name, a, b, p in SKY_BANDS:
-        v = region(im, a * horizon, b * horizon)
+        xa, xb = BAND_X.get(name, (0.05, 0.95))
+        v = region(im, a * horizon, b * horizon, xa, xb)
         if len(v) >= 40:
             res[name] = pick(v, p)
     for name, a, b, p in WATER_BANDS:
-        v = region(im, horizon + a * (1 - horizon), horizon + b * (1 - horizon))
+        xa, xb = BAND_X.get(name, (0.05, 0.95))
+        v = region(im, horizon + a * (1 - horizon), horizon + b * (1 - horizon), xa, xb)
         if len(v) >= 40:
             res[name] = pick(v, p)
     return res
