@@ -810,6 +810,15 @@ namespace WaterProject.EditorTools
                 if (mi == null) continue;
                 mi.useFileScale = false;
                 mi.globalScale  = 1f;
+                // ⚠ **巨岩一直是在地上躺着的**，这不是材质问题：
+                //   建模侧 height_m=34、Blender dims=[26.78, 24.96, 34.0]（高度在 z），
+                //   而 Unity 导入回来 sizeL=(26.78, 24.96, 34.00) —— **轴顺序一模一样**，
+                //   说明 Blender 的 Z-up→Y-up 根本没烘进网格，34 那根"高度"轴躺在水平方向。
+                //   于是画面里它像个横放的木桶，而本该是水平台阶的苔带
+                //   （普查 moss avg_nz=0.68，建模侧是对的）被侧躺投影成了"竖条纹"。
+                //   之前几轮把它当材质/凹槽问题调，方向整个是歪的。
+                //   属性名按 2022.3 UnityEditor.xml 核过：ModelImporter.bakeAxisConversion。
+                mi.bakeAxisConversion = true;
                 // ⚠ 名字全部按 2022.3 的 UnityEditor.xml 核过，不是凭记忆：
                 //   属性叫 **importNormals**（类型 ModelImporterNormals：None/Import/Calculate），
                 //   角度叫 **normalSmoothingAngle**。
@@ -857,19 +866,35 @@ namespace WaterProject.EditorTools
             //    网格也换了（台地→柱状），大平板正对太阳的过曝面已经不存在，
             //    所以这次不能拿旧数字外推，渲完必须重新量。
             //
-            // ── 第 2 轮：按实测反解，G/B 各抬一档 ──
-            // 上面那组值渲完，sea_rock 框（同一套过滤，保留 42%）量到
-            //   p25 (9,16,22)  中位 (12,29,36)  p75 (20,51,64)   目标中位 (13,44,57)
-            // 偏差 21（上一版 53）。R 已经对上了，**G 差 1.5 倍、B 差 1.6 倍**。
-            // 反解：显示值 → sRGB 解码 → 反 ACES（toe 段 out≈0.21x，别用线性外推）
-            //   当前 (12,29,36) → 线性 (0.0515, 0.094, 0.109)
-            //   目标 (13,44,57) → 线性 (0.0545, 0.126, 0.155)
-            //   ⇒ 乘子 R×1.06  G×1.34  B×1.42，四档一起乘（层间对比保持不变）。
+            // ⚠ 上一版这里是**照着过滤后的中位数反解**把四档一起提亮（×1.34/×1.42），
+            //   方向是反的。原因：compare_reference.probe_box 为了把云和海从岩框里剔掉，
+            //   会丢掉 lum>150 和 B-R>55 的像素 —— 而"太亮太青的岩石"恰好同时命中这两条，
+            //   于是**被量具判成水的正是岩石本身**，存活下来的那 20% 只是它身上不亮的边角。
+            //   拿这个自我选择的集合当中位数去反解，就会每轮都"还差一点亮度"、越调越亮。
+            //   这就是"好得离谱 = 仪器坏了"那一类，只是这次坏在掩码偏置而不是节奏。
+            // 这一版按色板的**线性目标**放：
+            //   sea_rock  显示 (13,44,57) → 线性 (0.0040,0.0252,0.0409)
+            //   moss_cap  显示 (23,76,62) → 线性 (0.0086,0.0723,0.0482)
+            //   三档岩色在 sea_rock 上下留 ±40% 的小跨度（跨度太大就又变成糖果条），
+            //   相对旧值是 R×0.11 G×0.10 B×0.11 —— **B 砍得和 G 一样狠**，
+            //   因为旧值的问题是 B 比 G 高一大截（青），而参考帧岩体 B 只比 G 高 13。
+            // ── 第 3 轮：色相已对，整体抬亮 —— 这次终于有可用的标定点 ──
+            // 上一版按色板线性目标放下去之后，sea_rock 框量到
+            //   保留 42%  p25(6,12,17) 中位(7,19,29) p75(9,33,48)   目标 (13,44,57)
+            // 色相方向对了（B>G>R 冷调，B-G 差 10 vs 参考 13），只剩**亮度低一档**。
+            // ⚠ 为什么这个数第一次能用来标定：前两轮岩石又亮又青，同时命中过滤器的
+            //   两条规则（lum>150、B-R>55）⇒ **被量具判成水的就是岩石本身**，
+            //   存活集里根本没有岩石。所以那两轮"反照率降 8.7 倍、中位只从 36 掉到 29"
+            //   这种迟钝不是岩石不响应，是两次的存活集压根不是同一批像素。
+            //   现在岩石暗下来了、能通过过滤，42% 的存活集就是岩石本体。
+            // 乘子怎么定：显示要 ×1.97（B 29→57），而 sRGB + ACES toe 段
+            //   显示 ≈ 线性^0.45 ⇒ 线性要乘 1.97^(1/0.45) ≈ 4.3，取 4.0。
+            //   四档**同乘一个系数**：层间对比保持不变，不然又变成糖果条。
             s_rockDiag = "";
-            var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.036f, 0.185f, 0.255f), 0.10f, 0.0f, white);
-            var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.050f, 0.264f, 0.357f), 0.07f, 0.0f, white);
-            var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.069f, 0.352f, 0.479f), 0.05f, 0.0f, white);
-            var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.069f, 0.381f, 0.326f), 0.04f, 0.0f, white);
+            var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.0104f, 0.0680f, 0.1120f), 0.10f, 0.0f, white);
+            var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.0160f, 0.1008f, 0.1636f), 0.07f, 0.0f, white);
+            var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.0232f, 0.1440f, 0.2280f), 0.05f, 0.0f, white);
+            var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.0344f, 0.2892f, 0.1928f), 0.04f, 0.0f, white);
             foreach (var mm in new[] { rockLo, rockMid, rockHi, moss })
             {
                 if (mm == null || !mm.HasProperty("_SpecularHighlights")) continue;

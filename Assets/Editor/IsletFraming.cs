@@ -151,6 +151,13 @@ namespace WaterProject.EditorTools
                         sb.AppendFormat("{0,-22} wpos={1} top={2} vp=({3:0.00},{4:0.00}) d={5:0.0} {6}{7}\n",
                             n, Fmt(t.position), Fmt(top), vp.x, vp.y, vp.z,
                             inside ? "IN" : "OUT", occl ? " 被地形挡住" : "");
+
+                        // 把包围盒八个角投到屏幕上，给出**紧贴物体**的归一化矩形。
+                        // 色规（Tools/rock_probe.py）要量的是岩石本身：
+                        // 手打的框会卷进一大片天空和云，参考帧那个框就有 37% 是亮爆像素，
+                        // 那种数只能看方向、不能定幅度。
+                        string box = ScreenAABB(cam, r);
+                        if (box != null) sb.AppendFormat("{0,-22} screenbox {1}\n", "", box);
                     }
                     else if (isPalm) { palmTot++; if (inside) palmIn++; }
                     else
@@ -202,6 +209,33 @@ namespace WaterProject.EditorTools
 
             P(sb.ToString());
             Debug.Log("[IsletFraming] 见 Logs/frame_probe.txt");
+        }
+
+        // 包围盒 8 角投影 → 紧贴物体的屏幕矩形（y 从上往下，和 PIL/rock_probe 一致）
+        static string ScreenAABB(Camera cam, Renderer r)
+        {
+            if (r == null) return null;
+            var b = r.bounds;
+            float x0 = float.MaxValue, x1 = float.MinValue;
+            float y0 = float.MaxValue, y1 = float.MinValue;
+            int used = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 c = new Vector3(
+                    (i & 1) == 0 ? b.min.x : b.max.x,
+                    (i & 2) == 0 ? b.min.y : b.max.y,
+                    (i & 4) == 0 ? b.min.z : b.max.z);
+                Vector3 v = cam.WorldToViewportPoint(c);
+                if (v.z <= cam.nearClipPlane) continue;   // 在身后的角不能要，投影会翻
+                used++;
+                if (v.x < x0) x0 = v.x;
+                if (v.x > x1) x1 = v.x;
+                float yt = 1f - v.y;                      // viewport y 从下往上 → 图像从上往下
+                if (yt < y0) y0 = yt;
+                if (yt > y1) y1 = yt;
+            }
+            if (used < 2) return null;
+            return string.Format("({0:0.###},{1:0.###},{2:0.###},{3:0.###})", x0, y0, x1, y1);
         }
 
         // 沿视线 march，任何一步地形高于视线（留 eps）且不在两端 ⇒ 被沙丘吃掉
