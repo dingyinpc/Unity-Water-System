@@ -487,18 +487,62 @@ namespace WaterProject.EditorTools
                                  new Color(0.230f, 0.170f, 0.128f), 0.72f, 0.05f, white);
             var coco = ShadedMat("Islet_PalmCoco", Shader.Find("Universal Render Pipeline/Lit"),
                                  new Color(0.230f, 0.290f, 0.130f), 0.62f, 0.08f, white);
+            // 上一版 (0.135,0.400,0.115) 是"草坪绿"：R 太低、B 也低，
+            // 配上过曝的太阳直接饱和成一团荧光绿。参考1 的受光羽叶偏**黄绿**，
+            // 抬 R、压 B，让明暗分层有可压的空间（而不是从饱和往更饱和走）。
+            // 再抬两档 (0.255,0.430,0.105) → (0.40,0.70,0.16)：
+            // 参考1 冠内亮度**中位数 142**，我实测只有 **53** —— 差 2.7 倍，
+            // 而 _Dbg=2 量出来受光总量峰值就有 2.5，说明缺的就是反照率本身。
+            // 参考的暗部是靠**自遮挡**（下层叶在阴影里）做低的，不是靠把整团压暗，
+            // 所以这里只抬亮端，暗部交给 _HeightShade / _FrondVar 两个梯度。
+            // ⚠ B 再抬一档 0.16 → 0.26：这不是口味，是量出来的 ——
+            //   冠内叶像素的**蓝通道中位数我 12 / 参考 54**，差 4 倍，
+            //   所以同样亮度下我这边是"荧光酸绿"，参考是"带点青的草绿"。
+            //   G 从 0.70 收到 0.66 把 (G-R) 拉回参考的 51（我实测 61）。
             var leaf = ShadedMat("Islet_PalmLeaf", leafSh != null ? leafSh
                                  : Shader.Find("Universal Render Pipeline/Lit"),
-                                 new Color(0.135f, 0.400f, 0.115f), 0.55f, 0.02f, white);
+                                 new Color(0.400f, 0.660f, 0.260f), 0.55f, 0.02f, white);
             if (leafSh != null)
             {
                 // 风参数：和潭/森林那批树同一档，全场才像被同一阵风吹
                 leaf.SetFloat("_WindStrength", 0.16f);
                 leaf.SetFloat("_WindFreq",     0.95f);
                 leaf.SetVector("_WindDir", new Vector4(0.92f, 0f, 0.32f, 0f));
-                leaf.SetFloat("_TransStrength", 2.0f);   // 椰子叶薄，逆光那一下是它的主要信号
+                leaf.SetFloat("_TransStrength", 1.6f);   // 底色提亮后透射要退一档，不然叶梢过曝
                 leaf.SetFloat("_TransPower",   8.0f);
                 leaf.SetFloat("_Cutoff",       0.35f);
+                leaf.SetColor("_TransColor", new Color(0.58f, 0.82f, 0.26f));
+
+                // ── 冠子的明暗分层 ──
+                // 这几项在 shader 里的默认值都是"不改变画面"（白 / 0），
+                // 所以潭线那批共用 Tree_Leaf 的树材质**不会**被这次改动波及。
+                //
+                // 开**薄片双面受光**：小叶绕序 100% 朝下，旧路径把法线翻向相机之后
+                // 既取不到太阳（ndl≈0）又只拿到地面那半个球的环境光，
+                // 整团冠子塌成一片近黑剪影 —— 实测 luma_spread=14（参考1 是 145）。
+                // 开成 1 之后同一次截图 luma_spread 14 → **80**，hue_spread 10 → **32**。
+                // 默认 0，所以潭线那批森林材质不受这次改动影响。
+                leaf.SetFloat("_SheetLit",    1.0f);
+                // 调试通道关掉（排查时直接改 Assets/Art/Materials/Islet/Islet_PalmLeaf.mat
+                // 里的 _Dbg 值即可，不必动这里）。
+                leaf.SetFloat("_Dbg",         0.0f);
+                // ⚠ **叶背色保持白**（实测回退）：上一轮把它开成 (0.42,0.52,0.34)，
+                //   luma_spread 80 → **41**、hue_spread 32 → **17** —— 反而更平。
+                //   原因是 luma_spread 量的是显示空间亮度的**绝对差**，
+                //   而这一项是"整片压暗"，把亮部一起拖下来，差值自然缩小。
+                leaf.SetColor("_UnderColor", Color.white);
+                leaf.SetFloat("_TipLift",     1.00f);
+                // 0.82 → 0.60。用 _Dbg=2 把"受光总量"单独画出来量过：
+                //   叶面亮度分位 p5/p50/p95 = 25/116/175，反推受光总量 ≈ 0.4 / 1.2 / 2.5，
+                //   峰值 2.5 正好是 sun 3.2 × sin(仰角 52°) ⇒ **太阳是到得了叶片的**。
+                //   所以冠子暗**不是受光问题**，是我自己把反照率乘没了：
+                //   h01 在冠内只有 0.5~1.0，0.82 强度把中位像素压到只剩 0.36 倍。
+                leaf.SetFloat("_HeightShade", 0.60f);
+                // 9.0 = 网格**物体空间**的 y 向尺寸（Blender 侧实测 9.00）。
+                // 必须是本地高度而不是世界高度：实例还带 0.82~1.12 的缩放，
+                // 用世界高度的话同一棵树会因为摆得大而明暗分布不一样。
+                leaf.SetFloat("_CrownY",      9.0f);
+                leaf.SetFloat("_FrondVar",    0.75f);
             }
 
             string pp = FbxFolder + "/Islet_Palm_Coconut_01.prefab";
@@ -584,6 +628,29 @@ namespace WaterProject.EditorTools
                              " mats=[" + string.Join(",", System.Array.ConvertAll(
                                  mr != null ? mr.sharedMaterials : new Material[0],
                                  x => x == null ? "NULL" : x.name)) + "]";
+                if (m != null)
+                {
+                    // 风权重契约的**往返**验证。建模侧写的是 BYTE_COLOR，
+                    // 但"写了"不等于"FBX 带过来了"—— 少了这一段，
+                    // "树一动不动"这个故障只能靠肉眼盯动画才发现。
+                    // 期望：R 从干的 0 铺到叶梢的 255；B>200 的顶点数 = 叶片顶点数。
+                    var c32 = m.colors32;
+                    if (c32 == null || c32.Length == 0)
+                    {
+                        s_palmDiag += " vcol=EMPTY!! 风权重没过来，树不会动";
+                    }
+                    else
+                    {
+                        int rmin = 255, rmax = 0, leafy = 0;
+                        for (int i = 0; i < c32.Length; i++)
+                        {
+                            if (c32[i].r < rmin) rmin = c32[i].r;
+                            if (c32[i].r > rmax) rmax = c32[i].r;
+                            if (c32[i].b > 200) leafy++;
+                        }
+                        s_palmDiag += " vcolR=[" + rmin + ".." + rmax + "] leafVerts=" + leafy;
+                    }
+                }
             }
         }
 
