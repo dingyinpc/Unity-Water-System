@@ -42,7 +42,7 @@ Material:
     - _FresnelPow: 4.2
     - _GlitterBand: 2.4
     - _GlitterPow: 700
-    - _GlitterStrength: 0.6
+    - _GlitterStrength: 1.15
     - _MaxUVOffset: 0.022
     - _Opacity: 0.94
     - _RefractStrength: 0.16
