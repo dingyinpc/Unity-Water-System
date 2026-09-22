@@ -53,7 +53,7 @@ namespace WaterProject.EditorTools
         const float SizeY   = 40f;
         const float BaseY   = -12f;          // 世界 y = BaseY + h01 * SizeY
         // Terrain 左下角的世界坐标：让相机 (0,1.72,-34) 落在 x 居中、z 靠前 1/5 处
-        static readonly Vector3 Origin = new Vector3(-SizeXZ * 0.5f, BaseY, -120f);
+        public static readonly Vector3 Origin = new Vector3(-SizeXZ * 0.5f, BaseY, -120f);
 
         const float RimFalloff = 46f;        // 距边界这么近一律压到水下
 

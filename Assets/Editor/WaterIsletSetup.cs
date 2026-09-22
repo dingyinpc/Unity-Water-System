@@ -221,6 +221,7 @@ namespace WaterProject.EditorTools
         {
             if (UnityEngine.Application.isPlaying)
             { WriteProbe("MENU92 REFUSED: 在 Play 模式\n"); return; }
+            if (!GuardIsletScene("MENU92")) return;
 
             // ── 网格：以相机为中心的**二次分布**方格 ──
             // 为什么不用均匀大平面：6km/65535 顶点 ⇒ 间距 74m，近处浪全没了；
@@ -433,6 +434,8 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Islet/97 循环天光强度(1.0/0.5/0.25/0)")]
         public static void CycleAmbient()
         {
+            if (!GuardIsletScene("MENU97")) return;
+
             float cur = RenderSettings.ambientIntensity;
             int i = 0;
             for (int k = 0; k < AmbientSteps.Length; k++)
@@ -466,9 +469,9 @@ namespace WaterProject.EditorTools
             if (UnityEngine.Application.isPlaying)
             { WriteProbe("MENU98 REFUSED: 在 Play 模式\n"); return; }
 
+            if (!GuardIsletScene("MENU98")) return;
+
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (string.IsNullOrEmpty(scene.path))
-            { WriteProbe("MENU98 REFUSED: 当前场景没存过，先跑 90\n"); return; }
 
             var sky = TropicalSky();
             if (sky != null) RenderSettings.skybox = sky;
@@ -485,6 +488,49 @@ namespace WaterProject.EditorTools
             // 分开刷会出现"改了俯角但要重建地形才看得见"的坑
             var sun = UnityEngine.Object.FindObjectOfType<Light>();
             if (sun != null) sun.transform.rotation = Quaternion.Euler(SunPitch, SunYaw, 0f);
+
+            // 根变换归位。构图**不能**是编辑器里手摆出来的场景状态：
+            //   本次 IsletTerrain 在 y=-10386（代码给的是 -12）、IsletWater 在 -10374（应为 0）、
+            //   相机在 -10372.28（应为 1.72）—— 三者偏差都是**同一个 -10374**，
+            //   也就是有一批根物体被整体平移过（编辑器里拖的，且被存进了 .unity）。
+            //   而 94/96 之后重摆的岩石灌木没事，因为 LandHeight 返回的是绝对世界 y ——
+            //   于是画面变成"地形在 10km 之下，石头花草悬在灰天里"。
+            //   菜单92 只重建水的网格（顶点是世界坐标），FindOrCreateWater 从不复位变换，
+            //   所以漂移的水物体重建多少次都回不来。
+            // 归位前先把旧值写进探针：下次再漂，日志里看得见，不用靠看图反推。
+            var camGo = UnityEngine.GameObject.Find("Main Camera");
+            var camFix = new System.Text.StringBuilder();
+            if (camGo != null)
+            {
+                var cTr = camGo.transform;
+                camFix.Append("cam " + Was(cTr.position) + "->" + Was(CamPos));
+                cTr.position = CamPos;
+                cTr.rotation = Quaternion.Euler(CamEuler);
+                var cm = cTr.GetComponent<Camera>();
+                if (cm != null)
+                {
+                    cm.fieldOfView   = CamFov;
+                    cm.nearClipPlane = 0.15f;
+                    cm.farClipPlane  = 4000f;   // 体积云在 4km 高空，远裁剪面必须盖过云层顶
+                }
+            }
+
+            var terrGo = UnityEngine.GameObject.Find("IsletTerrain");
+            if (terrGo != null)
+            {
+                camFix.Append(" | terr " + Was(terrGo.transform.position) +
+                              "->" + Was(IsletTerrain.Origin));
+                terrGo.transform.position = IsletTerrain.Origin;
+            }
+            else camFix.Append(" | terr MISSING");
+
+            var watGo = UnityEngine.GameObject.Find("IsletWater");
+            if (watGo != null)
+            {
+                camFix.Append(" | water " + Was(watGo.transform.position) + "->(0.00,0.00,0.00)");
+                watGo.transform.position = Vector3.zero;
+            }
+            else camFix.Append(" | water MISSING");
 
             var vol = UnityEngine.Object.FindObjectOfType<Volume>();
             if (vol != null) vol.sharedProfile = IsletVolume();
@@ -507,7 +553,7 @@ namespace WaterProject.EditorTools
                        "  sunPitch=" + SunPitch +
                        "  sky=" + (RenderSettings.skybox == null ? "NULL" : RenderSettings.skybox.name) +
                        "  vol=" + (vol == null ? "NONE" : "ok") +
-                       "  water=" + wmat + "\n");
+                       "  water=" + wmat + "  cam=" + camFix + "\n");
         }
 
         // ═════════════════════════ 93 ═════════════════════════
@@ -522,6 +568,7 @@ namespace WaterProject.EditorTools
         {
             if (UnityEngine.Application.isPlaying)
             { WriteProbe("MENU93 REFUSED: 在 Play 模式\n"); return; }
+            if (!GuardIsletScene("MENU93")) return;
 
             var fbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(PalmFbx);
             if (fbx == null) { WriteProbe("MENU93 REFUSED: 找不到 " + PalmFbx + "\n"); return; }
@@ -743,6 +790,7 @@ namespace WaterProject.EditorTools
         {
             if (UnityEngine.Application.isPlaying)
             { WriteProbe("MENU94 REFUSED: 在 Play 模式\n"); return; }
+            if (!GuardIsletScene("MENU94")) return;
 
             var cliffFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(CliffFbx);
             var reefFbx  = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(ReefFbx);
@@ -1006,6 +1054,7 @@ namespace WaterProject.EditorTools
         {
             if (UnityEngine.Application.isPlaying)
             { WriteProbe("MENU96 REFUSED: 在 Play 模式\n"); return; }
+            if (!GuardIsletScene("MENU96")) return;
 
             var bushFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(BushFbx);
             var tuftFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(TuftFbx);
@@ -1375,6 +1424,26 @@ namespace WaterProject.EditorTools
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
             return prof;
+        }
+
+        static string Was(Vector3 v)
+        {
+            return string.Format("({0:0.00},{1:0.00},{2:0.00})", v.x, v.y, v.z);
+        }
+
+        // 所有 Islet 菜单共用的场景闸门。
+        // 起因：一次脚本编译后的域重载把活动场景换成了 PondScene，菜单98 照跑不误，
+        //   把 Islet 的雾色/雾密度/天光模式/天空盒/Volume/太阳俯角/相机 全写进 PondScene
+        //   并且**存了盘**。素材库早就记过一条同类教训（海岸/潭/Main 资产前缀撞了会互相
+        //   覆盖，而且两个场景都"能渲染"）—— 这次撞的是场景，代价一样贵。
+        internal static bool GuardIsletScene(string tag)
+        {
+            var sc = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (sc.path == ScenePath) return true;
+            WriteProbe(tag + " REFUSED: 活动场景是 " +
+                       (string.IsNullOrEmpty(sc.path) ? "<未保存的新场景>" : sc.path) +
+                       "，不是 " + ScenePath + " —— 先打开它\n");
+            return false;
         }
 
         static void WriteProbe(string s)
