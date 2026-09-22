@@ -85,6 +85,41 @@ def measure(im, horizon):
     return res
 
 
+def probe_box(im, box, lum_max=150, b_rej=55):
+    """量一个**具名矩形**，返回 (p25, 中位, p75, 保留比例)。
+
+    为什么不能复用 SKY_BANDS 那套横带：海蚀巨岩是一个**局部物体**，它在屏幕上的
+    位置由机位和地形共同决定，不是一条贯穿画面的带。拿整幅横带去量，框到的
+    大部分是海和云 —— 报回来的数根本不属于岩石。
+
+    为什么两条过滤缺一不可：框里必然混进云（比岩亮）和海（比岩蓝）。
+      · lum_max 剔掉云和晒亮的沙；
+      · `B - R > b_rej` 剔掉海水 —— 青绿的水 B 比 R 高一两百，
+        而岩/苔无论多暗都是 **G ≥ B** 或至少 B-R 很小，这一条就能分开。
+    两条规则**同时**用在参考帧和我的截图上，这样两边才是同一把尺。
+    参考帧的框和自己的框坐标不必相同（物体本来就不在同一处），但规则必须相同。
+    """
+    w, h = im.size
+    x0, y0, x1, y1 = box
+    px = im.load()
+    a0, a1 = int(x0 * w), int(x1 * w)
+    b0, b1 = int(y0 * h), int(y1 * h)
+    vals = []
+    for y in range(b0, b1):
+        for x in range(a0, a1):
+            c = px[x, y]
+            if lum(c) > lum_max:
+                continue
+            if c[2] - c[0] > b_rej:
+                continue
+            vals.append(c)
+    if len(vals) < 120:
+        return None
+    s = sorted(vals, key=lum)
+    return (s[int(len(s) * 0.25)], s[len(s) // 2], s[int(len(s) * 0.75)],
+            len(vals) / float(max(1, (a1 - a0) * (b1 - b0))))
+
+
 def targets():
     spec = json.load(open(SPEC, encoding="utf-8"))
     t = {}
@@ -154,6 +189,34 @@ def selftest():
     return 0 if (worst <= 3 and pure) else 1
 
 
+def parse_probes(argv):
+    """--probe sea_rock,0.75,0.37,0.91,0.51  可给多次。"""
+    out = []
+    for i, a in enumerate(argv):
+        if a == "--probe":
+            f = argv[i + 1].split(",")
+            out.append((f[0], tuple(float(v) for v in f[1:5])))
+    return out
+
+
+def report_probes(im, probes, tgt, lum_max):
+    print("\n── 具名矩形探针（同一套过滤规则同时量参考帧与自己的截图）──")
+    for name, box in probes:
+        r = probe_box(im, box, lum_max)
+        if r is None:
+            print("  %-12s 框%s  通过过滤的像素不足 120 —— 框挪了或太亮，**不是「没有岩石」"
+                  % (name, tuple(round(b, 3) for b in box)))
+            continue
+        p25, med, p75, kept = r
+        t = tgt.get(name)
+        d = max(abs(med[i] - t[i]) for i in range(3)) if t else -1
+        print("  %-12s 保留%3.0f%%  p25(%3d,%3d,%3d) 中位(%3d,%3d,%3d) p75(%3d,%3d,%3d)%s"
+              % (name, kept * 100, p25[0], p25[1], p25[2],
+                 med[0], med[1], med[2], p75[0], p75[1], p75[2],
+                 "" if not t else "  目标(%3d,%3d,%3d) 偏 %d" % (t[0], t[1], t[2], d)))
+    return 0
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest()
@@ -162,10 +225,17 @@ def main():
         return 2
     im = Image.open(sys.argv[1]).convert("RGB")
     hor = 0.58
+    lum_max = 150
     for i, a in enumerate(sys.argv):
         if a == "--horizon":
             hor = float(sys.argv[i + 1])
-    tgt, got = targets(), measure(im, hor)
+        if a == "--lum":
+            lum_max = int(sys.argv[i + 1])
+    probes = parse_probes(sys.argv)
+    tgt = targets()
+    if probes:
+        return report_probes(im, probes, tgt, lum_max)
+    got = measure(im, hor)
     print("图 %s  地平线 y=%.2f" % (os.path.basename(sys.argv[1]), hor))
     print("%-20s %-15s %-15s %s" % ("探针", "目标", "实测", "偏差"))
     bad = 0

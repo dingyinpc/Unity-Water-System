@@ -91,19 +91,37 @@ namespace WaterProject.EditorTools
         const float CamFov = 50f;
 
         // ───────── 太阳 ─────────
-        // 方位是**算出来的**：相机 yaw = 0 ⇒ 视线方位 0°。Unity 里
-        // light.transform.rotation = Euler(x, y, 0) 的 forward 是**光行进方向**，
-        // "朝太阳的方向"是它的反向，即 y + 180。要让碎闪带正对画面中央，
-        // 朝太阳方向必须 ≈ 视线方位 ⇒ y = 180。
-        // （海岸线那台相机 yaw 58，所以那边算出 y = 236；同一套算法，不是抄来的。）
-        // ⚠ 俯角从 24° 提到 38°。24° 时太阳几乎只照得到**水平顶面**，
+        // 俯角从 24° 提到 38°。24° 时太阳几乎只照得到**水平顶面**，
         //   于是所有朝向相机的那一面只剩蓝色天光 —— 实测沙洲洲顶 (119,141,155)、
         //   大岛 (43,64,84)，B 都压着 R，沙子渲成了冰。参考1 的沙是 (243,230,203)
         //   暖调、植被是 (36,122,35) 绿，都要求斜射的暖光真的打到立面上。
         //   碎闪带不依赖这个俯角：静水镜面点确实只在脚前 1.72/tan(elev)，
         //   但参考里那条贯穿画面的亮带是**浪面把法线打散**铺开的，抬太阳不会弄丢它。
         const float SunPitch = 38f;
-        const float SunYaw   = 180f;
+
+        // 方位：两个互相打架的推导，这里记下**为什么让后者赢**。
+        // ① 旧值 180 来自"碎闪带正对画面中央"：相机 yaw=0 ⇒ 视线方位 0°，
+        //    而 Euler(x,y,0) 的 forward 是**光行进方向**，"朝太阳"= y+180，
+        //    要朝太阳 ≈ 视线 ⇒ y=180。（海岸线那台相机 yaw 58，所以那边算出 236。）
+        // ② 新值 322 来自巨岩的受光面。巨岩在 (64,130)、相机在 (0,1.72,-34)
+        //    ⇒ 朝相机的法线水平方位 n=(-0.363,-0.932)。受光量
+        //      NdotL = n·(-sinθ,-cosθ) = cos(θ - 21.3°)
+        //    θ=180 时 = -0.93 ⇒ **钳到 0**：整座 26m 高的立面只剩天光，
+        //    六层台地/苔盖全部平成一块黑斑 —— 实测巨岩框内
+        //    p25(8,13,18) 中位(10,16,22) p75(12,19,27)，中位到 p75 只差 1.5 倍；
+        //    同一套矩形探针量参考1 的岩体是 中位(13,44,57)、p25(7,31,48)→p75(23,76,62)，
+        //    差 2.2 倍。**分层是靠明暗差读出来的，不是靠颜色差**，
+        //    所以没有方向光就没有层，建模白做。
+        //    要 NdotL≈0.5 ⇒ θ = 21.3±60 ⇒ 81 或 **-38.7(=322)**。
+        //    取 322 而不是 81：322 时太阳在**前右方**、方位角离视线 38.7°
+        //    ≈ 画幅右缘（半宽视场 39.7°），天空的日辉/银边还在画面里；
+        //    81 时太阳在相机正左后方，日辉整个出画，horizon_haze 本来就已经
+        //    偏暗（实测 110 vs 目标 165），不能再雪上加霜。
+        //    顺带三条独立证据都指向 322：沙洲上椰树的影子偏左、
+        //    碎闪带偏在画面中右、岩体色是 B>G>R 的冷调（说明它只吃到一部分光）。
+        // ⚠ 这条改的是**全场**：水色/天空探针会跟着动，所以改完必须重跑
+        //    Tools/compare_reference.py 的全带报告，不能只看岩石那一个框。
+        const float SunYaw   = 322f;
 
         // ═════════════════════════ 90 ═════════════════════════
         [MenuItem("Tools/Islet/90 建骨架(场景+相机+太阳+体积云天空)")]
@@ -652,6 +670,405 @@ namespace WaterProject.EditorTools
                     }
                 }
             }
+        }
+
+        // ═════════════════════════ 94 ═════════════════════════
+        // 海蚀巨岩 + 礁石：Blender 出的 SM_Rock_Cliff_01 / SM_Rock_Reef_01
+        //   （建模脚本 E:\Blender\Blender临时\build_rock.py，自证判据 rock_report.json）。
+        // 两个 FBX 两个 Prefab，不是一个 FBX 装两个网格：菜单93 那条教训
+        //   —— `GetComponentInChildren<MeshRenderer>()` 是单数，第二个网格会静默消失。
+        //
+        // 为什么分四个材质槽而不是一张岩石贴图：巨岩的"层"是**几何**（六层台地），
+        //   要的是"越高的层晒得越白"这种随层号走的反照率，一张 UV 贴图对不上台地。
+        //   苔单独一槽是因为 URP Lit 没有坡度混合通道，而且垂出台阶唇的那圈
+        //   必须有真厚度才读得出"一坨苔"，顶点色在 flat shading 下只会糊成一条线。
+        const string CliffFbx = FbxFolder + "/SM_Rock_Cliff_01.fbx";
+        const string ReefFbx  = FbxFolder + "/SM_Rock_Reef_01.fbx";
+
+        [MenuItem("Tools/Islet/94 导入海蚀巨岩与礁石(材质+Prefab+摆放)")]
+        public static void PlaceRocks()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU94 REFUSED: 在 Play 模式\n"); return; }
+
+            var cliffFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(CliffFbx);
+            var reefFbx  = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(ReefFbx);
+            if (cliffFbx == null || reefFbx == null)
+            {
+                WriteProbe("MENU94 REFUSED: 找不到 FBX cliff=" + (cliffFbx != null) +
+                           " reef=" + (reefFbx != null) + "\n");
+                return;
+            }
+
+            // 和菜单93 同一个坑同一个修法：FBX 容器自带 0.01 的文件比例，
+            // 正解是**忽略文件比例 + globalScale=1**，不是拿 100 去乘。
+            // 且必须在建 Prefab 之前 —— Prefab 存的是导入后的网格。
+            foreach (var p in new[] { CliffFbx, ReefFbx })
+            {
+                var mi = AssetImporter.GetAtPath(p) as ModelImporter;
+                if (mi == null) continue;
+                mi.useFileScale = false;
+                mi.globalScale  = 1f;
+                mi.SaveAndReimport();
+            }
+            cliffFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(CliffFbx);
+            reefFbx  = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(ReefFbx);
+
+            IsletTerrain.EnsureFolder(MatFolder + "/Islet");
+            var white = SolidWhiteTex();
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { WriteProbe("MENU94 REFUSED: URP Lit 找不到\n"); return; }
+
+            // ── 反照率 + 镜面反射：两件事分开做，别混成一次改动 ──
+            // ① 上一版渲成**青色糖纸条纹**。根因不在反照率：URP Lit 的
+            //    `[ToggleOff] _SpecularHighlights` 默认 1，而 smoothness 给了
+            //    0.16~0.42 ⇒ NR=30 的每个平面刻面各自把整片亮天空镜一次，
+            //    相邻面法线差 12° 就是一条亮暗带 —— 竖条纹是这么来的，
+            //    跟反照率无关（证据：反照率整体降 4 倍，中位只从 29 掉到 27）。
+            // ⚠ 这里**没有** `_Specular` 这个属性（Lit.shader 全文只有
+            //    `_SpecularHighlights`）。上一版写的 `HasProperty("_Specular")`
+            //    对四个材质全部返回 false ⇒ 整段静默跳过，改了个不存在的键。
+            // ⚠ 而且它是 **[ToggleOff] 关键字驱动**的：只 SetFloat(…, 0) 不会
+            //    换 shader variant，必须同时 EnableKeyword("_SPECULARHIGHLIGHTS_OFF")。
+            // ② 通道比例：参考的岩是 R/G≈0.30、B/G≈1.30 的**冷调深蓝灰**，
+            //    上一版给的是 R/G=0.50 ⇒ 暗面发灰。苔同理，参考 (23,76,62)
+            //    的 B/G=0.82，上一版只有 0.475 ⇒ 渲成荧光绿。
+            // ③ 整体再压暗：上一版亮端量到 (161,209,251)，参考亮端 (23,76,62)。
+            //    网格也换了（台地→柱状），大平板正对太阳的过曝面已经不存在，
+            //    所以这次不能拿旧数字外推，渲完必须重新量。
+            //
+            // ── 第 2 轮：按实测反解，G/B 各抬一档 ──
+            // 上面那组值渲完，sea_rock 框（同一套过滤，保留 42%）量到
+            //   p25 (9,16,22)  中位 (12,29,36)  p75 (20,51,64)   目标中位 (13,44,57)
+            // 偏差 21（上一版 53）。R 已经对上了，**G 差 1.5 倍、B 差 1.6 倍**。
+            // 反解：显示值 → sRGB 解码 → 反 ACES（toe 段 out≈0.21x，别用线性外推）
+            //   当前 (12,29,36) → 线性 (0.0515, 0.094, 0.109)
+            //   目标 (13,44,57) → 线性 (0.0545, 0.126, 0.155)
+            //   ⇒ 乘子 R×1.06  G×1.34  B×1.42，四档一起乘（层间对比保持不变）。
+            s_rockDiag = "";
+            var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.036f, 0.185f, 0.255f), 0.10f, 0.0f, white);
+            var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.050f, 0.264f, 0.357f), 0.07f, 0.0f, white);
+            var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.069f, 0.352f, 0.479f), 0.05f, 0.0f, white);
+            var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.069f, 0.381f, 0.326f), 0.04f, 0.0f, white);
+            foreach (var mm in new[] { rockLo, rockMid, rockHi, moss })
+            {
+                if (mm == null || !mm.HasProperty("_SpecularHighlights")) continue;
+                mm.SetFloat("_SpecularHighlights", 0f);
+                mm.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+                EditorUtility.SetDirty(mm);
+                s_rockDiag += string.Format(" {0}[specHl={1} kw={2} sm={3}]",
+                    mm.name, mm.GetFloat("_SpecularHighlights"),
+                    mm.IsKeywordEnabled("_SPECULARHIGHLIGHTS_OFF"),
+                    mm.GetFloat("_Smoothness"));
+            }
+            AssetDatabase.SaveAssets();
+
+            var cliffPrefab = RockPrefab(cliffFbx, "Islet_Rock_Cliff_01", rockLo, rockMid, rockHi, moss);
+            var reefPrefab  = RockPrefab(reefFbx,  "Islet_Rock_Reef_01",  rockLo, rockMid, rockHi, moss);
+            if (cliffPrefab == null || reefPrefab == null) return;
+
+            // 重跑要替换而不是再叠一份
+            foreach (var old in UnityEngine.Object.FindObjectsOfType<UnityEngine.GameObject>())
+                if (old.name.StartsWith("Rock_") || old.name.StartsWith("Reef_"))
+                    UnityEngine.Object.DestroyImmediate(old);
+
+            int placed = 0;
+
+            // ── 巨岩 ──
+            // (64,130) 就是 IsletTerrain 那个岩核的中心（大岛中心 (52,104) 的 +x/+z 侧
+            // ⇒ **背对相机**），和参考一致："前绿后岩"，岩在岛背后露头。
+            // 偏航：新版网格（build_rock.py 第二版）没有"台地相位"这个方向量了 ——
+            //   苔是按**台面高度**分布的，绕一圈都有，所以 yaw 只决定两件事：
+            //   侧倾 LEAN_DIR=150° 倒向哪边，以及角向噪声的斑块朝向。111° 是
+            //   上一版按"陡壁朝相机"算的，先留着，渲出来不满意再按侧倾重算。
+            // 31m 高的网格坐在被一起改矮的岩核上（IsletTerrain 里 14.0f → 3.2f）。
+            // ringCheck=10：底圈半径 10.6（× 角向起伏 0.78~1.22），量的是"脚底 vs 地形"，
+            //   取 10m 正好落在**最窄**那一侧之外 ⇒ 报出来的差值是保守的。
+            PlaceRock(cliffPrefab, "Rock_Monolith", new Vector3(64f, 0f, 130f),
+                      111f, 1.00f, 6.0f, 10.0f, ref placed);
+
+            // ── 礁石 ──
+            // 不手写坐标，改成"绕岛心朝某个方位角往外找那条 h≈0.45 的水线"：
+            // 写死坐标的话下次菜单91 重长地形，它们全飘半空或沉进潟湖（菜单93 同源）。
+            // 方位角约定 dir=(sin b, cos b) ⇒ b=180 是 -z（正对相机），b=270 是 -x。
+            // 只撒朝向相机的这半边岸（105°~260°），背面看不见就别占顶点。
+            for (int i = 0; i < 11; i++)
+                PlaceReefAtWaterline(reefPrefab, "Reef_Big_" + i, 52f, 104f,
+                                     105f + i * 15.5f, 4f,
+                                     0.70f + 0.60f * ((i * 37 % 10) / 9f), ref placed);
+            for (int i = 0; i < 5; i++)
+                PlaceReefAtWaterline(reefPrefab, "Reef_Islet_" + i, -11f, -8f,
+                                     118f + i * 20f, 2.5f,
+                                     0.34f + 0.34f * ((i * 53 % 10) / 9f), ref placed);
+
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe("MENU94 rocks placed=" + placed +
+                       "  prefab=Islet_Rock_Cliff_01+Islet_Rock_Reef_01" + s_rockDiag + "\n");
+        }
+
+        static string s_rockDiag = "";
+
+        /// <summary>从一个单网格 FBX 造 Prefab，材质槽**按槽名**绑（序号会随 Blender 创建顺序变）。</summary>
+        static UnityEngine.GameObject RockPrefab(UnityEngine.GameObject fbx, string nm,
+                                                 Material lo, Material mid, Material hi, Material moss)
+        {
+            string pp = FbxFolder + "/" + nm + ".prefab";
+            var tmp = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(fbx);
+            var r = tmp.GetComponentInChildren<MeshRenderer>();
+            if (r == null)
+            {
+                UnityEngine.Object.DestroyImmediate(tmp);
+                WriteProbe("MENU94 REFUSED: " + nm + " 里没有 MeshRenderer\n");
+                return null;
+            }
+            var src = r.sharedMaterials;
+            var bound = new Material[src.Length];
+            for (int i = 0; i < src.Length; i++)
+            {
+                string n = src[i] != null ? src[i].name : "";
+                bound[i] = n.Contains("Moss") ? moss
+                         : n.Contains("Hi")   ? hi
+                         : n.Contains("Mid")  ? mid : lo;
+            }
+            r.sharedMaterials = bound;
+            r.shadowCastingMode = ShadowCastingMode.On;
+            r.receiveShadows = true;
+
+            // "绑了 4 个材质"不等于"网格有 4 个子网格"：Blender 侧礁石的高层面积是 0，
+            // Unity 可能只给 3 个 subMesh，第 4 个材质就永远用不上 —— 不报错，只是白绑。
+            // 所以把 verts/sub/slots/尺寸/最低点打出来，尺寸对不对、原点在哪一目了然。
+            var mfc = r.GetComponent<MeshFilter>();
+            var m = mfc != null ? mfc.sharedMesh : null;
+            s_rockDiag += " " + nm + "[verts=" + (m == null ? 0 : m.vertexCount) +
+                          " sub=" + (m == null ? 0 : m.subMeshCount) +
+                          " slots=" + src.Length +
+                          " sizeL=" + (m == null ? "n/a" : m.bounds.size.ToString("F2")) +
+                          " minL=" + (m == null ? "n/a" : m.bounds.min.ToString("F2")) + "]";
+
+            PrefabUtility.SaveAsPrefabAsset(tmp, pp);
+            UnityEngine.Object.DestroyImmediate(tmp);
+            return AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(pp);
+        }
+
+        /// <summary>
+        /// 摆一块岩：y 一律问 LandHeight，并且用**网格自己的 bounds.min** 反推落地高度，
+        /// 不假设原点在哪 —— 巨岩原点在轴心、最低点 -3，礁石原点在几何中心偏上、最低点
+        /// 约 -0.8，两者差一套约定，写死偏移必错一个。
+        /// ringCheck&gt;0 时在这圈半径上量"脚底 vs 地形"，正数=埋得住，负数=悬空（会看见缝）。
+        /// </summary>
+        static void PlaceRock(UnityEngine.GameObject prefab, string nm, Vector3 xz,
+                              float yaw, float scale, float bury, float ringCheck, ref int placed)
+        {
+            if (prefab == null) return;
+            var mfc = prefab.GetComponentInChildren<MeshFilter>();
+            var m = mfc != null ? mfc.sharedMesh : null;
+            if (m == null) { s_rockDiag += " " + nm + ":NO-MESH"; return; }
+
+            float h = IsletTerrain.LandHeight(xz.x, xz.z);
+            float y = h - bury - m.bounds.min.y * scale;
+
+            var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            g.name = nm;
+            g.transform.position = new Vector3(xz.x, y, xz.z);
+            g.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            g.transform.localScale = Vector3.one * scale;
+            placed++;
+
+            float footY = y + m.bounds.min.y * scale;
+            if (ringCheck > 0f)
+            {
+                float worst = float.MaxValue;
+                for (int i = 0; i < 16; i++)
+                {
+                    float a = i * Mathf.PI * 2f / 16f;
+                    float t = IsletTerrain.LandHeight(xz.x + Mathf.Sin(a) * ringCheck,
+                                                      xz.z + Mathf.Cos(a) * ringCheck);
+                    worst = Mathf.Min(worst, t - footY);
+                }
+                s_rockDiag += " " + nm + "[h=" + h.ToString("F1") + " foot=" + footY.ToString("F1") +
+                              " terrainMinusFoot@R" + ringCheck.ToString("F0") + "=" + worst.ToString("F1") +
+                              (worst < 0f ? " 悬空!!" : " 埋得住") + "]";
+            }
+            else
+                s_rockDiag += " " + nm + "[h=" + h.ToString("F1") + " foot=" + footY.ToString("F1") + "]";
+        }
+
+        /// <summary>绕 (cx,cz) 沿方位角往外找水线（h≈limit 那一圈），在那儿摆一块礁石。</summary>
+        static void PlaceReefAtWaterline(UnityEngine.GameObject prefab, string nm,
+                                         float cx, float cz,
+                                         float bearing, float jitter, float scale, ref int placed)
+        {
+            if (prefab == null) return;
+            float rad = bearing * Mathf.Deg2Rad;
+            float dx = Mathf.Sin(rad), dz = Mathf.Cos(rad);
+            for (float rr = 4f; rr < 90f; rr += 0.5f)
+            {
+                // 只往**岸外**找：还在岸上就继续走，一走出去就落定。
+                // limit 给 0.45 而不是 0：礁石要**泡在脚边浅水里**才是参考那种黑石头，
+                // 落在 h=0 那条线上等于埋进水面膜里，反而看不见。
+                if (IsletTerrain.LandHeight(cx + dx * rr, cz + dz * rr) > 0.45f) continue;
+                float r2 = rr + jitter;
+                PlaceRock(prefab, nm, new Vector3(cx + dx * r2, 0f, cz + dz * r2),
+                          (bearing * 7f) % 360f, scale, 0.55f * scale, 0f, ref placed);
+                return;
+            }
+            s_rockDiag += " " + nm + ":skip-no-waterline@" + Mathf.RoundToInt(bearing);
+        }
+
+        // ═════════════════════════ 96 ═════════════════════════
+        // 热带植被：Blender 出的 SM_Bush_Tropical_01 / SM_Grass_Tuft_01
+        // （`E:\Blender\Blender工程\scrub\`，由 scrub_pipeline.py 导出）。
+        //
+        // 叶片材质**复用 Tree_Leaf**（和椰树同一条理由）：建模侧已经按
+        //   R=flex / G=phase / B=flutter 写进顶点色，换 shader 等于把
+        //   背光透射 + 风摆动那套重做一遍。scrub_pipeline 的回读判据
+        //   vcol_survived 就是专门确认 "Col" 真的跟着 FBX 出来了 ——
+        //   Blender 物体上有 color_attributes ≠ FBX 里有。
+        static string s_scrubDiag = "";
+        const string BushFbx = FbxFolder + "/SM_Bush_Tropical_01.fbx";
+        const string TuftFbx = FbxFolder + "/SM_Grass_Tuft_01.fbx";
+
+        [MenuItem("Tools/Islet/96 导入热带植被(灌木丛+草团，撒到大岛绿肩)")]
+        public static void PlaceScrub()
+        {
+            if (UnityEngine.Application.isPlaying)
+            { WriteProbe("MENU96 REFUSED: 在 Play 模式\n"); return; }
+
+            var bushFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(BushFbx);
+            var tuftFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(TuftFbx);
+            if (bushFbx == null || tuftFbx == null)
+            { WriteProbe("MENU96 REFUSED: 找不到 " + BushFbx + " 或 " + TuftFbx + "\n"); return; }
+
+            // 和菜单93/94 同一个坑：FBX 容器自带 0.01 的文件比例，
+            // 正解是忽略文件比例 + globalScale=1，且必须在建 Prefab 之前。
+            foreach (var p in new[] { BushFbx, TuftFbx })
+            {
+                var mi = AssetImporter.GetAtPath(p) as ModelImporter;
+                if (mi == null) continue;
+                mi.useFileScale = false;
+                mi.globalScale  = 1f;
+                mi.SaveAndReimport();
+            }
+            bushFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(BushFbx);
+            tuftFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(TuftFbx);
+
+            IsletTerrain.EnsureFolder(MatFolder + "/Islet");
+            var white = SolidWhiteTex();
+            var leafSh = Shader.Find("WaterProject/TreeLeaf");
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (leafSh == null) WriteProbe("!! MENU96 TreeLeaf NOT FOUND —— 植被会退回 URP Lit，不会随风动\n");
+
+            // 反照率按色板 foliage_lit (50,112,71) 的**通道比例**反解，不是目测：
+            //   R/G = 0.45、B/G = 0.63。上一版椰叶 (0.40,0.66,0.26) 的 B/G 只有
+            //   0.39 ⇒ 同样亮度下偏"荧光酸绿"。灌木在参考里是**背光的深绿肩**，
+            //   亮度取 foliage_lit 与 foliage_dark 之间，比椰叶暗一档。
+            var scrub = ShadedMat("Islet_ScrubLeaf", leafSh != null ? leafSh : lit,
+                                  new Color(0.210f, 0.460f, 0.290f), 0.35f, 0.0f, white);
+            if (leafSh != null)
+            {
+                // 风参数和椰树同一档 —— 全场必须像被同一阵风吹
+                scrub.SetFloat("_WindStrength", 0.16f);
+                scrub.SetFloat("_WindFreq",     0.95f);
+                scrub.SetVector("_WindDir", new Vector4(0.92f, 0f, 0.32f, 0f));
+                scrub.SetFloat("_TransStrength", 1.2f);   // 灌木比椰叶暗，透射退一档
+                scrub.SetFloat("_TransPower",   8.0f);
+                scrub.SetFloat("_Cutoff",       0.35f);
+                scrub.SetColor("_TransColor", new Color(0.42f, 0.66f, 0.24f));
+            }
+            EditorUtility.SetDirty(scrub);
+            AssetDatabase.SaveAssets();
+
+            s_scrubDiag = "";
+            var bushPrefab = LeafPrefab(bushFbx, "Islet_Bush_Tropical_01", scrub);
+            var tuftPrefab = LeafPrefab(tuftFbx, "Islet_Grass_Tuft_01", scrub);
+            if (bushPrefab == null || tuftPrefab == null) return;
+
+            foreach (var old in UnityEngine.Object.FindObjectsOfType<UnityEngine.GameObject>())
+                if (old.name.StartsWith("Bush_") || old.name.StartsWith("Tuft_"))
+                    UnityEngine.Object.DestroyImmediate(old);
+
+            // 撒点：大岛 (52,104) r=44，绿肩在**背对相机**的那半边缓坡。
+            // 方位角沿用 PlaceReefAtWaterline 的约定 dir=(sin b, cos b) ⇒ b=0 是 +z（岛背后）。
+            // 只取 b∈[-55°,55°]：相机在 -z 侧，正面那半边要留成参考那样的白沙滩。
+            var rnd = new System.Random(20260922);
+            int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0;
+            for (int i = 0; i < 900 && placed < 300; i++)
+            {
+                float b = (float)(rnd.NextDouble() * 110.0 - 55.0);
+                float rr = (float)(24.0 + rnd.NextDouble() * 21.0);
+                float x = 52f + Mathf.Sin(b * Mathf.Deg2Rad) * rr;
+                float z = 104f + Mathf.Cos(b * Mathf.Deg2Rad) * rr;
+                tried++;
+
+                float h = IsletTerrain.LandHeight(x, z);
+                if (h < 0.9f || h > 6.2f) { rejH++; continue; }      // 太低吃浪、太高是岩核
+                if (SlopeAt(x, z) > 0.55f) { rejSlope++; continue; } // 陡坡留裸岩，草站不住
+                if (Mathf.Sqrt((x - 64f) * (x - 64f) + (z - 130f) * (z - 130f)) < 13f)
+                { rejCore++; continue; }                              // 别把巨岩埋进灌木里
+
+                bool tuft = rnd.NextDouble() < 0.5;
+                float sc  = tuft ? (float)(0.80 + rnd.NextDouble() * 0.70)
+                                 : (float)(0.70 + rnd.NextDouble() * 0.80);
+                // bury：灌木的**外圈叶是往下垂的**（Blender z 到 -0.45），
+                // 拿 bounds.min 落地等于把垂梢插进沙里、丛心悬空 0.45m。
+                // 所以按"垂深"整体往下埋，让**根**贴地而不是最低点贴地。
+                PlaceRock(tuft ? tuftPrefab : bushPrefab,
+                          (tuft ? "Tuft_" : "Bush_") + i,
+                          new Vector3(x, 0f, z),
+                          (float)(rnd.NextDouble() * 360.0), sc,
+                          tuft ? 0.05f * sc : 0.45f * sc, 0f, ref placed);
+            }
+
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+
+            WriteProbe("MENU96 scrub placed=" + placed + " tried=" + tried +
+                       " 拒:高度" + rejH + " 陡坡" + rejSlope + " 岩核" + rejCore +
+                       "  leaf=" + (leafSh != null ? "TreeLeaf" : "LIT(风失效!)") +
+                       s_scrubDiag + "\n");
+        }
+
+        /// <summary>FBX → 单材质 Prefab。一个 FBX 一个物体，不然
+        /// GetComponentInChildren&lt;MeshRenderer&gt;() 只认第一个，第二个静默消失。</summary>
+        static UnityEngine.GameObject LeafPrefab(UnityEngine.GameObject fbx, string nm, Material leaf)
+        {
+            string pp = FbxFolder + "/" + nm + ".prefab";
+            var tmp = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(fbx);
+            var r = tmp.GetComponentInChildren<MeshRenderer>();
+            if (r == null)
+            {
+                UnityEngine.Object.DestroyImmediate(tmp);
+                WriteProbe("MENU96 REFUSED: " + nm + " 里没有 MeshRenderer\n");
+                return null;
+            }
+            var src = r.sharedMaterials;
+            var bound = new Material[src.Length];
+            for (int i = 0; i < bound.Length; i++) bound[i] = leaf;
+            r.sharedMaterials = bound;
+            r.shadowCastingMode = ShadowCastingMode.On;
+            r.receiveShadows = true;
+
+            var mfc = r.GetComponent<MeshFilter>();
+            var m = mfc != null ? mfc.sharedMesh : null;
+            s_scrubDiag += " " + nm + "[verts=" + (m == null ? 0 : m.vertexCount) +
+                           " slots=" + src.Length +
+                           " sizeL=" + (m == null ? "n/a" : m.bounds.size.ToString("F2")) +
+                           " minL=" + (m == null ? "n/a" : m.bounds.min.ToString("F2")) + "]";
+
+            PrefabUtility.SaveAsPrefabAsset(tmp, pp);
+            UnityEngine.Object.DestroyImmediate(tmp);
+            return AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(pp);
+        }
+
+        /// <summary>地面在该点的坡度（|梯度|，无量纲）。1.2m 中心差分，
+        /// 比单点差稳，又不至于把沙滩的小起伏全抹平。</summary>
+        static float SlopeAt(float x, float z)
+        {
+            const float e = 1.2f;
+            float gx = (IsletTerrain.LandHeight(x + e, z) - IsletTerrain.LandHeight(x - e, z)) / (2f * e);
+            float gz = (IsletTerrain.LandHeight(x, z + e) - IsletTerrain.LandHeight(x, z - e)) / (2f * e);
+            return Mathf.Sqrt(gx * gx + gz * gz);
         }
 
         // 4×4 纯白贴图。存在的理由：Tree_Leaf 要采 _BaseMap 做 alpha 裁剪，
