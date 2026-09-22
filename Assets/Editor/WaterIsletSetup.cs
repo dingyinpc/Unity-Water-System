@@ -709,6 +709,12 @@ namespace WaterProject.EditorTools
                 if (mi == null) continue;
                 mi.useFileScale = false;
                 mi.globalScale  = 1f;
+                // 显式钉死"用文件里的法线"。meta 里根本没有 normals 这个键，
+                // 只有 normalCalculationMode: 4 / normalImportMode: 0，而这两个枚举值
+                // 的含义我不打算靠猜。旁证是顶点数 3262→1805（平滑法线让 Unity
+                // 少拆了一批重复顶点），说明**看起来**已经在吃文件法线了；
+                // 这里显式写一遍是为了把"看起来"变成"确定"，不是因为已确认是它的锅。
+                mi.normals = ModelImporterNormals.Import;
                 mi.SaveAndReimport();
             }
             cliffFbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(CliffFbx);
@@ -963,6 +969,15 @@ namespace WaterProject.EditorTools
             //   R/G = 0.45、B/G = 0.63。上一版椰叶 (0.40,0.66,0.26) 的 B/G 只有
             //   0.39 ⇒ 同样亮度下偏"荧光酸绿"。灌木在参考里是**背光的深绿肩**，
             //   亮度取 foliage_lit 与 foliage_dark 之间，比椰叶暗一档。
+            //
+            // ── 第 2 轮试过"压对比"，**量出来是退步，已回退** ──
+            //   当时读到 中位 (37,82,53) 差目标 1.35 倍、p75 (62,135,84) 反而超出，
+            //   判断成"对比拉太开"，于是底色 0.210→0.235、_TransStrength 1.2→0.55。
+            //   实测结果：偏差 30 → **36**，中位不升反降 (37,82,53)→(34,76,50)。
+            //   为什么错：绿肩整片是**逆光**的，叶子的亮度一大半是透光给的，
+            //   砍透光等于把主要光源撤了，底色那点抬升根本补不回来。
+            //   ⇒ 剩下的中位缺口是**逆光坡面的漫反射光量**，不是材质旋钮能解决的；
+            //     要动该动环境光/太阳方位那一侧，而不是继续拧这块叶子。
             var scrub = ShadedMat("Islet_ScrubLeaf", leafSh != null ? leafSh : lit,
                                   new Color(0.210f, 0.460f, 0.290f), 0.35f, 0.0f, white);
             if (leafSh != null)
@@ -971,7 +986,7 @@ namespace WaterProject.EditorTools
                 scrub.SetFloat("_WindStrength", 0.16f);
                 scrub.SetFloat("_WindFreq",     0.95f);
                 scrub.SetVector("_WindDir", new Vector4(0.92f, 0f, 0.32f, 0f));
-                scrub.SetFloat("_TransStrength", 1.2f);   // 灌木比椰叶暗，透射退一档
+                scrub.SetFloat("_TransStrength", 1.2f);   // 0.55 已证伪，见上
                 scrub.SetFloat("_TransPower",   8.0f);
                 scrub.SetFloat("_Cutoff",       0.35f);
                 scrub.SetColor("_TransColor", new Color(0.42f, 0.66f, 0.24f));
@@ -1245,3 +1260,4 @@ namespace WaterProject.EditorTools
     }
 }
 #endif
+
