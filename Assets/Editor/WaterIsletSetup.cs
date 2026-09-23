@@ -987,15 +987,15 @@ namespace WaterProject.EditorTools
             // 31m 高的网格坐在被一起改矮的岩核上（IsletTerrain 里 14.0f → 3.2f）。
             // ringCheck=10：底圈半径 10.6（× 角向起伏 0.78~1.22），量的是"脚底 vs 地形"，
             //   取 10m 正好落在**最窄**那一侧之外 ⇒ 报出来的差值是保守的。
-            // ⚠ 等比 1.8 已经**被形状量否掉**：它把凸出从 35 px 抬到 158 px（目标 284），
-            //   但同时把岩放成 34.4% 画幅宽，而参考只有 12.2% —— 参考的岩是**窄高**
-            //   (宽高比 0.39)，我这块是矮宽 (1.76)。等比放大在错的方向上。
-            //   现在水平回到 1.0，只把高度拉到 2.6：
-            //     目标凸出 284 px = 13.1°；我的林线仰角 atan(11.5/150) ≈ 4.4°
-            //     ⇒ 岩顶要到 17.5° ⇒ 离地 tan(17.5°)·188 ≈ 56 m
-            //     ⇒ 现在露出地面 20 m ⇒ 2.6 倍。渲完用同一把尺复量，不看感觉。
+            // ⚠ 等比 1.8 已经**被形状量否掉**：它把凸出抬到 158 px（目标 284），
+            //   但把岩放成 34.4% 画幅宽，而参考只有 12.2%（宽高比 0.39 vs 1.76）。
+            //   接着试过"只长高 yScale=2.6"：凸出 286 px 命中，**但那是拉伸** ——
+            //   台阶间距被从 7.4 m 拉成 19 m，台面/悬唇的节奏抹平，
+            //   渲出来是四片并排的风帆，不像海蚀岩。
+            //   ⇒ 高度是**建模侧**的事：build_rock.py 的 PROFILE 已从 3 个
+            //     台面循环扩到 7 个（天然 62.6 m、柱宽仍 26.8 m），这里回到不拉伸。
             PlaceRock(cliffPrefab, "Rock_Monolith", new Vector3(64f, 0f, 130f),
-                      111f, 1.00f, 6.0f, 12.0f, ref placed, 2.6f);
+                      111f, 1.00f, 6.0f, 10.0f, ref placed);
 
             // ── 礁石 ──
             // 不手写坐标，改成"绕岛心朝某个方位角往外找那条 h≈0.45 的水线"：
@@ -1067,6 +1067,11 @@ namespace WaterProject.EditorTools
         /// 约 -0.8，两者差一套约定，写死偏移必错一个。
         /// ringCheck&gt;0 时在这圈半径上量"脚底 vs 地形"，正数=埋得住，负数=悬空（会看见缝）。
         /// </summary>
+        /// <summary>把"高度在局部 Z"的岩石网格立起来的旋转。
+        /// 判据（菜单99 量世界 bounds）：立对之后巨岩的 **Y 档 ≈ 62.6、Z 档 ≈ 24.85**；
+        /// 符号反了则岩会倒插进地里（Y 档仍是 24.85，且 foot 会跑到地形以下很深）。</summary>
+        static readonly Quaternion StandUpZ = Quaternion.Euler(-90f, 0f, 0f);
+
         static void PlaceRock(UnityEngine.GameObject prefab, string nm, Vector3 xz,
                               float yaw, float scale, float bury, float ringCheck,
                               ref int placed, float yScale = 1f)
@@ -1076,23 +1081,38 @@ namespace WaterProject.EditorTools
             var m = mfc != null ? mfc.sharedMesh : null;
             if (m == null) { s_rockDiag += " " + nm + ":NO-MESH"; return; }
 
-            // ⚠ yScale 只拉长**高度**，水平不动。存在的理由：探针量到
-            //   参考的岩体是"窄高"（占画幅宽 12.2%、高 229 px、宽高比 0.39），
-            //   我这块是"矮宽"（34.4% 宽、142 px、宽高比 1.76）。
-            //   等比放大 1.8 把凸出从 35 px 抬到 158 px（目标 284），
-            //   但同时把岩放得更宽 —— 方向错，所以要的是**只长高**。
-            float sy = scale * yScale;
+            // ⚠ 这批岩石网格的**高度在局部 Z 上**（build_rock 用 Blender 的 Z 当高度）。
+            //   `bakeAxisConversion` 救不了这类东西：Unity 的 FBX 轴转换默认以
+            //   **节点变换**给出，`sharedMesh.bounds` 仍然是 Blender 轴 ——
+            //   所以看 mesh 会以为"已经 Y 朝上了"。
+            //   证据（本轮实测）：新网格 sizeL=(26.78, 24.85, **62.60**)，
+            //   而菜单99 量到世界 bounds 的 Y 半档只有 13.2、Z 半档 33.1
+            //   ⇒ 62.6 m 是**躺在世界上**的。上一轮"只长高 2.6 命中 286 px"
+            //   其实是把一根**水平轴**撑成了高度，纯属歪打。
+            //   和椰树是同一类坑（见 PlacePalm 的 UprightPalm）。
+            float sy = scale * yScale;                 // 高度轴现在是 Z
             float h = IsletTerrain.LandHeight(xz.x, xz.z);
-            float y = h - bury - m.bounds.min.y * sy;
 
             var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
             g.name = nm;
-            g.transform.position = new Vector3(xz.x, y, xz.z);
-            g.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            g.transform.localScale = new Vector3(scale, sy, scale);
+            g.transform.rotation = Quaternion.Euler(0f, yaw, 0f) * StandUpZ;
+            g.transform.localScale = new Vector3(scale, scale, sy);
+
+            // ⚠ 落地**不猜哪个轴是高度**，改成量出来再平移校正：
+            //   先随便摆一个 y，读渲染器世界 bounds 的底，再把整体抬到
+            //   "脚底 = h - bury"。这样不管资产是 Y-up 还是 Z-up、
+            //   不管 StandUpZ 的符号、不管原点在顶还是在底，结果都对。
+            //   （之前这里是 `y = h - bury - m.bounds.min.z * sy`，
+            //     而这块网格的 min.z 是 -59.6 不是 -3 —— 符号一猜就错，
+            //     岩会整块插进地里 9 m 或者飘在半空，且 foot 诊断跟着一起骗人。）
+            g.transform.position = new Vector3(xz.x, h, xz.z);
+            var rrg = g.GetComponentInChildren<Renderer>();
+            if (rrg == null) { s_rockDiag += " " + nm + ":NO-RENDERER"; return; }
+            g.transform.position = new Vector3(xz.x,
+                g.transform.position.y + (h - bury) - rrg.bounds.min.y, xz.z);
             placed++;
 
-            float footY = y + m.bounds.min.y * sy;   // ⚠ 用 sy：脚底随高度缩放一起动
+            float footY = rrg.bounds.min.y;            // 量出来的，不是算出来的
             if (ringCheck > 0f)
             {
                 float worst = float.MaxValue;
