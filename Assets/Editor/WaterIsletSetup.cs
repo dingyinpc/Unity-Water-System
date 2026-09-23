@@ -1230,7 +1230,9 @@ namespace WaterProject.EditorTools
             //   ⇒ 颜色是对的，**单株太小太稀**：1.3m 的灌木在 160m 外撑不出轮廓，
             //     岛脊上自然还是白的。所以放大 + 加密 + 放宽方位窗一起给。
             var rnd = new System.Random(20260922);
-            int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0, rejRock = 0;
+            int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0, rejRock = 0, rejBear = 0;
+            string s_wedgeFirst = "";
+            float wedgeMax = -9999f;
             // ── 巨岩剪影闸 ──
             // 实测（本轮基线）：Rock_Monolith 的屏幕框 (0.596,0.382,0.788,0.560) 里
             // **51.4%** 的像素是灌木 ⇒ 26 m 的海蚀巨岩只露出 2.8% 画幅高的一条脊，
@@ -1238,15 +1240,27 @@ namespace WaterProject.EditorTools
             // 判的是**植物顶**不是植物根：相机 1.72 m 平视、灌木连scale有 ~5 m 高，
             // 根部还在岩脚下、梢部已经压在岩面上，一样把轮廓吃掉。
             var vcam = Camera.main;
-            float rkx0 = 0, rky0 = 0, rkx1 = 0, rky1 = 0;
-            bool haveRock = vcam != null && MonolithRect(vcam, out rkx0, out rky0, out rkx1, out rky1);
-            if (vcam == null) WriteProbe("MENU96 !! 没有 Camera.main —— 巨岩剪影闸跳过\n");
-            else if (!haveRock) WriteProbe("MENU96 !! 找不到 Rock_Monolith —— 剪影闸跳过（先跑菜单94）\n");
+            Vector2 rockC = Vector2.zero; float rockDist = 0f, rockHalf = 0f, rockMid = 0f, camY = 0f;
+            Vector2 eyeXZ = Vector2.zero;
+            bool haveRock = vcam != null &&
+                            MonolithWedge(vcam, out rockC, out rockDist, out rockHalf, out rockMid);
+            if (vcam != null)
+            {
+                eyeXZ = new Vector2(vcam.transform.position.x, vcam.transform.position.z);
+                camY = vcam.transform.position.y;
+            }
+            if (vcam == null) WriteProbe("MENU96 !! 没有 Camera.main —— 巨岩方位闸跳过\n");
+            else if (!haveRock) WriteProbe("MENU96 !! 找不到 Rock_Monolith —— 方位闸跳过（先跑菜单94）\n");
             // 覆盖率现在已知是**主要缺口**（见下面 sc 那段的实测：岛体中位亮度
             //   我 197 vs 参考 30），但这里**先不顺手改**：
             //   原来这个抬密度是和"缩小单株"配对的，那个改动已被测量判死回退，
             //   再留着一个未验证的第二变量，就又是"一次改三个参数"的老错。
             //   下一轮把"加密/放宽高度窗"当**单变量**做，改前后各量一次固定框中位。
+            const float PlantTop = 5.0f;
+            // 一株植被"顶到地面"多高，给上面的高度线用：
+            //   最大一档灌木 = sc 上限 4.0 × 网格高 1.64 ≈ 6.6 m，
+            //   但埋深 bury = 0.45·sc ≈ 1.8 m，外圈叶还往下垂 ⇒ 可见顶高 ≈ 5 m。
+            //   取最大档是**保守**的：宁可多拒一株，也别让梢部压在岩轮廓上。
             for (int i = 0; i < 5000 && placed < 700; i++)
             {
                 float b = (float)(rnd.NextDouble() * 140.0 - 70.0);
@@ -1268,17 +1282,44 @@ namespace WaterProject.EditorTools
                 if (SlopeAt(x, z) > 0.55f) { rejSlope++; continue; } // 陡坡留裸岩，草站不住
                 if (Mathf.Sqrt((x - 64f) * (x - 64f) + (z - 130f) * (z - 130f)) < 13f)
                 { rejCore++; continue; }                              // 别把巨岩埋进灌木里
-                if (haveRock && z < 130f)     // 只挡**岩前面**的：比岩心远的植物遮不到它
+                if (haveRock)
                 {
-                    // 植物顶 = 地面 + 5 m（最大那档灌木 sc 4.0 × 网格高 1.64 ≈ 6.6，
-                    // 但埋深 0.45·sc 且外圈叶下垂，取 5 m 是保守值：宁可少放一株，
-                    // 也不要梢部压在岩面上把轮廓吃掉）
-                    Vector3 rv = vcam.WorldToViewportPoint(new Vector3(x, h + 5f, z));
-                    float ry = 1f - rv.y;                    // viewport y 从下往上 → 图像从上往下
-                    if (rv.z > vcam.nearClipPlane &&
-                        rv.x > rkx0 - 0.01f && rv.x < rkx1 + 0.01f &&
-                        ry > rky0 - 0.01f && ry < rky1 + 0.01f)
-                    { rejRock++; continue; }
+                    // 三维方位闸：候选比岩**近**、且和岩落在对相机的同一条视线上
+                    // （夹角 < 岩自身的角半径）⇒ 它会挡在岩前面，吃掉岩对着天空的轮廓。
+                    // 屏幕矩形表达不了"谁在谁前面"，所以这条只能在 XZ 里做。
+                    var toP = new Vector2(x, z) - eyeXZ;
+                    var toR = rockC - eyeXZ;
+                    float dp = toP.magnitude;
+                    if (dp < rockDist && dp > 0.01f)
+                    {
+                        float cross = toP.x * toR.y - toP.y * toR.x;
+                        float dot   = Vector2.Dot(toP, toR);
+                        // sin(夹角) < sin(角半径) 且同向（dot>0）才算挡住；
+                        // 用叉积/点积求角，不走 acos（ acos 在 0/180° 附近数值退化）
+                        float sinAng = Mathf.Abs(cross) / (dp * rockDist);
+                        float sinHalf = rockHalf / Mathf.Sqrt(rockHalf * rockHalf + 1f);
+                        if (dot > 0f && sinAng < sinHalf)
+                        {
+                            // 再加一条**高度线**：从相机看向"岩露出地面那段的半高"
+                            // 的这条视线，拉到植物所在距离上离地多高。植物顶低于它，
+                            // 就只挡到岩的**下半截** —— 参考里岩脚前面本来就有绿，
+                            // 上一版没有这条，把岩脚前的沙滩一起清成了大白楔子。
+                            float lineY = camY + (rockMid - camY) * (dp / rockDist);
+                            rejBear++;
+                            // 诊断：521 命中方位、0 被判太高 —— 光看 0 分不出是
+                            // lineY 算高了还是植物顶算低了，所以把**第一个样本**和
+                            // 整轮的**最大余量**都打出来（不等到真拒才打）。
+                            if (rejBear == 1)
+                                s_wedgeFirst = " 首样本: dp=" + dp.ToString("0") + "/" +
+                                               rockDist.ToString("0") +
+                                               " lineY=" + lineY.ToString("0.0") +
+                                               " 顶=" + (h + PlantTop).ToString("0.0") +
+                                               " 岩半高=" + rockMid.ToString("0.0");
+                            float margin = h + PlantTop - lineY;
+                            if (margin > wedgeMax) wedgeMax = margin;
+                            if (margin > 0f) { rejRock++; continue; }
+                        }
+                    }
                 }
 
                 bool tuft = rnd.NextDouble() < 0.45;
@@ -1318,9 +1359,11 @@ namespace WaterProject.EditorTools
 
             WriteProbe("MENU96 scrub placed=" + placed + " tried=" + tried +
                        " 拒:高度" + rejH + " 陡坡" + rejSlope + " 岩核" + rejCore +
-                       " 岩剪影" + rejRock +
-                       " 岩框=" + (haveRock ? string.Format("({0:0.000},{1:0.000},{2:0.000},{3:0.000})",
-                                                            rkx0, rky0, rkx1, rky1) : "无") +
+                       " 方位命中" + rejBear + " 其中太高" + rejRock + s_wedgeFirst +
+                       " 最大余量=" + wedgeMax.ToString("0.0") +
+                       " 岩心=" + (haveRock ? string.Format("({0:0.0},{1:0.0}) d={2:0.0} 半角={3:0.0}°",
+                                                            rockC.x, rockC.y, rockDist,
+                                                            Mathf.Rad2Deg * rockHalf) : "无") +
                        " cam=" + Was(vcam != null ? vcam.transform.position : Vector3.zero) +
                        " 叶=" + (leafSh != null ? "TreeLeaf" : "LIT(风失效!)") +
                        s_scrubDiag + "\n");
@@ -1368,42 +1411,41 @@ namespace WaterProject.EditorTools
             return Mathf.Sqrt(gx * gx + gz * gz);
         }
 
-        /// <summary>Rock_Monolith 在视口里占的矩形（y 从上往下，和截图一致）。
-        /// ⚠ 只能这样**从场景数据算**：撒点侧要避让的是"屏幕上属于巨岩的那块"，
-        /// 而手画框已经错过三次（最近一次 y0.500~0.560 画在白沙带上，
-        /// 直接把"灌木太大"这个假设判死了，见菜单96 那段订正注释）。</summary>
-        static bool MonolithRect(Camera cam, out float x0, out float y0,
-                                 out float x1, out float y1)
+        /// <summary>巨岩对相机的"方位遮蔽楔"：岩心 XZ、岩心到相机的距离、岩的角半径。
+        /// 撒点侧的判据是三维的 —— 植物只有**比岩近、且和岩在同一方位**，
+        /// 才会吃掉岩对着天空的那圈轮廓。
+        /// ⚠ 屏幕矩形那条路已经被实测否掉，两次都不对：
+        ///   · 不切底边 → 矩形盖到沙滩，2200 拒 1290、只撒下 49 株（绿肩全没）；
+        ///   · 按"岩心处地面 + 林线"切底边 → <b>rejRock=0</b>，闸完全失效。
+        ///     因为近处的高原林线**投得比岩脚更高**（同世界高度、更近 ⇒ 仰角更大），
+        ///     真正压住岩轮廓的那批植物全落在切完的矩形**上沿之外**。
+        ///   屏幕空间表达不了"谁在谁前面"，这个关系只在三维里成立。</summary>
+        static bool MonolithWedge(Camera cam, out Vector2 c, out float dist,
+                                  out float halfAng, out float yMid)
         {
-            x0 = y0 = x1 = y1 = 0f;
+            c = Vector2.zero; dist = 0f; halfAng = 0f; yMid = 0f;
             var go = UnityEngine.GameObject.Find("Rock_Monolith");
             var r = go != null ? go.GetComponentInChildren<Renderer>() : null;
             if (r == null) return false;
             var b = r.bounds;
-            // ⚠ 底边必须抬到**地面**：这块网格埋了 6 m、bounds.min.y 远在地下，
-            //   直接拿八个角投影，矩形底边会一路盖到沙滩 —— 第一版实测岩框
-            //   (0.612,0.382,0.835,0.560)，2200 个候选拒掉 1290、只撒下 49 株，
-            //   等于把整座岛的绿肩删光了。要保的是"露出地面那段岩的剪影"。
-            float ground = IsletTerrain.LandHeight(b.center.x, b.center.z);
-            b.min = new Vector3(b.min.x, Mathf.Max(b.min.y, ground), b.min.z);
-            float ax0 = float.MaxValue, ax1 = float.MinValue;
-            float ay0 = float.MaxValue, ay1 = float.MinValue;
-            int used = 0;
-            for (int i = 0; i < 8; i++)
-            {
-                Vector3 c = new Vector3(
-                    (i & 1) == 0 ? b.min.x : b.max.x,
-                    (i & 2) == 0 ? b.min.y : b.max.y,
-                    (i & 4) == 0 ? b.min.z : b.max.z);
-                Vector3 v = cam.WorldToViewportPoint(c);
-                if (v.z <= cam.nearClipPlane) continue;   // 身后的角不能要，投影会翻
-                used++;
-                ax0 = Mathf.Min(ax0, v.x); ax1 = Mathf.Max(ax1, v.x);
-                float yt = 1f - v.y;
-                ay0 = Mathf.Min(ay0, yt);  ay1 = Mathf.Max(ay1, yt);
-            }
-            if (used < 2) return false;
-            x0 = ax0; y0 = ay0; x1 = ax1; y1 = ay1;
+            var eye = new Vector2(cam.transform.position.x, cam.transform.position.z);
+            c = new Vector2(b.center.x, b.center.z);
+            dist = Vector2.Distance(eye, c);
+            if (dist < 1f) return false;
+            // 用包围盒的水平半宽当岩的半径：这块网格不是圆的，
+            // 取 max(extents.x, extents.z) 是**保守**的（宁可多让开一点，也别把轮廓吃掉）
+            float R = Mathf.Max(b.extents.x, b.extents.z);
+            halfAng = Mathf.Atan2(R, dist);
+            // ⚠ 只按方位挡会把**岩脚前的沙滩**一起清空（实测：岛正面一道大白楔子），
+            //   而参考里岩脚前面是有绿的 ⇒ 要加一条高度线。
+            //   但这条线取在哪里**是量出来的，不是拍的**：
+            //     取"露出地面那段的半高"→ 521 个命中方位的候选里，最高的那个
+            //     还差 **1.1 m** 才够到线（最大余量 = −1.1），闸等于完全不生效。
+            //   参考里巨岩是**上半截对着天空**、林线只压到它下缘约 1/3，
+            //   所以线取在"露出地面那段从下往上 1/3"处。
+            float ground = IsletTerrain.LandHeight(c.x, c.y);
+            float foot = Mathf.Max(b.min.y, ground);
+            yMid = foot + (b.max.y - foot) / 3f;
             return true;
         }
 
