@@ -1230,13 +1230,24 @@ namespace WaterProject.EditorTools
             //   ⇒ 颜色是对的，**单株太小太稀**：1.3m 的灌木在 160m 外撑不出轮廓，
             //     岛脊上自然还是白的。所以放大 + 加密 + 放宽方位窗一起给。
             var rnd = new System.Random(20260922);
-            int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0;
+            int placed = 0, rejH = 0, rejSlope = 0, rejCore = 0, tried = 0, rejRock = 0;
+            // ── 巨岩剪影闸 ──
+            // 实测（本轮基线）：Rock_Monolith 的屏幕框 (0.596,0.382,0.788,0.560) 里
+            // **51.4%** 的像素是灌木 ⇒ 26 m 的海蚀巨岩只露出 2.8% 画幅高的一条脊，
+            // 而参考里它是右岛的**主体**。所以"该看见岩的那块屏幕"不许再撒植物。
+            // 判的是**植物顶**不是植物根：相机 1.72 m 平视、灌木连scale有 ~5 m 高，
+            // 根部还在岩脚下、梢部已经压在岩面上，一样把轮廓吃掉。
+            var vcam = Camera.main;
+            float rkx0 = 0, rky0 = 0, rkx1 = 0, rky1 = 0;
+            bool haveRock = vcam != null && MonolithRect(vcam, out rkx0, out rky0, out rkx1, out rky1);
+            if (vcam == null) WriteProbe("MENU96 !! 没有 Camera.main —— 巨岩剪影闸跳过\n");
+            else if (!haveRock) WriteProbe("MENU96 !! 找不到 Rock_Monolith —— 剪影闸跳过（先跑菜单94）\n");
             // 覆盖率现在已知是**主要缺口**（见下面 sc 那段的实测：岛体中位亮度
             //   我 197 vs 参考 30），但这里**先不顺手改**：
             //   原来这个抬密度是和"缩小单株"配对的，那个改动已被测量判死回退，
             //   再留着一个未验证的第二变量，就又是"一次改三个参数"的老错。
             //   下一轮把"加密/放宽高度窗"当**单变量**做，改前后各量一次固定框中位。
-            for (int i = 0; i < 2200 && placed < 700; i++)
+            for (int i = 0; i < 5000 && placed < 700; i++)
             {
                 float b = (float)(rnd.NextDouble() * 140.0 - 70.0);
                 // 22~45 → **4~44**：原来只扫外环，岛心 22 m 圆盘全空（见下面高度闸那段）。
@@ -1257,6 +1268,18 @@ namespace WaterProject.EditorTools
                 if (SlopeAt(x, z) > 0.55f) { rejSlope++; continue; } // 陡坡留裸岩，草站不住
                 if (Mathf.Sqrt((x - 64f) * (x - 64f) + (z - 130f) * (z - 130f)) < 13f)
                 { rejCore++; continue; }                              // 别把巨岩埋进灌木里
+                if (haveRock && z < 130f)     // 只挡**岩前面**的：比岩心远的植物遮不到它
+                {
+                    // 植物顶 = 地面 + 5 m（最大那档灌木 sc 4.0 × 网格高 1.64 ≈ 6.6，
+                    // 但埋深 0.45·sc 且外圈叶下垂，取 5 m 是保守值：宁可少放一株，
+                    // 也不要梢部压在岩面上把轮廓吃掉）
+                    Vector3 rv = vcam.WorldToViewportPoint(new Vector3(x, h + 5f, z));
+                    float ry = 1f - rv.y;                    // viewport y 从下往上 → 图像从上往下
+                    if (rv.z > vcam.nearClipPlane &&
+                        rv.x > rkx0 - 0.01f && rv.x < rkx1 + 0.01f &&
+                        ry > rky0 - 0.01f && ry < rky1 + 0.01f)
+                    { rejRock++; continue; }
+                }
 
                 bool tuft = rnd.NextDouble() < 0.45;
                 // ⚠ 这里**试过错，已回退**：上一版把尺度从 2.20~4.00 压到 1.00~1.80，
@@ -1295,7 +1318,11 @@ namespace WaterProject.EditorTools
 
             WriteProbe("MENU96 scrub placed=" + placed + " tried=" + tried +
                        " 拒:高度" + rejH + " 陡坡" + rejSlope + " 岩核" + rejCore +
-                       "  leaf=" + (leafSh != null ? "TreeLeaf" : "LIT(风失效!)") +
+                       " 岩剪影" + rejRock +
+                       " 岩框=" + (haveRock ? string.Format("({0:0.000},{1:0.000},{2:0.000},{3:0.000})",
+                                                            rkx0, rky0, rkx1, rky1) : "无") +
+                       " cam=" + Was(vcam != null ? vcam.transform.position : Vector3.zero) +
+                       " 叶=" + (leafSh != null ? "TreeLeaf" : "LIT(风失效!)") +
                        s_scrubDiag + "\n");
         }
 
@@ -1339,6 +1366,45 @@ namespace WaterProject.EditorTools
             float gx = (IsletTerrain.LandHeight(x + e, z) - IsletTerrain.LandHeight(x - e, z)) / (2f * e);
             float gz = (IsletTerrain.LandHeight(x, z + e) - IsletTerrain.LandHeight(x, z - e)) / (2f * e);
             return Mathf.Sqrt(gx * gx + gz * gz);
+        }
+
+        /// <summary>Rock_Monolith 在视口里占的矩形（y 从上往下，和截图一致）。
+        /// ⚠ 只能这样**从场景数据算**：撒点侧要避让的是"屏幕上属于巨岩的那块"，
+        /// 而手画框已经错过三次（最近一次 y0.500~0.560 画在白沙带上，
+        /// 直接把"灌木太大"这个假设判死了，见菜单96 那段订正注释）。</summary>
+        static bool MonolithRect(Camera cam, out float x0, out float y0,
+                                 out float x1, out float y1)
+        {
+            x0 = y0 = x1 = y1 = 0f;
+            var go = UnityEngine.GameObject.Find("Rock_Monolith");
+            var r = go != null ? go.GetComponentInChildren<Renderer>() : null;
+            if (r == null) return false;
+            var b = r.bounds;
+            // ⚠ 底边必须抬到**地面**：这块网格埋了 6 m、bounds.min.y 远在地下，
+            //   直接拿八个角投影，矩形底边会一路盖到沙滩 —— 第一版实测岩框
+            //   (0.612,0.382,0.835,0.560)，2200 个候选拒掉 1290、只撒下 49 株，
+            //   等于把整座岛的绿肩删光了。要保的是"露出地面那段岩的剪影"。
+            float ground = IsletTerrain.LandHeight(b.center.x, b.center.z);
+            b.min = new Vector3(b.min.x, Mathf.Max(b.min.y, ground), b.min.z);
+            float ax0 = float.MaxValue, ax1 = float.MinValue;
+            float ay0 = float.MaxValue, ay1 = float.MinValue;
+            int used = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 c = new Vector3(
+                    (i & 1) == 0 ? b.min.x : b.max.x,
+                    (i & 2) == 0 ? b.min.y : b.max.y,
+                    (i & 4) == 0 ? b.min.z : b.max.z);
+                Vector3 v = cam.WorldToViewportPoint(c);
+                if (v.z <= cam.nearClipPlane) continue;   // 身后的角不能要，投影会翻
+                used++;
+                ax0 = Mathf.Min(ax0, v.x); ax1 = Mathf.Max(ax1, v.x);
+                float yt = 1f - v.y;
+                ay0 = Mathf.Min(ay0, yt);  ay1 = Mathf.Max(ay1, yt);
+            }
+            if (used < 2) return false;
+            x0 = ax0; y0 = ay0; x1 = ax1; y1 = ay1;
+            return true;
         }
 
         // 4×4 纯白贴图。存在的理由：Tree_Leaf 要采 _BaseMap 做 alpha 裁剪，
