@@ -120,6 +120,10 @@ namespace WaterProject.EditorTools
                 int palmTot = 0, palmIn = 0;
                 float yMin = float.PositiveInfinity, yMax = float.NegativeInfinity;
                 float vegX0 = 9f, vegY0 = 9f, vegX1 = -9f, vegY1 = -9f;
+                // 240×240 的视口栅格：足够细（每格 0.4% 画幅），又不至于让 700 株慢下来
+                const int GRID = 240;
+                var grid = new bool[GRID, GRID];
+                int gridFill = 0, gridArea = 0;
                 var cells = new int[4, 4];
                 var offSide = new int[5];  // 0左 1右 2上 3下 4身后
 
@@ -184,6 +188,23 @@ namespace WaterProject.EditorTools
                         if (inside)
                         {
                             vegIn++;
+                            // 覆盖率用**纯几何**判据：把每株的投影框栅格化求并集。
+                            // 不用"关掉植被差分两帧"那招 —— 水面是动画的，
+                            // 碎闪在两帧之间本来就会变，diff 会把动画数成植被。
+                            if (vb != null)
+                            {
+                                var pr2 = vb.Trim('(', ')').Split(',');
+                                int gx0 = Mathf.Clamp((int)(float.Parse(pr2[0]) * GRID), 0, GRID - 1);
+                                int gy0 = Mathf.Clamp((int)(float.Parse(pr2[1]) * GRID), 0, GRID - 1);
+                                int gx1 = Mathf.Clamp((int)(float.Parse(pr2[2]) * GRID), 0, GRID - 1);
+                                int gy1 = Mathf.Clamp((int)(float.Parse(pr2[3]) * GRID), 0, GRID - 1);
+                                for (int gy = gy0; gy <= gy1; gy++)
+                                    for (int gx = gx0; gx <= gx1; gx++)
+                                    {
+                                        if (!grid[gy, gx]) { grid[gy, gx] = true; gridFill++; }
+                                    }
+                                gridArea += (gx1 - gx0 + 1) * (gy1 - gy0 + 1);
+                            }
                             // 遮挡只对抽样做：700 个全 march 一遍采样的开销没必要
                             if (vegIn % 17 == 0 && vegTested < 40)
                             {
@@ -214,6 +235,17 @@ namespace WaterProject.EditorTools
                     : string.Format("({0:0.###},{1:0.###},{2:0.###},{3:0.###})  占画幅 {4:0}%",
                                     vegX0, vegY0, vegX1, vegY1,
                                     (vegX1 - vegX0) * (vegY1 - vegY0) * 100f));
+                // 纯几何覆盖率（上界）：投影框并集栅格化。
+                // ⚠ 这是**上界**——每株的 AABB 里大部分是空的（灌木是稀疏叶簇不是实心球），
+                //   所以它一定高估真实叶片占比。但它的价值在于**可跨状态比较且不受动画影响**：
+                //   株数翻倍、单株变大，都会如实反映，而颜色判据会被过曝/欠曝直接骗过去。
+                {
+                    float vegCells = Mathf.Max(1f, (vegX1 - vegX0) * (vegY1 - vegY0) * GRID * GRID);
+                    sb.AppendFormat("cover 框并集占画幅 {0:0.0}% / 占vegbox {1:0}%   单株平均 {2:0.0} 格 (n={3})\n",
+                                    gridFill / (float)(GRID * GRID) * 100f,
+                                    gridFill / vegCells * 100f,
+                                    gridArea / (float)Mathf.Max(1, vegIn), vegIn);
+                }
                 sb.AppendFormat("out-of-frame 原因: 左{0} 右{1} 上{2} 下{3} 身后{4}\n",
                                 offSide[0], offSide[1], offSide[2], offSide[3], offSide[4]);
                 sb.AppendLine("画幅 4x4 格 occupancy (行=上→下, 列=左→右):");

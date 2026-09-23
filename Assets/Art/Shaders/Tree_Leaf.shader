@@ -217,10 +217,20 @@ Shader "WaterProject/TreeLeaf"
                 //   2 = 受光总量 (ambient + sun*ndl)/4  ← 判"太阳到底到没到叶片上"
                 //   3 = 高度梯度 h01
                 //   4 = 三个梯度叠完的 albedo 本身（把光照摘掉）
+                //   5 = **覆盖率标记**：常量不透明色，用来量"叶片真的遮了多少像素"
+                // ⚠ 为什么需要 5：上一版想用一个不依赖颜色的判据，把每株的投影框
+                //   栅格化求并集，结果报"占 vegbox 92%"——可同一个框的中位色是
+                //   (151,193,237) 天空蓝。原因是灌木是 41 片下垂薄叶、**AABB 里几乎全是空气**，
+                //   包围盒把覆盖率高估到完全失去判别力。真正要量的是渲染出来的剪影。
+                // ⚠ 数像素时**不要**直接数这个颜色：取帧还要过 ACES + saturation 22 + contrast 8，
+                //   常量会被搬走。正确做法是"开标记取一帧 / 关标记取一帧"，
+                //   在植被框内做差分 —— 植物从绿变品红（差值巨大），
+                //   而天空和沙根本不经过本 shader（差值为 0），水只在植被框最下缘一点，量时排掉。
                 if (_Dbg > 0.5 && _Dbg < 1.5) return half4(Nlit * 0.5 + 0.5, 1.0);
                 if (_Dbg > 1.5 && _Dbg < 2.5) return half4(saturate((ambient + mainLight.color * ndl) * 0.25), 1.0);
                 if (_Dbg > 2.5 && _Dbg < 3.5) return half4(h01.xxx, 1.0);
-                if (_Dbg > 3.5)               return half4(albedo, 1.0);
+                if (_Dbg > 3.5 && _Dbg < 4.5) return half4(albedo, 1.0);
+                if (_Dbg > 4.5)               return half4(1.0, 0.0, 1.0, 1.0);
 
                 col = MixFog(col, IN.fogCoord);
                 return half4(col, 1.0);
