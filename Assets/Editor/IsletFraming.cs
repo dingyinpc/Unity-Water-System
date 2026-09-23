@@ -164,7 +164,22 @@ namespace WaterProject.EditorTools
                         string box = ScreenAABB(cam, r);
                         if (box != null) sb.AppendFormat("{0,-22} screenbox {1}\n", "", box);
                     }
-                    else if (isPalm) { palmTot++; if (inside) palmIn++; }
+                    else if (isPalm)
+                    {
+                        palmTot++; if (inside) palmIn++;
+                        // 逐棵打印：画面上"树像是躺着的"，而只报 in/out 计数**问不到**这件事。
+                        // ⚠ 别看 upTilt：椰树网格的树干在局部 **Z** 上（菜单93 靠
+                        //   UprightPalm 才把它立起来），所以立着的时候 upTilt 恒等于
+                        //   90±lean —— 上一轮我就是被这个读数骗过一次，以为"树没躺"。
+                        //   真正要判的是 rise = 网格最高点高出根部多少米，树高 9 m。
+                        float rise = top.y - t.position.y;
+                        float upTilt = Vector3.Angle(t.up, Vector3.up);
+                        string pbox = ScreenAABB(cam, r);
+                        sb.AppendFormat("{0,-22} wpos={1} top={2} vp=({3:0.00},{4:0.00}) d={5:0.0} rise={6:0.0}m upTilt={7:0.0}°{8} {9}{10}\n",
+                            n, Fmt(t.position), Fmt(top), vp.x, vp.y, vp.z, rise, upTilt,
+                            rise < 5f ? "  ⚠比树高矮太多，像是躺着的" : "",
+                            inside ? "IN" : "OUT", pbox == null ? "" : " box" + pbox);
+                    }
                     else
                     {
                         vegTot++;

@@ -608,17 +608,32 @@ namespace WaterProject.EditorTools
             //   所以正解是**忽略文件自带比例**、globalScale 保持 1，
             //   而不是拿 100 去乘 —— 乘 100 只是把 0.01 补回来，再叠上
             //   useFileScale=false 就变成乘了两次，直接冲出 873。
+            string fixInfo = "";
             var mi = AssetImporter.GetAtPath(PalmFbx) as ModelImporter;
             if (mi != null)
             {
                 mi.useFileScale = false;
                 mi.globalScale  = 1f;
+                // ⚠ 和菜单94 的巨岩**同一个根因**：Blender 侧沿 +Z 建高度，
+                //   不烘轴转换进 Unity 就是躺着的。证据是菜单93 自己打印的
+                //     boundsLocal = (5.55, 5.59, **9.00**)
+                //   —— 9 m 是树干长度，它落在 **Z** 上；立着的树应该是 Y=9。
+                //   所以 PlacePalm 的 Euler(lean, yaw, 0) 不是在"把树放歪"，
+                //   而是让一根已经躺着的树干绕着视线转：lean 38° 的那棵在画面里
+                //   就是一根横在沙丘上的棍子。构图探针量到的 tilt=1~30° 之所以
+                //   看着"没躺"，是因为它量的是 t.up —— 而 t.up 根本不是树干的轴。
+                //   改完之后 boundsLocal 必须变成 (5.55, 9.00, 5.59)，这是验收点。
+                mi.bakeAxisConversion = true;
                 mi.SaveAndReimport();
-                var rm = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(PalmFbx);
-                var rmf = rm != null ? rm.GetComponentInChildren<MeshFilter>() : null;
-                s_palmDiag = " scaleFix(file=off,g=1) reimportBounds=" +
-                             (rmf != null && rmf.sharedMesh != null
-                                 ? rmf.sharedMesh.bounds.size.ToString("F2") : "n/a");
+                // ⚠ **必须重新 Load 一次**：SaveAndReimport 会把原来那份资产对象换掉，
+                //   继续用 598 行那份 fbx 去建 Prefab，等于导入器的改动白设。
+                //   上一轮就是卡在这：改了 bakeAxisConversion、.meta 也确实被写了，
+                //   但打印出来的 boundsLocal 纹丝不动 —— 不是"轴转换没用"，是**根本没吃到**。
+                fbx = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(PalmFbx);
+                var rmf = fbx != null ? fbx.GetComponentInChildren<MeshFilter>() : null;
+                fixInfo = " scaleFix(file=off,g=1,axis=baked) reimportBounds=" +
+                          (rmf != null && rmf.sharedMesh != null
+                              ? rmf.sharedMesh.bounds.size.ToString("F2") : "n/a");
             }
 
             IsletTerrain.EnsureFolder(MatFolder + "/Islet");
@@ -711,7 +726,9 @@ namespace WaterProject.EditorTools
             // 手填的 y 在下次菜单91 重长之后就会飘在半空或埋进沙里
             var prefab = AssetDatabase.LoadAssetAtPath<UnityEngine.GameObject>(pp);
             int placed = 0;
-            s_palmDiag = "";
+            // ⚠ 这里原来是 `s_palmDiag = "";` —— 把上面导入器写的 scaleFix **擦掉了**，
+            //   于是探针里永远看不到它，"看不出跑没跑"被当成了"没跑"，白查一轮。
+            s_palmDiag = fixInfo;
 
             // 重跑要**替换**而不是再叠一排（和建模侧同一个道理）
             foreach (var old in UnityEngine.Object.FindObjectsOfType<UnityEngine.GameObject>())
@@ -741,6 +758,14 @@ namespace WaterProject.EditorTools
 
         static string s_palmDiag = "";
 
+        /// <summary>把"树干沿局部 Z 轴"转成"沿 +Y"的直立旋转。
+        /// 判据：摆完之后 <c>bounds.max.y - 根部 y</c> 要 ≈ 树高 9，且
+        /// <c>boundsWorld.y</c> 档 ≈ 9~10。
+        /// ⚠ 符号是**量出来的**：先用 -90，Palm_Islet_L 量到 boundsWorld.y=10.53
+        ///   但 bounds.max.y 只比根部高 1.9 ⇒ 整棵树从根部**往下挂**了 7 m，
+        ///   倒插在沙里 —— 说明树干在局部 <b>-Z</b>。所以这里给 +90。</summary>
+        static readonly Quaternion UprightPalm = Quaternion.Euler(90f, 0f, 0f);
+
         static void PlacePalm(UnityEngine.GameObject prefab, string nm, Vector3 xz,
                               float lean, float yaw, float scale, ref int placed)
         {
@@ -750,7 +775,15 @@ namespace WaterProject.EditorTools
             var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
             g.name = nm;
             g.transform.position = new Vector3(xz.x, y - 0.10f, xz.z);   // 吃进土 10cm，别站在水膜上
-            g.transform.rotation = Quaternion.Euler(lean, yaw, 0f);
+            // ⚠ 树干在**局部 +Z** 上，不在 +Y：build_palm 是拿 Blender 的 Y 当高度建的，
+            //   而 build_rock / build_scrub 用的是 Z —— 我自己在同一批资产里不一致。
+            //   后果：Euler(lean, yaw, 0) 里的 lean 被当成了"**离地仰角**"而不是
+            //   "偏离竖直多少"，lean=1° 的那棵等于平躺在沙丘上（画面上就是横着的棍子），
+            //   而前景那棵 lean=38° 反而"看起来像树"，所以一直没被发现。
+            //   bakeAxisConversion 证实救不了：开了之后 reimportBounds 仍是 (5.55,5.59,9.00)
+            //   —— 因为 FBX 导出时 axis 参数已经换算过，Unity 侧没东西可烘。
+            //   所以在这里右乘一个直立旋转，把"立着"和"倾斜"分开，lean 才回到字面意思。
+            g.transform.rotation = Quaternion.Euler(lean, yaw, 0f) * UprightPalm;
             g.transform.localScale = Vector3.one * scale;
             placed++;
 
