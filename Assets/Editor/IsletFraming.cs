@@ -119,6 +119,7 @@ namespace WaterProject.EditorTools
                 int vegTot = 0, vegIn = 0, vegOccl = 0, vegTested = 0;
                 int palmTot = 0, palmIn = 0;
                 float yMin = float.PositiveInfinity, yMax = float.NegativeInfinity;
+                float vegX0 = 9f, vegY0 = 9f, vegX1 = -9f, vegY1 = -9f;
                 var cells = new int[4, 4];
                 var offSide = new int[5];  // 0左 1右 2上 3下 4身后
 
@@ -163,6 +164,23 @@ namespace WaterProject.EditorTools
                     else
                     {
                         vegTot++;
+                        // 聚合"植被到底占屏幕上哪一块"——覆盖率量的是这个框，
+                        // 不是我拿截图肉眼圈的框（圈错过一次：中位亮度 197→196 纹丝不动，
+                        // 因为那个框大半是岛脊上方的云，种多少植物都改不动中位数）。
+                        string vb = ScreenAABB(cam, r);
+                        if (vb != null)
+                        {
+                            var pr = vb.Trim('(', ')').Split(',');
+                            float bx0 = float.Parse(pr[0]), by0 = float.Parse(pr[1]);
+                            float bx1 = float.Parse(pr[2]), by1 = float.Parse(pr[3]);
+                            if (inside)
+                            {
+                                if (bx0 < vegX0) vegX0 = bx0;
+                                if (by0 < vegY0) vegY0 = by0;
+                                if (bx1 > vegX1) vegX1 = bx1;
+                                if (by1 > vegY1) vegY1 = by1;
+                            }
+                        }
                         if (inside)
                         {
                             vegIn++;
@@ -190,6 +208,12 @@ namespace WaterProject.EditorTools
                 sb.AppendFormat("palm  {0}/{1} in frame\n", palmIn, palmTot);
                 sb.AppendFormat("veg   {0}/{1} in frame  (遮挡抽测 {2} 个，其中被挡 {3})\n",
                                 vegIn, vegTot, vegTested, vegOccl);
+                // 覆盖率量这个框：它是**所有灌木/草团投影的并集**，不是肉眼圈的。
+                sb.AppendFormat("vegbox {0}\n",
+                    vegX1 < vegX0 ? "（无：一个都没进画幅）"
+                    : string.Format("({0:0.###},{1:0.###},{2:0.###},{3:0.###})  占画幅 {4:0}%",
+                                    vegX0, vegY0, vegX1, vegY1,
+                                    (vegX1 - vegX0) * (vegY1 - vegY0) * 100f));
                 sb.AppendFormat("out-of-frame 原因: 左{0} 右{1} 上{2} 下{3} 身后{4}\n",
                                 offSide[0], offSide[1], offSide[2], offSide[3], offSide[4]);
                 sb.AppendLine("画幅 4x4 格 occupancy (行=上→下, 列=左→右):");

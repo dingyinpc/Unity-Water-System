@@ -1192,13 +1192,21 @@ namespace WaterProject.EditorTools
             for (int i = 0; i < 2200 && placed < 700; i++)
             {
                 float b = (float)(rnd.NextDouble() * 140.0 - 70.0);
-                float rr = (float)(22.0 + rnd.NextDouble() * 23.0);
+                // 22~45 → **4~44**：原来只扫外环，岛心 22 m 圆盘全空（见下面高度闸那段）。
+                float rr = (float)(4.0 + rnd.NextDouble() * 40.0);
                 float x = 52f + Mathf.Sin(b * Mathf.Deg2Rad) * rr;
                 float z = 104f + Mathf.Cos(b * Mathf.Deg2Rad) * rr;
                 tried++;
 
                 float h = IsletTerrain.LandHeight(x, z);
-                if (h < 0.9f || h > 6.2f) { rejH++; continue; }      // 太低吃浪、太高是岩核
+                // 上限 6.2→8.5、半径 22~45→4~44：这两条是**算出来的**，不是试出来的。
+                //   ShoreProfile(s,34,26,5.0,16,3.4) 在岛内饱和到 26*0.055+5.0 = **6.43 m**，
+                //   再叠 `+4.0*clamp01((s-34)/22)`（岛心 s≈44 ⇒ +1.82）≈ **8.25 m**。
+                //   所以老上限 6.2 把**整片岛顶高原**都拒了，植物只拿到沙滩到肩膀那条窄带。
+                //   而 rr=22+23 只扫外环，岛半径 44 ⇒ **中心 22 m 圆盘（占岛面积 25%）一株没有**。
+                //   ⇒ 这就是"岛基本是座白沙丘"（岛体固定框中位亮度 我 197 / 参考 30）的成因。
+                // 岩核不靠这条高度闸保护：另有"距 (64,130) <13 m"的距离闸 + 坡度闸 0.55。
+                if (h < 0.9f || h > 8.5f) { rejH++; continue; }
                 if (SlopeAt(x, z) > 0.55f) { rejSlope++; continue; } // 陡坡留裸岩，草站不住
                 if (Mathf.Sqrt((x - 64f) * (x - 64f) + (z - 130f) * (z - 130f)) < 13f)
                 { rejCore++; continue; }                              // 别把巨岩埋进灌木里
