@@ -34,7 +34,7 @@ Material:
     - _Dbg: 0
     - _FrondVar: 0
     - _HeightShade: 0
-    - _SheetLit: 0
+    - _SheetLit: 1
     - _TipLift: 0
     - _TransPower: 8
     - _TransStrength: 1.2
