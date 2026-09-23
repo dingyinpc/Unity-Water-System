@@ -987,8 +987,15 @@ namespace WaterProject.EditorTools
             // 31m 高的网格坐在被一起改矮的岩核上（IsletTerrain 里 14.0f → 3.2f）。
             // ringCheck=10：底圈半径 10.6（× 角向起伏 0.78~1.22），量的是"脚底 vs 地形"，
             //   取 10m 正好落在**最窄**那一侧之外 ⇒ 报出来的差值是保守的。
+            // ⚠ 等比 1.8 已经**被形状量否掉**：它把凸出从 35 px 抬到 158 px（目标 284），
+            //   但同时把岩放成 34.4% 画幅宽，而参考只有 12.2% —— 参考的岩是**窄高**
+            //   (宽高比 0.39)，我这块是矮宽 (1.76)。等比放大在错的方向上。
+            //   现在水平回到 1.0，只把高度拉到 2.6：
+            //     目标凸出 284 px = 13.1°；我的林线仰角 atan(11.5/150) ≈ 4.4°
+            //     ⇒ 岩顶要到 17.5° ⇒ 离地 tan(17.5°)·188 ≈ 56 m
+            //     ⇒ 现在露出地面 20 m ⇒ 2.6 倍。渲完用同一把尺复量，不看感觉。
             PlaceRock(cliffPrefab, "Rock_Monolith", new Vector3(64f, 0f, 130f),
-                      111f, 1.00f, 6.0f, 10.0f, ref placed);
+                      111f, 1.00f, 6.0f, 12.0f, ref placed, 2.6f);
 
             // ── 礁石 ──
             // 不手写坐标，改成"绕岛心朝某个方位角往外找那条 h≈0.45 的水线"：
@@ -1061,24 +1068,31 @@ namespace WaterProject.EditorTools
         /// ringCheck&gt;0 时在这圈半径上量"脚底 vs 地形"，正数=埋得住，负数=悬空（会看见缝）。
         /// </summary>
         static void PlaceRock(UnityEngine.GameObject prefab, string nm, Vector3 xz,
-                              float yaw, float scale, float bury, float ringCheck, ref int placed)
+                              float yaw, float scale, float bury, float ringCheck,
+                              ref int placed, float yScale = 1f)
         {
             if (prefab == null) return;
             var mfc = prefab.GetComponentInChildren<MeshFilter>();
             var m = mfc != null ? mfc.sharedMesh : null;
             if (m == null) { s_rockDiag += " " + nm + ":NO-MESH"; return; }
 
+            // ⚠ yScale 只拉长**高度**，水平不动。存在的理由：探针量到
+            //   参考的岩体是"窄高"（占画幅宽 12.2%、高 229 px、宽高比 0.39），
+            //   我这块是"矮宽"（34.4% 宽、142 px、宽高比 1.76）。
+            //   等比放大 1.8 把凸出从 35 px 抬到 158 px（目标 284），
+            //   但同时把岩放得更宽 —— 方向错，所以要的是**只长高**。
+            float sy = scale * yScale;
             float h = IsletTerrain.LandHeight(xz.x, xz.z);
-            float y = h - bury - m.bounds.min.y * scale;
+            float y = h - bury - m.bounds.min.y * sy;
 
             var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
             g.name = nm;
             g.transform.position = new Vector3(xz.x, y, xz.z);
             g.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            g.transform.localScale = Vector3.one * scale;
+            g.transform.localScale = new Vector3(scale, sy, scale);
             placed++;
 
-            float footY = y + m.bounds.min.y * scale;
+            float footY = y + m.bounds.min.y * sy;   // ⚠ 用 sy：脚底随高度缩放一起动
             if (ringCheck > 0f)
             {
                 float worst = float.MaxValue;
