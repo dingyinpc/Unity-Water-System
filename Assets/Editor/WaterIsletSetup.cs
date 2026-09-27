@@ -948,10 +948,52 @@ namespace WaterProject.EditorTools
             // 乘子怎么定：显示要 ×1.97（B 29→57），而 sRGB + ACES toe 段
             //   显示 ≈ 线性^0.45 ⇒ 线性要乘 1.97^(1/0.45) ≈ 4.3，取 4.0。
             //   四档**同乘一个系数**：层间对比保持不变，不然又变成糖果条。
+            // ── 第 4 轮：**压跨度**，不是抬电平 ──
+            // 上一轮把三档一起抬亮去命中 p50，结果 p75 的 B 冲到 192、p90 顶格 255
+            // （荧光青），已回退。回退后复量（Tools/rock_dist.py，框取菜单99 的
+            // Rock_Monolith screenbox 0.654,0.177,0.827,0.560）：
+            //   bare p50(7,22,34)  p75(13,54,83)  p90(16,75,113)
+            //   目标 p50(8,35,59)  p75(12,45,72)  p90(33,89,104)
+            //   **跨度 p90/p50 (G) = 3.41，参考只有 2.54** ← 病在这里
+            // 反照率是**乘性**的：整体抬亮只能平移曲线，移不了跨度（抬了中位亮端就飞）。
+            // 所以这一轮只动一件事：把三档之间的比例收窄 —— Mid 作锚不动，
+            //   Lo ×1.30（0.0680→0.0884，G）+ Hi ×0.82（0.1440→0.1181，G）
+            //   ⇒ Hi/Lo 的 G 从 2.12 压到 **1.34**
+            // 逐通道同乘（不改色相）：Lo 的 B/G 仍 1.65、Hi 仍 1.58。
+            // 预期：暗端抬起来 ⇒ p50 上升；亮端压下去 ⇒ p75/p90 回落；跨度向 2.54 收。
+            // ⚠ 这一轮**不动**色相：p90 的 B/G 实测 1.51 vs 参考 1.17（参考亮端更暖），
+            //   那是另一件事，等跨度收住了再单独开一轮，别两个旋钮一起拧。
+            // ── 第 4b 轮：压三档**没动 p50** ⇒ 跨度是光照跨度，用加性补光压 ──
+            // 4a 复量（Lo×1.30 / Hi×0.82，Hi/Lo 2.12→1.34）：
+            //   p50(7,22,33) **纹丝不动**  p75(12,53,80)  p90(15,69,105)  跨度 3.41→3.14
+            // ⇒ **p50 那批像素不在 Lo 档**：Lo 是岩体底部，这个机位被地形/水挡掉了；
+            //   跨度的主体是**同一档上的受光面 vs 阴影面**（≈12.7 倍线性比）。
+            //   反照率档位只能改"哪一档更亮"，改不了"同一档内部差多少"。
+            // 治法：给岩加**加性**补光（Emission 当假 GI）——参考照片里岩的暗面被
+            //   亮天空/沙地反弹抬起来，本场景没有 GI，用加性项等价代替。
+            //   量级是算出来的不是试出来的：暗面线性 G≈0.0043、受光面≈0.055（由显示值
+            //   22/69 按 0.45 指数反推），要跨度落到 2.54（线性比 7.87）需两端各加
+            //   F≈0.0031，而 Mid 档反照率 G=0.1008 ⇒ **E≈0.03**，取 0.035。
+            // ── 第 4e 轮：补光**证伪并关闭**，只留压三档 ──
+            // 实测曲线（Tools/rock_dist.py，同一框）：
+            //   E=0      p50(7,22,33) p75(12,53,80) p90(15,69,105) 跨度 3.14  合分 **95** ← 留这一档
+            //   E=0.035  p50(7,23,34) p75(12,54,82) p90(15,70,106) 跨度 3.04  合分 96
+            //   E=0.18   p50(8,26,41) p75(13,58,88) p90(16,74,112) 跨度 2.85  合分 97
+            //   E=0.30   p50(9,30,46) p75(14,61,94) p90(16,77,117) 跨度 **2.57**✅ 合分 101
+            //   参考     p50(8,35,59) p75(12,45,72) p90(33,89,104) 跨度 2.54
+            // ⇒ 加性补光**能把跨度压到达标**，但它是**整体抬电平**：p50 抬起来的同时
+            //   p75 也被抬过目标（45→61），三点合分反而从 95 退到 101。
+            //   这条曲线说明"跨度"和"分布形状"是两个病，补光只治前者。
+            // ⇒ 剩下的形状差（参考是"大片暗台面 + 少数强受光边"= 平台+长尾，
+            //   我们是连续渐变）**不可能靠材质修**：那是岩体**台面波纹造出的
+            //   连续明暗**，属于建模侧 PROFILE 的事，或干脆承认色板是从另一种
+            //   岩形上量的。见色板 JSON 的 _round4。
+            // 参数保留在 ShadedMat 里（以后要给别的材质补天光可以直接用）。
             s_rockDiag = "";
-            var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.0104f, 0.0680f, 0.1120f), 0.10f, 0.0f, white);
-            var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.0160f, 0.1008f, 0.1636f), 0.07f, 0.0f, white);
-            var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.0232f, 0.1440f, 0.2280f), 0.05f, 0.0f, white);
+            const float rockFill = 0f;
+            var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.0135f, 0.0884f, 0.1456f), 0.10f, 0.0f, white, rockFill);
+            var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.0160f, 0.1008f, 0.1636f), 0.07f, 0.0f, white, rockFill);
+            var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.0190f, 0.1181f, 0.1870f), 0.05f, 0.0f, white, rockFill);
             var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.0344f, 0.2892f, 0.1928f), 0.04f, 0.0f, white);
             foreach (var mm in new[] { rockLo, rockMid, rockHi, moss })
             {
@@ -1074,7 +1116,7 @@ namespace WaterProject.EditorTools
 
         static void PlaceRock(UnityEngine.GameObject prefab, string nm, Vector3 xz,
                               float yaw, float scale, float bury, float ringCheck,
-                              ref int placed, float yScale = 1f)
+                              ref int placed, float yScale = 1f, bool standUpForRock = true)
         {
             if (prefab == null) return;
             var mfc = prefab.GetComponentInChildren<MeshFilter>();
@@ -1095,7 +1137,10 @@ namespace WaterProject.EditorTools
 
             var g = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(prefab);
             g.name = nm;
-            g.transform.rotation = Quaternion.Euler(0f, yaw, 0f) * StandUpZ;
+            // standUpForRock=false：矮趴 boulder（Reef 系列）本身就是 Y-up，套 StandUpZ 会把它翻倒插进沙里。
+            g.transform.rotation = standUpForRock
+                ? Quaternion.Euler(0f, yaw, 0f) * StandUpZ
+                : Quaternion.Euler(0f, yaw, 0f);
             g.transform.localScale = new Vector3(scale, scale, sy);
 
             // ⚠ 落地**不猜哪个轴是高度**，改成量出来再平移校正：
@@ -1146,8 +1191,10 @@ namespace WaterProject.EditorTools
                 // 落在 h=0 那条线上等于埋进水面膜里，反而看不见。
                 if (IsletTerrain.LandHeight(cx + dx * rr, cz + dz * rr) > 0.45f) continue;
                 float r2 = rr + jitter;
+                // ⚠ Reef 不需要 StandUpZ：它是矮而趴的 boulder (`BR=1.70,SQUASH=0.68` ⇒ 直径 3.4、高≈2.0)，
+                //   参考里就是水线边那一团团 boulder，不是柱状巨岩。所以 pass standUpForRock=false。
                 PlaceRock(prefab, nm, new Vector3(cx + dx * r2, 0f, cz + dz * r2),
-                          (bearing * 7f) % 360f, scale, 0.55f * scale, 0f, ref placed);
+                          (bearing * 7f) % 360f, scale, 0.55f * scale, 0f, ref placed, 1f, false);
                 return;
             }
             s_rockDiag += " " + nm + ":skip-no-waterline@" + Mathf.RoundToInt(bearing);
@@ -1505,7 +1552,8 @@ namespace WaterProject.EditorTools
             return AssetDatabase.LoadAssetAtPath<Texture2D>(p);
         }
 
-        static Material ShadedMat(string nm, Shader sh, Color rgb, float smooth, float metal, Texture2D baseMap)
+        static Material ShadedMat(string nm, Shader sh, Color rgb, float smooth, float metal, Texture2D baseMap,
+                                  float emis = 0f)
         {
             string p = MatFolder + "/Islet/" + nm + ".mat";
             if (sh == null) { WriteProbe("!! ShadedMat " + nm + " shader NULL\n"); return null; }
@@ -1516,6 +1564,27 @@ namespace WaterProject.EditorTools
             if (baseMap != null) m.SetTexture("_BaseMap", baseMap);
             if (m.HasProperty("_Smoothness"))  m.SetFloat("_Smoothness", smooth);
             if (m.HasProperty("_Metallic"))    m.SetFloat("_Metallic", metal);
+            // emis>0：加性补光（假 GI）。参考照片里岩的暗面被亮天空与沙地反弹抬起，
+            // 本场景没有 GI（无烘焙/无 SSGI），用**加性**项代替 —— 加性对暗像素的相对
+            // 提升远大于受光像素，正好压 p90/p50 这个跨度；乘性反照率做不到这件事。
+            if (emis > 0f && m.HasProperty("_EmissionColor"))
+            {
+                m.EnableKeyword("_EMISSION");
+                m.SetColor("_EmissionColor", new Color(rgb.r * emis, rgb.g * emis, rgb.b * emis, 1f));
+                m.globalIlluminationFlags = UnityEngine.MaterialGlobalIlluminationFlags.None;
+            }
+            else if (m.HasProperty("_EmissionColor"))
+            {
+                // ⚠ 这里 `DisableKeyword` / `LocalKeyword` **都清不掉**已经开过的
+                //   `_EMISSION`（实测：清完 m_ValidKeywords 里仍列出它；而从未开过
+                //   emission 的 Islet_PalmBark 是干净的，可作对照）。不去删材质资产
+                //   重建（会换 GUID、弄断 prefab 引用）—— 把颜色按死成黑即可：
+                //   黑 emission 对渲染贡献为零，已用 rock_dist 复量证明与未开时逐位一致。
+                //   代价只是多一个 shader 变体，不值得为它动资产。
+                m.DisableKeyword("_EMISSION");
+                m.SetColor("_EmissionColor", Color.black);
+                m.globalIlluminationFlags = UnityEngine.MaterialGlobalIlluminationFlags.None;
+            }
             EditorUtility.SetDirty(m);
             AssetDatabase.SaveAssets();
             return m;

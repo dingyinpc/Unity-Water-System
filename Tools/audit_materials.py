@@ -504,8 +504,16 @@ for mp in MATS:
     if g:
         guid2mat[g.group(1)] = mp
 missing = 0
+skipped_bin = []
 for sc in glob.glob(os.path.join(ROOT, 'Assets/Scenes/*.unity')):
-    t = io.open(sc, encoding='utf-8').read()
+    # ⚠ 二进制场景读不出文本 ⇒ ⑦ 这项对它等于没做。早先这里直接 io.open(utf-8) 会**崩**，
+    #   而崩掉的审计脚本看起来也"没报错"，于是 IsletScene（岩/苔/水都在这个场景里）
+    #   从来没被这项查过。改成**跳过 + 显式记账**，让缺口可见。
+    if not open(sc, 'rb').read(16).startswith(b'%YAML'):
+        print('  %-40s ! 二进制序列化 ⇒ 文本检查覆盖不到' % os.path.basename(sc))
+        skipped_bin.append(os.path.basename(sc))
+        continue
+    t = io.open(sc, encoding='utf-8', errors='replace').read()
     refs = set(re.findall(r'm_Materials:.*?guid: ([0-9a-f]{32})', t, re.S))
     refs |= set(re.findall(r'm_Shader: \{fileID: \d+, guid: ([0-9a-f]{32})', t))
     bad = [r for r in refs if r not in guid2mat and r not in GUID2SHADER]
@@ -513,6 +521,12 @@ for sc in glob.glob(os.path.join(ROOT, 'Assets/Scenes/*.unity')):
     for b in bad[:8]:
         print('      ! guid %s 在 Assets 下找不到对应资产（可能是包内/内置）' % b)
     missing += len(bad)
+
+if skipped_bin:
+    W += len(skipped_bin)
+    print('  ⚠ %d 个场景是二进制，⑦ 对它们等于没做：%s' % (len(skipped_bin), ', '.join(skipped_bin)))
+    print('    别把"审计通过"读成"这条线查过"。工程已是 m_SerializationMode=2（Force Text），')
+    print('    在编辑器里打开该场景并另存一次即可写回 YAML；在此之前这类场景的材质引用只能靠人看。')
 
 # ⑨ 一个编译单元里开了两个 UnityPerMaterial ⇒ fxc 直接拒绝编译
 head('⑨ 同一 shader（含其工程内 include）出现多个 UnityPerMaterial 块 ⇒ 编译必失败')
