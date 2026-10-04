@@ -56,6 +56,25 @@ WATER_BANDS = [
 BAND_X = {
     "horizon_haze":   (0.05, 0.36),
     "far_at_horizon": (0.38, 0.62),
+    # ── 第 12 轮自迭代（2026-10-04）：构图长大后的三处窗口修正 ──
+    #   · sky_mid：分级加宽后的巨岩（screenbox x0.617-0.894）伸进这条带，
+    #     全宽 p15 量到的是岩石 (8,67,41)——收进左半开阔天。
+    #   · lagoon_mid / shallow_over_sand：中景沙脊压在带内（暖沙 (215,220,212)
+    #     混进水的 p50），礁石群在左下——窗口取两陆之间的开阔水 x0.30-0.55。
+    #   ⚠ 目标值随窗口失效：用**同一窗口量参考1 自己**重测（"拿同一把尺量
+    #     参考帧"），见 TARGET_OVERRIDE。
+    # ⚠ sky_mid/sunlit_top/shadow_base **没有**公共窗口：两构图的树/岩位置不对齐
+    #   （我们的椰树 x0.20-0.33，参考的椰树 x0.15-0.45——避开了它的就撞上我们的）。
+    #   这三个带维持全宽原目标，"含椰树像素"记为已知污染，看趋势不看绝对值。
+    "lagoon_mid":         (0.30, 0.55),
+    "shallow_over_sand":  (0.30, 0.55),
+}
+
+# 窗口收窄后的目标 = 参考1 同窗同分位实测值（原色板值是全宽口径，不再可比）。
+# 量法与 main() 同一套：亮度排序取该分位像素的完整 RGB。
+TARGET_OVERRIDE = {
+    "lagoon_mid":         (57, 198, 212),
+    "shallow_over_sand":  (113, 157, 163),
 }
 
 
@@ -204,6 +223,7 @@ def targets():
         for k, v in spec[grp].items():
             if not k.startswith("_"):
                 t[k] = v
+    t.update(TARGET_OVERRIDE)      # 收窗后的同尺重测目标（见 BAND_X 注释）
     return t
 
 

@@ -189,6 +189,16 @@ namespace WaterProject.EditorTools
             var cd = cam.GetUniversalAdditionalCameraData();
             if (cd == null) cd = camGo.AddComponent<UniversalAdditionalCameraData>();
             cd.renderPostProcessing = true;
+            // ── SMAA（第 12 轮自迭代，2026-10-04）──
+            // 起因：像素化轮开的 **MSAA 4x 与 URP 14 的深度拷贝不相容**——实测
+            // _CameraDepthTexture 在水像素上整张读成远平面（vd 饱和 ≥6m、
+            // depthMix≡1），潟湖水的浅滩亮带从机制上被关死（隐藏水面验证湖底
+            // 实为浅沙，深度场却全场饱和）。关 MSAA 深度立刻复活 ⇒ 水正确性
+            // 优先于 MSAA，抗锯齿改走**相机级 SMAA**（URP 14 的 AA 在相机数据
+            // 上，不在 Volume——枚举名 SubpixelMorphologicalAntiAliasing，
+            // 两个大写 A，照 Volume 版的拼写会 CS0117）。
+            cd.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;   // 命名空间顶层枚举（不在类内）
+            cd.antialiasingQuality = AntialiasingQuality.High;
             // 第一人称漫游（2026-10-04 用户需求：WASD 移动 + 鼠标视角看风景）。
             // 自愈式补挂：已挂则跳过，重建骨架后也自动回来。
             if (camGo.GetComponent<WaterProject.Presentation.IsletFirstPerson>() == null)
@@ -1849,18 +1859,10 @@ namespace WaterProject.EditorTools
             //     "要动的是 _CloudCover"）。下一轮单独验 _CloudCover。
             bl.scatter.overrideState = true;    bl.scatter.value = 0.55f;
 
-            // ── SMAA 抗锯齿（第 12 轮自迭代，2026-10-04）──
-            // 起因：像素化轮开的 **MSAA 4x 与 URP 14 的深度拷贝不相容**——实测
-            // _CameraDepthTexture 在水像素上整张读成远平面（vd 饱和 ≥6m、
-            // depthMix≡1），潟湖水的浅滩亮带从机制上被关死（隐藏水面验证湖底
-            // 实为浅沙，深度场却全场饱和）。关 MSAA 深度立刻复活 ⇒ 水正确性
-            // 优先于 MSAA，抗锯齿改走后处理 SMAA（对几何边缘的效果与 MSAA 4x
-            // 同族，代价是全屏一次 pass，用户口径"不考虑性能"）。
-            if (!prof.TryGet<UnityEngine.Rendering.Universal.Antialiasing>(out var aa))
-            { aa = prof.Add<UnityEngine.Rendering.Universal.Antialiasing>(); AssetDatabase.AddObjectToAsset(aa, prof); }
-            aa.mode.overrideState = true;
-            aa.mode.value = UnityEngine.Rendering.Universal.AntialiasingMode.SubpixelMorphologicalAntialiasing;
-
+            // ⚠ SMAA 抗锯齿不在这里——URP 14 **没有** Antialiasing VolumeComponent
+            //   （照更新版本的 API 写会 CS0234，整个 Editor 程序集挂掉、Play 拒绝
+            //   启动、所有取帧变过期帧——本轮实测）。URP 14 的 AA 挂在**相机数据**
+            //   上，见 BuildShell 的 cd.antialiasing（SMAA + High）。
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
             return prof;
