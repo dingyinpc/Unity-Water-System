@@ -57,3 +57,4 @@ Docs/screenshots/_*.png
 # Python 工具脚本的字节码缓存
 __pycache__/
 *.pyc
+mark
