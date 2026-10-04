@@ -189,6 +189,10 @@ namespace WaterProject.EditorTools
             var cd = cam.GetUniversalAdditionalCameraData();
             if (cd == null) cd = camGo.AddComponent<UniversalAdditionalCameraData>();
             cd.renderPostProcessing = true;
+            // 第一人称漫游（2026-10-04 用户需求：WASD 移动 + 鼠标视角看风景）。
+            // 自愈式补挂：已挂则跳过，重建骨架后也自动回来。
+            if (camGo.GetComponent<WaterProject.Presentation.IsletFirstPerson>() == null)
+                camGo.AddComponent<WaterProject.Presentation.IsletFirstPerson>();
 
             // ── 后处理 ──
             var volGo = new UnityEngine.GameObject("GlobalVolume");
@@ -659,7 +663,10 @@ namespace WaterProject.EditorTools
             //   G 从 0.70 收到 0.66 把 (G-R) 拉回参考的 51（我实测 61）。
             var leaf = ShadedMat("Islet_PalmLeaf", leafSh != null ? leafSh
                                  : Shader.Find("Universal Render Pipeline/Lit"),
-                                 new Color(0.400f, 0.660f, 0.260f), 0.55f, 0.02f, white);
+                                 // ⚠ 2026-10-04 用户反馈"第一棵树叶子太鲜艳"——用户之眼压过
+                                 //   当年"冠内中位 142"的标定：×0.72 压暗（中位会掉到 ~100，
+                                 //   有意为之）。受光羽叶从 ~240 亮度回到 ~180 的哑光绿。
+                                 new Color(0.288f, 0.475f, 0.187f), 0.55f, 0.02f, white);
             if (leafSh != null)
             {
                 // 风参数：和潭/森林那批树同一档，全场才像被同一阵风吹
@@ -1706,7 +1713,8 @@ namespace WaterProject.EditorTools
             // 天空探针（sky_upper / sunlit_top）都取不到可复现的数 ——
             // 同一份配置连抓两帧，sunlit_top 能从偏差 19 跳到 69。
             // 漂得慢，帧与帧之间的云型就更接近，判据才有可比性。
-            m.SetVector("_CloudDrift", new Vector4(2.333f, 0f, 1f, 0f));
+            // ⚠ 2026-10-04 用户再反馈"云速太快，降一倍"：÷2 → (1.167, 0, 0.5)。
+            m.SetVector("_CloudDrift", new Vector4(1.167f, 0f, 0.5f, 0f));
             // 消光按**整列光学厚度 ≈ 6** 反推，不是凭手感：
             //   满云列厚 ≈ coverage×(顶-底) ≈ 0.8×2800 ≈ 2240 m
             //   要 tau≈6 ⇒ sigma ≈ 6/2240 ≈ 0.0027 /m

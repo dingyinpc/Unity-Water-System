@@ -151,6 +151,9 @@ namespace WaterProject.EditorTools
             //   画面和 GameView 长得不一样，拿它当验收依据等于自欺。
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGBHalf,
                                        RenderTextureReadWrite.Default);
+            // 2026-10-04：RT 自带 MSAA——否则 URP 资产开了 MSAA 这条离屏验收通道
+            // 也吃不到（实测 A/B 边缘逐像素相同），验收图会系统性比 Game 视图更"像素化"
+            rt.antiAliasing = 8;
             var prevTarget = cam.targetTexture;
             var prevActive = RenderTexture.active;
             float prevAspect = cam.aspect;

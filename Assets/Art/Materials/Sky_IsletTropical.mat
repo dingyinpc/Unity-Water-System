@@ -41,7 +41,7 @@ Material:
     - _SunGlow: 0.45
     - _SunPow: 2.6
     m_Colors:
-    - _CloudDrift: {r: 2.333, g: 0, b: 1, a: 0}
+    - _CloudDrift: {r: 1.167, g: 0, b: 0.5, a: 0}
     - _CloudLit: {r: 1.42, g: 1.5, b: 1.6, a: 1}
     - _CloudShade: {r: 0.26, g: 0.46, b: 0.66, a: 1}
     - _GroundColor: {r: 0.18, g: 0.23, b: 0.26, a: 1}
