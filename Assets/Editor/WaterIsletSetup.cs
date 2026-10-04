@@ -989,8 +989,16 @@ namespace WaterProject.EditorTools
             //   连续明暗**，属于建模侧 PROFILE 的事，或干脆承认色板是从另一种
             //   岩形上量的。见色板 JSON 的 _round4。
             // 参数保留在 ShadedMat 里（以后要给别的材质补天光可以直接用）。
+            // ── 第 7 轮（2026-10-04）：**补光在新几何上重开，E=0.20** ──
+            // 4e 的回退是在"旧几何（连续渐变受光）"上做的；第 6/7 轮把苔铺成毯、
+            // 台面沿方位角 ±8m 错断之后，裸岩的暗端大幅变深（E=0 时 p50(5,10,15)、
+            // 跨度 6.30、合分 155——比 4e 当年的 95 差得多，因为阴影面积变大了）。
+            // 在**新基线**上重测：E=0.20 → p50(6,15,24) p75(10,41,63) p90(15,67,103)
+            // 跨度 4.47 合分 **113**（5~7 轮最好成绩；p90 的 B=103 命中目标 104）。
+            // E 取 0.20 而不是更高的 0.30：第 4 轮曲线里 0.18→0.30 的代价是
+            // p75 过冲（45→61），现在的 p75=41 距目标 45 已很近，同一口坑不踩第二次。
             s_rockDiag = "";
-            const float rockFill = 0f;
+            const float rockFill = 0.20f;
             var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.0135f, 0.0884f, 0.1456f), 0.10f, 0.0f, white, rockFill);
             var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.0160f, 0.1008f, 0.1636f), 0.07f, 0.0f, white, rockFill);
             var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.0190f, 0.1181f, 0.1870f), 0.05f, 0.0f, white, rockFill);
