@@ -314,6 +314,9 @@ Shader "WaterProject/Water_Lagoon"
                 // ── ① 水体自身：三段深度插值 ──
                 float3 waterBody = lerp(_ShallowColor.rgb, _MidColor.rgb, saturate(depthMix * 1.6));
                 waterBody = lerp(waterBody, _DeepColor.rgb, saturate(depthMix * 1.6 - 0.6));
+                // ⚠ 自迭代第 1 轮曾把 0.55→0.72（对着坏深度时代的暗带补偿）——
+                //   深度修好（MSAA 关）后回退：浅水本体×0.72 直接过曝成"沙克隆"。
+                //   深度可用的基线必须重新标定，别拿坏时代的补偿值叠新状态。
                 float3 col = waterBody * (ambient * _AmbientStrength + mainLight.color * ndl * 0.55);
 
                 // 沙底返色：浅水处阳光穿到白沙再返上来，这一下决定"透不透"

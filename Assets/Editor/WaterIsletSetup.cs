@@ -325,6 +325,15 @@ namespace WaterProject.EditorTools
             // Mid/Deep 而沙底返色又已经衰减光。所以：
             //   _Absorb 0.46→0.30、_SandAbsorb 0.34→0.24 —— 让"亮青绿"这段拉长，
             //   中段还吃得到沙底；_GlitterStrength 1.6→1.05 收近处的过冲。
+            // ⚠ 自迭代轮（2026-10-04）回写：_SkyZenith/_SkyHorizon 改为**与
+            //   Sky_Tropical 同源**（0.01,0.42,0.80 / 0.60,0.76,0.93）——旧字面量是
+            //   另一片天（G>B 绿调），实测远水蓝霾 far_at_horizon 偏差 51→22、
+            //   深水红泄漏 65→49（潭线"水面倒的天要=真实的天"同款教训）。
+            //   ⚠ 本体色/_SandReturn 曾在同一轮抬亮后**回退**：深度修好（MSAA 关）
+            //   之后底搬运/沙返光从死变活，旧值叠加新亮度直接把近水渲成"沙克隆"
+            //   ——这些常数要按"深度可用"的状态重新标定，一次一个旋钮。
+            //   前提：深度纹理必须可用（见 IsletVolume 的 SMAA 注释——
+            //   MSAA 4x 会整张废掉深度，勿开回）。
             m.SetColor("_ShallowColor", new Color(0.300f, 0.780f, 0.740f));
             // ⚠ _MidColor 0.64→0.82 是**拧错了旋钮**：lagoon_mid 只从偏差 45 挪到 43，
             //   而 shallow_over_sand 从 37 恶化到 57。抬上来的那点亮度全从
@@ -410,8 +419,8 @@ namespace WaterProject.EditorTools
             // ⚠ 这里还留着一处**未解决的依据冲突**：上面那句"参考1 远水 (210,243,217)
             //   G 高于 B"和尺子自己的 far_at_horizon 目标 (168,206,231) **B>G** 相反。
             //   两者不是同一个取样，谁对没定 —— 近带调不下来，很可能就卡在这。
-            m.SetColor("_SkyZenith",  new Color(0.120f, 0.440f, 0.700f));
-            m.SetColor("_SkyHorizon", new Color(0.700f, 0.860f, 0.840f));
+            m.SetColor("_SkyZenith",  new Color(0.010f, 0.420f, 0.800f));
+            m.SetColor("_SkyHorizon", new Color(0.600f, 0.760f, 0.930f));
             m.SetFloat("_FresnelPow",  4.2f);
             m.SetFloat("_SkyReflect",  1.0f);
 
@@ -1839,6 +1848,18 @@ namespace WaterProject.EditorTools
             //     剩下的就是**云铺满了那条带**（本文件 _CloudLit 处早就写着
             //     "要动的是 _CloudCover"）。下一轮单独验 _CloudCover。
             bl.scatter.overrideState = true;    bl.scatter.value = 0.55f;
+
+            // ── SMAA 抗锯齿（第 12 轮自迭代，2026-10-04）──
+            // 起因：像素化轮开的 **MSAA 4x 与 URP 14 的深度拷贝不相容**——实测
+            // _CameraDepthTexture 在水像素上整张读成远平面（vd 饱和 ≥6m、
+            // depthMix≡1），潟湖水的浅滩亮带从机制上被关死（隐藏水面验证湖底
+            // 实为浅沙，深度场却全场饱和）。关 MSAA 深度立刻复活 ⇒ 水正确性
+            // 优先于 MSAA，抗锯齿改走后处理 SMAA（对几何边缘的效果与 MSAA 4x
+            // 同族，代价是全屏一次 pass，用户口径"不考虑性能"）。
+            if (!prof.TryGet<UnityEngine.Rendering.Universal.Antialiasing>(out var aa))
+            { aa = prof.Add<UnityEngine.Rendering.Universal.Antialiasing>(); AssetDatabase.AddObjectToAsset(aa, prof); }
+            aa.mode.overrideState = true;
+            aa.mode.value = UnityEngine.Rendering.Universal.AntialiasingMode.SubpixelMorphologicalAntialiasing;
 
             EditorUtility.SetDirty(prof);
             AssetDatabase.SaveAssets();
