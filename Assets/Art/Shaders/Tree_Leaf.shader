@@ -187,6 +187,11 @@ Shader "WaterProject/TreeLeaf"
                 float tipMask = saturate((IN.vcol.r - 0.55) / 0.45) * _TipLift;
 
                 float3 albedo = tex.rgb * _BaseColor.rgb;
+                // ⚠ 第 11 轮（潟湖岛灌木"绿团太粗糙"）：顶点色 A = 明暗乘子。
+                //   建模侧在穹顶内核烘"深处 0.18 → 顶部 ~1.0"、叶基→梢 0.55→1.0；
+                //   旧资产（PondScene 树 / 椰树）A 全为 1 ⇒ lerp(0.55,1,1)=1，
+                //   完全向后兼容，潭线那批树一个像素都不会变。
+                albedo *= lerp(0.55, 1.0, IN.vcol.a);
                 albedo = lerp(albedo, albedo * float3(1.95, 1.60, 0.48), tipMask);
 
                 // ── 两层**与视角无关**的梯度，这才是把 luma_spread 从 33 抬向 136 的主力 ──

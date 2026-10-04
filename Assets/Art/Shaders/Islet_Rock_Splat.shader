@@ -83,20 +83,62 @@ Shader "WaterProject/IsletRockSplat"
                 return o;
             }
 
+            // ── 第 10b 轮（用户："大礁石也太粗糙了"）：程序化风化细节 ──
+            // 真实海蚀岩的表面 = 层理条带（风化沿地层推进）+ 大小风化斑。
+            // 全用正弦/值噪声，零贴图（潟湖线"不考虑性能、零外部素材"口径）。
+            // ⚠ 世界空间驱动：细节不随实例旋转走（巨岩绕 Y 摆放过，物体空间
+            //   会让同一次"风化"在不同朝向的实例上读成不同图案）。
+            float Hash21(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * 0.1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.x + p3.y) * p3.z);
+            }
+            float VNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                return lerp(lerp(Hash21(i), Hash21(i + float2(1, 0)), u.x),
+                            lerp(Hash21(i + float2(0, 1)), Hash21(i + float2(1, 1)), u.x), u.y);
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
+                float3 nrm = normalize(IN.nrmWS);
+                float2  wxz = IN.posWS.xz;
+
                 // ── 高度三档（替代旧 Lo/Mid/Hi 三个按整面涂的槽）──
                 float h01 = saturate((IN.posZ - _HMin) / max(_HMax - _HMin, 1e-4));
                 float t1  = saturate(h01 / max(_MidPoint, 1e-4));
                 float t2  = saturate((h01 - _MidPoint) / max(1.0 - _MidPoint, 1e-4));
                 float3 rock = lerp(lerp(_RockLo.rgb, _RockMid.rgb, t1), _RockHi.rgb, t2);
 
-                // ── 苔：顶点色权重按像素插值 —— 粗糙感的正解就在这一行 ──
-                float3 albedo = lerp(rock, _MossColor.rgb, saturate(IN.col.r));
+                // ── 层理条带：三个尺度都只随高度变，水平方向缓慢倾斜漂移 ──
+                // （岩层近似水平 ⇒ 条带天然横贯；漂移让它不至于像等高线）
+                float drift = (wxz.x + wxz.y) * 0.018 + sin(h01 * 9.4) * 0.35;
+                float strata = 0.055 * sin(h01 * 220.0 + drift)
+                             + 0.075 * sin(h01 * 71.0 + drift * 1.7 + 2.1)
+                             + 0.060 * sin(h01 * 23.0 + drift * 0.6 + 4.4);
+                // ── 风化斑：两倍频 fbm（大面积渍 + 小麻点）──
+                float blot = (VNoise(wxz * 0.55) - 0.5) * 0.13
+                           + (VNoise(wxz * 2.30) - 0.5) * 0.07;
+                rock *= clamp(1.0 + strata + blot, 0.78, 1.22);
+
+                // 离色：每个中尺度条带内"上缘干灰(B↑G↓)/下缘湿暗"，±4% ——
+                // 纯明度条带没有颜色变化时读成塑料刻线
+                float bandPh = frac(h01 * 23.0 + drift * 0.6);
+                rock *= lerp(float3(0.965, 0.985, 1.045), float3(1.030, 1.015, 0.960),
+                             smoothstep(0.0, 1.0, bandPh));
+
+                // ── 苔：顶点色权重按像素插值（粗糙感的正解）+ 噪声破边 ──
+                // 噪声让苔的边界不再跟随顶点渐变的等值线（那条线仍隐约可读）
+                float mossW = saturate(IN.col.r)
+                            * (0.72 + 0.56 * VNoise(wxz * 2.2 + 13.7));
+                float3 albedo = lerp(rock, _MossColor.rgb, mossW);
 
                 Light L = GetMainLight();
-                float ndl = saturate(dot(normalize(IN.nrmWS), L.direction));
-                half3 amb = SampleSH(normalize(IN.nrmWS)) * _AmbStrength;
+                float ndl = saturate(dot(nrm, L.direction));
+                half3 amb = SampleSH(nrm) * _AmbStrength;
 
                 // 填充 = albedo × 常数（第 7 轮 E=0.20 的等价移植）
                 float3 col = albedo * (L.color * ndl + amb + _FillLight);
