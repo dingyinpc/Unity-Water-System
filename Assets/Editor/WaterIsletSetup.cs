@@ -1049,7 +1049,7 @@ namespace WaterProject.EditorTools
             //   ⇒ 高度是**建模侧**的事：build_rock.py 的 PROFILE 已从 3 个
             //     台面循环扩到 7 个（天然 62.6 m、柱宽仍 26.8 m），这里回到不拉伸。
             PlaceRock(cliffPrefab, "Rock_Monolith", new Vector3(64f, 0f, 130f),
-                      111f, 1.00f, 6.0f, 10.0f, ref placed);
+                      111f, 1.00f, 6.0f, 20.0f, ref placed);   // ringCheck 10→20：第8轮加宽后基座最大半径≈20m，10m 已在岩体足迹内、量不到脚边地形
 
             // ── 礁石 ──
             // 不手写坐标，改成"绕岛心朝某个方位角往外找那条 h≈0.45 的水线"：
