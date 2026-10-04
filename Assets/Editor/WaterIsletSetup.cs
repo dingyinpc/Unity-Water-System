@@ -994,7 +994,11 @@ namespace WaterProject.EditorTools
             var rockLo  = ShadedMat("Islet_Rock_Lo",  lit, new Color(0.0135f, 0.0884f, 0.1456f), 0.10f, 0.0f, white, rockFill);
             var rockMid = ShadedMat("Islet_Rock_Mid", lit, new Color(0.0160f, 0.1008f, 0.1636f), 0.07f, 0.0f, white, rockFill);
             var rockHi  = ShadedMat("Islet_Rock_Hi",  lit, new Color(0.0190f, 0.1181f, 0.1870f), 0.05f, 0.0f, white, rockFill);
-            var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.0344f, 0.2892f, 0.1928f), 0.04f, 0.0f, white);
+            // ⚠ 岩色第 6 轮（2026-10-04）：0.0344/0.2892/0.1928 时受光苔面被太阳 3.2
+            //   打到 (207,253,209)，在 rock_dist 判据里整批落进"亮爆"——苔在画面里有
+            //   31.4%，能被计数的只有 15%。压到 ×0.40 后岩体上部亮苔清零、暗苔中位
+            //   (13,44,28)（色板 moss_cap (23,76,62) 同量级），苔占比 12%→20%。
+            var moss    = ShadedMat("Islet_RockMoss", lit, new Color(0.0140f, 0.1160f, 0.0770f), 0.04f, 0.0f, white);
             foreach (var mm in new[] { rockLo, rockMid, rockHi, moss })
             {
                 if (mm == null || !mm.HasProperty("_SpecularHighlights")) continue;
@@ -1262,8 +1266,16 @@ namespace WaterProject.EditorTools
             //   ⇒ "远处植被是不是过曝"这个问题**仍然开着**，
             //     但要用一个**不依赖被调量**的掩码重做
             //     （例如按物体名只量 Bush_/Tuft_ 的像素，或按屏幕位置固定框）。
+            // ⚠ 岩色第 6 轮连带修正（2026-10-04）：0.21/0.46/0.29 在太阳 3.2 下渲成
+            //   (207,253,209) 的"薄荷绿蛋"，距自家色板 foliage_lit (50,112,71) 偏 5 倍，
+            //   也是岩框苔占比的污染源（框底 20% 的亮 G>B 全是它）。按实测锚点反解：
+            //   受光穹顶 G 显示 253→目标 112 ⇒ 线性 ÷6.2 ⇒ (0.032,0.069,0.044)。
+            //   实测：灌木入暗苔判定、岩框苔占比 15%→20%、亮爆 59%→54%；
+            //   岛肩读成深绿树篱带（菜单96 老账"岛体中位 197 vs 参考 30"的亮度缺口
+            //   由这一刀关掉大半）。棕榈叶 (0.40,0.66,0.26) 不动——它按自己的
+            //   冠内中位 142 标定，是另一条线。
             var scrub = ShadedMat("Islet_ScrubLeaf", leafSh != null ? leafSh : lit,
-                                  new Color(0.210f, 0.460f, 0.290f), 0.35f, 0.0f, white);
+                                  new Color(0.032f, 0.069f, 0.044f), 0.35f, 0.0f, white);
             if (leafSh != null)
             {
                 // 风参数和椰树同一档 —— 全场必须像被同一阵风吹
