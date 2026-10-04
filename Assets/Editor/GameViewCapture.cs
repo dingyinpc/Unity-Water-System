@@ -151,9 +151,13 @@ namespace WaterProject.EditorTools
             //   画面和 GameView 长得不一样，拿它当验收依据等于自欺。
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGBHalf,
                                        RenderTextureReadWrite.Default);
-            // 2026-10-04：RT 自带 MSAA——否则 URP 资产开了 MSAA 这条离屏验收通道
-            // 也吃不到（实测 A/B 边缘逐像素相同），验收图会系统性比 Game 视图更"像素化"
-            rt.antiAliasing = 8;
+            // ⚠ 这张 RT 的 MSAA **必须保持 1**（2026-10-04 轮实锤）：
+            //   曾为了离屏图的抗锯齿写成 8 —— 但 URP 14 的"MSAA RT × 深度拷贝"
+            //   病根跟着 RT 走，跟管线资产无关（资产早就是 1）：只要渲染目标是
+            //   MSAA 的，_CameraDepthTexture 在水像素上就全是远平面，
+            //   于是**每一张验收截图的水都是"均匀暗水"伪影**，水色调了四轮全白调。
+            //   抗锯齿由相机级 SMAA（BuildShell 里 cd.antialiasing）兜底。
+            rt.antiAliasing = 1;
             var prevTarget = cam.targetTexture;
             var prevActive = RenderTexture.active;
             float prevAspect = cam.aspect;

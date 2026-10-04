@@ -151,6 +151,19 @@ namespace WaterProject.EditorTools
                 var col = go.GetComponent<TerrainCollider>();
                 if (col != null) Object.DestroyImmediate(col);  // 纯观赏场景，1025² 碰撞体白建
 
+                // ── 解析地面高度图（水的深度源，见 IsletFloorHBinder.cs 文件头）──
+                // 2026-10-04 轮：URP14 的 _CameraDepthTexture 在本机两条取帧通路里都不可信
+                //（离屏 cam.Render() 全远平面；GameView 通路 ~10m 外读数膨胀、~20m 归零，
+                //  查遍 MSAA/RT/QualitySettings/RendererFeature 无果）。
+                // 和上面 SetHeights 用**同一次 LandHeight** 烘一张 R16 给水采样 ——
+                // 不是把解析式抄进 HLSL（那才是"同一个物理量写两份会漂"）。
+                var floorTex = BakeFloorH();
+                string fp = TexFolder + "/Islet_FloorH_R16.asset";
+                var oldFloor = AssetDatabase.LoadAssetAtPath<Texture2D>(fp);
+                if (oldFloor != null) AssetDatabase.DeleteAsset(fp);
+                AssetDatabase.CreateAsset(floorTex, fp);
+                BindFloorHToWater(AssetDatabase.LoadAssetAtPath<Texture2D>(fp));
+
                 EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                 EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
 
@@ -185,6 +198,52 @@ namespace WaterProject.EditorTools
 
         // ═════════════════════════════════════════════════════════ 高度场
 
+        // ── 解析地面高度图 ──
+        // 513²（2m 格）对 vd 只回答"这一格多深"，岸线泡沫带 0.3m 靠 bilinear 足够平滑。
+        // 高度域 [-8, +6]：rim 最低 -7.5（LandHeight 收口），大岛岩核最高 ~5.9。
+        const int   FloorRes  = 513;
+        const float FloorHMin = -8f, FloorHMax = 6f;
+
+        static Texture2D BakeFloorH()
+        {
+            var tex = new Texture2D(FloorRes, FloorRes, TextureFormat.R16, false, true)
+            { name = "Islet_FloorH_R16", wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear };
+            var raw = new ushort[FloorRes * FloorRes];
+            float step = SizeXZ / (FloorRes - 1);
+            for (int zi = 0; zi < FloorRes; zi++)
+            {
+                float wz = Origin.z + zi * step;      // 行序：zi=0 → v=0 → wz=Origin.z（南缘），与 UV 同序
+                for (int xi = 0; xi < FloorRes; xi++)
+                {
+                    float wx = Origin.x + xi * step;
+                    float y = LandHeight(wx, wz);
+                    raw[zi * FloorRes + xi] = (ushort)(Mathf.Clamp01((y - FloorHMin) / (FloorHMax - FloorHMin)) * 65535f);
+                }
+            }
+            tex.SetPixelData(raw, 0);
+            tex.Apply(false, false);
+            return tex;
+        }
+
+        /// <summary>把高度图挂到 IsletWater 的 IsletFloorHBinder（没有就建）。
+        /// menu 91 / 92 都调用 —— 91 可能跑在 92 之前（水还不存在，只落盘资产）。</summary>
+        public static void BindFloorHToWater(Texture2D tex)
+        {
+            var water = UnityEngine.GameObject.Find("IsletWater");
+            if (water == null)
+            { WriteProbe("floorH baked; IsletWater 不存在，等 menu92 再绑\n"); return; }
+            var b = water.GetComponent<WaterProject.Presentation.IsletFloorHBinder>();
+            if (b == null) b = water.AddComponent<WaterProject.Presentation.IsletFloorHBinder>();
+            b.floorH = tex;
+            b.rect = new Vector4(Origin.x, Origin.z, SizeXZ, FloorHMin);
+            b.heightMax = FloorHMax;
+            b.Bind();                                  // 编辑模式立刻生效（非 Play 预览也正确）
+            EditorUtility.SetDirty(b);
+            WriteProbe("floorH bound to IsletWater  res=" + FloorRes
+                       + "  y=[" + FloorHMin + "," + FloorHMax + "]\n");
+        }
+
+
         /// <summary>世界 (x,z) 处的地面高度（米，水面 = 0）。全场唯一一份地形真值。</summary>
         public static float LandHeight(float x, float z)
         {
@@ -218,11 +277,18 @@ namespace WaterProject.EditorTools
         /// 所以这里做成"近深远浅"：相机脚前 -2.6m，远处礁盘抬到 -0.9m。
         /// 沙波噪声幅度也从 0.31 降到 0.22 —— 浅架上一旦起伏超过半米，
         /// 折射搬上来的水底就会把整片淡青打成花。
+        ///
+        /// 2026-10-04 追加**远端沉底**：量具（同窗重测参考1）在 y0.10-0.34 带
+        /// 的目标是暗青 (30,160,170) —— 他们的礁盘在远端是**真的沉下去**的，
+        /// 平推到 -0.9 的盘子永远给不出这条暗带。曲线 = 近段抬到浅盘
+        /// （亮青绿带）+ t&gt;0.23 之后 smoothstep 沉到 -5.5（外潟湖）。
+        /// 岛/沙洲都走 LandHeight 的 max 项，不受影响。
         /// </summary>
         static float LagoonFloor(float x, float z)
         {
             float t = Mathf.Clamp01((z + 120f) / 470f);
-            float y = Mathf.Lerp(-2.6f, -0.9f, Mathf.Sqrt(t));
+            float y = Mathf.Lerp(-2.6f, -1.0f, Mathf.Sqrt(Mathf.Clamp01(t * 2.2f)));
+            y -= 4.5f * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.23f) / 0.17f));
             y += 0.22f * (Fbm(x * 0.019f, z * 0.019f, 3) - 0.5f);
             y += 0.13f * (Fbm(x * 0.082f + 11f, z * 0.082f - 7f, 2) - 0.5f);
             return y;

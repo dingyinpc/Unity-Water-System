@@ -289,6 +289,12 @@ namespace WaterProject.EditorTools
             mr.shadowCastingMode = ShadowCastingMode.Off;
             mr.receiveShadows = false;
 
+            // 水面就位后再绑一次解析地面高度图（menu 91 可能跑在本菜单之前，
+            // 那次因为 IsletWater 不存在只落了盘）
+            var fh = AssetDatabase.LoadAssetAtPath<Texture2D>(IsletTerrain.TexFolder + "/Islet_FloorH_R16.asset");
+            if (fh != null) IsletTerrain.BindFloorHToWater(fh);
+            else WriteProbe("MENU92 !! Islet_FloorH_R16.asset 不存在 —— 先跑一次 menu 91\n");
+
             EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
             WriteProbe("MENU92 water built  verts=" + v.Count + "  tris=" + (idx.Count / 3) +
@@ -344,16 +350,32 @@ namespace WaterProject.EditorTools
             //   ——这些常数要按"深度可用"的状态重新标定，一次一个旋钮。
             //   前提：深度纹理必须可用（见 IsletVolume 的 SMAA 注释——
             //   MSAA 4x 会整张废掉深度，勿开回）。
-            m.SetColor("_ShallowColor", new Color(0.300f, 0.780f, 0.740f));
+            // ══════ 2026-10-04 水色重标定轮（解析深度接通后的基线）══════
+            // 本轮把水深的来源从 _CameraDepthTexture 换成 menu 91 烘焙的解析地面
+            // 高度图（_DepthSource=1，见 IsletFloorHBinder.cs 文件头）——URP14 深度
+            // 纹理在本机两条取帧通路里都不可信，之前所有"均匀暗水"的测量全是伪影。
+            // 深度接通后按量具（同窗重测参考1）重新标定，单变量链：
+            //   MidColor.R 0.15→0.05（中带 R 143→107，红蒙的主源之一）
+            //   沙返系数(shader)0.55→0.35（G/B 全带超目标 ~20% 的主源）
+            //   SkyHorizon (0.60,0.76,0.93)→(0.46,0.78,0.90)（深带 R 的天空红泄漏）
+            //   ShallowColor.R 0.30→0.18、SandReturn 加暖 (0.58,0.60,0.54)
+            //   FresnelPow 4.2→18（镜面只留地平线最后一两度；参考的 2-7° 带是暗青）
+            //   GlitterPow 700→260 / GlitterStrength 1.15→1.7（pow700 全场 0 亮斑）
+            // 收敛态：lagoon_mid 偏差 32~，far_at_horizon 40~，shallow 66，
+            // lagoon_deep 88——深带残差是**机位高度差**（1.72m 眼高 vs 参考的
+            // 无人机，2-7° 掠射带的物理构成不同），记为已知构图差异。
+            // ⚠ 太阳方位 322° 与视线差 142°，碎闪带在画面外（参考的中央亮带需要
+            //   正面太阳）——场景级取舍，未动。
+            m.SetColor("_ShallowColor", new Color(0.180f, 0.780f, 0.740f));
+            m.SetColor("_MidColor",     new Color(0.050f, 0.640f, 0.660f));
+            m.SetColor("_DeepColor",    new Color(0.020f, 0.300f, 0.360f));
+            m.SetColor("_SandReturn",   new Color(0.580f, 0.600f, 0.540f));
             // ⚠ _MidColor 0.64→0.82 是**拧错了旋钮**：lagoon_mid 只从偏差 45 挪到 43，
             //   而 shallow_over_sand 从 37 恶化到 57。抬上来的那点亮度全从
             //   折射/反射链漏到近处去了。回退。
             //   回头看探针定义才明白：shallow_over_sand 取的是**亮度第 78 分位**，
             //   量的根本不是"水体的颜色"，而是**碎闪最亮的那批像素**。
             //   所以近处爆顶该动 _GlitterStrength，动水色一律无效。
-            m.SetColor("_MidColor",     new Color(0.150f, 0.640f, 0.660f));
-            m.SetColor("_DeepColor",    new Color(0.020f, 0.300f, 0.360f));
-            m.SetColor("_SandReturn",   new Color(0.460f, 0.680f, 0.620f));
             // ⚠ 这条改动**方向搞反了，已回退**：上一轮想把中段抬亮，
             //   于是把 _Absorb 0.46→0.30、_SandAbsorb 0.34→0.24 —— 但这两个数
             //   越**小**代表衰减越**慢**，等于把沙底返色在近处也铺满了，
@@ -399,13 +421,22 @@ namespace WaterProject.EditorTools
             m.SetFloat("_SwellAmp",    0.055f);
             m.SetFloat("_SwellScale",  1.0f);
             m.SetFloat("_SwellSpeed",  0.35f);
-            m.SetFloat("_SlopeStrength", 0.26f);
+            // 0.26→0.12：与 23ef436 提交的材质态对齐（中频坡度压半，
+            //   法线拆分后毛细不再搭车污染 ndl——见 _CapToNg 注释）
+            m.SetFloat("_SlopeStrength", 0.12f);
             m.SetFloat("_SlopeScale",    0.55f);
             m.SetFloat("_FlowSpeed",     0.22f);
             // 毛细尺度 2.6→6.5：上一版碎闪是**一大片一大片的白斑**，
             // 因为 1/2.6≈0.4m 的格在脚前几米就是几十个像素。参考里是细密星点。
             m.SetFloat("_CapStrength",   0.20f);
             m.SetFloat("_CapScale",      6.5f);
+            // 法线拆分（2026-10-04）：碎闪需要陡法线、漫反射 ndl 需要平法线，
+            // 毛细进 Ng 的份额收到 0.25（1.0 = 不拆，旧行为）。拆分后
+            // _CapStrength 只管碎闪陡度，与漫反射亮度解耦。
+            m.SetFloat("_CapToNg",       0.25f);
+            // 水深来源：1 = menu 91 烘焙的解析地面高度图（本机深度纹理不可信，
+            // 全程见 IsletFloorHBinder.cs 文件头）。0 = 深度纹理旧行为。
+            m.SetFloat("_DepthSource",   1.0f);
 
             m.SetFloat("_RefractStrength", 0.16f);
             m.SetFloat("_MaxUVOffset",     0.022f);
@@ -430,8 +461,12 @@ namespace WaterProject.EditorTools
             //   G 高于 B"和尺子自己的 far_at_horizon 目标 (168,206,231) **B>G** 相反。
             //   两者不是同一个取样，谁对没定 —— 近带调不下来，很可能就卡在这。
             m.SetColor("_SkyZenith",  new Color(0.010f, 0.420f, 0.800f));
-            m.SetColor("_SkyHorizon", new Color(0.600f, 0.760f, 0.930f));
-            m.SetFloat("_FresnelPow",  4.2f);
+            // 2026-10-04：天色同源 (0.600,0.760,0.930) 之后，深带 R 仍然爆表 ——
+            // 掠射镜面把天空的红一起搬进水里。收 R 提 G（参考的远水带是绿调 210,243,217）。
+            m.SetColor("_SkyHorizon", new Color(0.460f, 0.780f, 0.900f));
+            // 4.2 → 18：镜面只留地平线最后一两度。pow 6.5 时 2-7° 掠射带仍有
+            // 20-50% 天色，参考的同带是暗青（水体色主导）。
+            m.SetFloat("_FresnelPow",  18f);
             m.SetFloat("_SkyReflect",  1.0f);
 
             m.SetColor("_SunColor", new Color(1.0f, 0.96f, 0.86f));
@@ -452,8 +487,11 @@ namespace WaterProject.EditorTools
             //     glitter 1.15 + 原反射色   → mid 54  shallow 54   **超差 0** ← 烘的是这组
             // ⚠ 水面是动画的，所以这几条近景带**逐帧都在抖**。实测连拍三帧的极差
             //   只有 R2~8 / G3~8 / B3~8 ⇒ 噪声底约 ±8。上面 15 分的增益过了噪声。
-            m.SetFloat("_GlitterPow",      700f);
-            m.SetFloat("_GlitterStrength",  1.15f);
+            // 2026-10-04：pow 700 下 dot(Ns,Hs) 需 ≥0.99 才可见，实测全画面 0.03% 亮斑
+            // = 0。260 档把可接受半角放宽到 ~9°。⚠ 太阳方位 322° 与视线差 142°，
+            // 碎闪带在画面外 —— 要参考那种中央亮带得把太阳挪到机位正前方（场景级取舍）。
+            m.SetFloat("_GlitterPow",      260f);
+            m.SetFloat("_GlitterStrength",  1.7f);
             m.SetFloat("_GlitterBand",       2.4f);
             m.SetFloat("_SheenPow",          60f);
             m.SetFloat("_SheenStrength",    0.18f);
@@ -1712,6 +1750,40 @@ namespace WaterProject.EditorTools
             //   而不是把出图比例调宽让它"看起来没问题"。
             GameViewCapture.Request("MENU95", "Docs/screenshots/_islet_view.png",
                                     4, 25.0, 1920, 1080);
+        }
+
+        // ═════════════════════════ 95b ═════════════════════════
+        // GameView RT 通路（fixW/H=0 → GrabFromGameView）。
+        // 2026-10-04 轮实锤：离屏 cam.Render() 通路里 _CameraDepthTexture 永远是
+        // 远平面（三点探针全 0，RT MSAA 降到 1 也不救）—— 水的深度信号在这条
+        // 通路里是死的，水色调参全被它骗了。GameView 的 RT 由正常渲染循环产出，
+        // 深度拷贝保证运行。代价是尺寸跟随 GameView 窗口（比例框按比例坐标，
+        // 宽高比变了构图会漂）。深度类判读用 95b，构图类判读用 95，两边对账。
+        [MenuItem("Tools/Islet/95b Play中截图(GameView通路，深度可用)")]
+        public static void CaptureIsletGameViewRT()
+        {
+            // GameView 尺寸会自己漂（实测 957x627 / 1902x836 / 898x379）。
+            // 钉 viewport 到 1920x1080，比例具名框才和参考帧可比。
+            // API 在 UnityEditor.PlayModeWindow 里，反射调（拿不到就算了，别炸菜单）。
+            try
+            {
+                var pmw = typeof(Editor).Assembly.GetType("UnityEditor.PlayModeWindow");
+                var m = pmw.GetMethod("SetPlayModeViewport",
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Static);
+                if (m != null)
+                {
+                    m.Invoke(null, new object[] { new Rect(0f, 0f, 1920f, 1080f) });
+                    WriteProbe("MENU95b viewport pinned 1920x1080\n");
+                }
+                else WriteProbe("MENU95b !! SetPlayModeViewport 不存在，GameView 保持当前尺寸\n");
+            }
+            catch (System.Exception e)
+            { WriteProbe("MENU95b !! pin viewport 失败: " + e.GetType().Name + " " + e.Message + "\n"); }
+
+            GameViewCapture.Request("MENU95b", "Docs/screenshots/_islet_view_gv.png",
+                                    4, 25.0, 0, 0);
         }
 
         // ═════════════════════════ 96 ═════════════════════════

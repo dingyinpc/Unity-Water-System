@@ -66,6 +66,7 @@ Shader "WaterProject/Water_Lagoon"
         _FlowSpeed        ("流动速度", Float) = 0.22
         _CapStrength      ("毛细强度(碎闪主力)", Float) = 0.22
         _CapScale         ("毛细尺度", Float) = 2.6
+        _CapToNg          ("毛细进漫反射法线的份额", Float) = 1.0
 
         // ── 折射（把水底搬上来）──
         _RefractStrength  ("折射偏移", Float) = 0.16
@@ -94,6 +95,7 @@ Shader "WaterProject/Water_Lagoon"
 
         // ── 环境 ──
         _AmbientStrength  ("环境光强度", Float) = 0.55
+        _DepthSource      ("水深来源 0深度纹理 1解析地面", Range(0,1)) = 0
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
     }
 
@@ -124,12 +126,19 @@ Shader "WaterProject/Water_Lagoon"
             TEXTURE2D(_WaveMap);
             SAMPLER(sampler_WaveMap);
 
+            // menu 91 烘焙的解析地面高度图 + 参数（IsletFloorHBinder 写的全局，
+            // 不进 UnityPerMaterial —— 全局纹理/向量有自己的槽）
+            TEXTURE2D(_IsletFloorH);
+            SAMPLER(sampler_IsletFloorH);
+            float4 _IsletFloorHRect;    // (originX, originZ, sizeXZ, hMin)
+            float  _IsletFloorHH;       // 高度上界
+
             CBUFFER_START(UnityPerMaterial)
                 float4 _ShallowColor, _MidColor, _DeepColor, _SandReturn;
                 float  _Absorb, _SandAbsorb, _Opacity;
                 float  _SwellAmp, _SwellScale, _SwellSpeed;
                 float  _WaveStrength, _WaveTileA, _WaveTileB, _WaveSpeedA, _WaveSpeedB;
-                float  _SlopeStrength, _SlopeScale, _FlowSpeed, _CapStrength, _CapScale;
+                float  _SlopeStrength, _SlopeScale, _FlowSpeed, _CapStrength, _CapScale, _CapToNg;
                 float  _RefractStrength, _MaxUVOffset, _Eta, _BottomBlend;
                 float4 _SkyZenith, _SkyHorizon;
                 float  _FresnelPow, _SkyReflect;
@@ -137,7 +146,7 @@ Shader "WaterProject/Water_Lagoon"
                 float  _GlitterPow, _GlitterStrength, _GlitterBand, _SheenPow, _SheenStrength;
                 float4 _FoamColor;
                 float  _FoamBand, _FoamStrength;
-                float  _AmbientStrength, _DebugMode;
+                float  _AmbientStrength, _DebugMode, _DepthSource;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -224,16 +233,19 @@ Shader "WaterProject/Water_Lagoon"
                               ValueNoise(q + float2(0, eps)) - n0) / eps;
             }
 
-            // 返回**坡度**而不是法线：反射/折射要温和的那一份，碎闪要陡峭放大的那一份，
-            // 用一份噪声求值喂两个用法，省一半采样。
+            // 返回**两组坡度**（float4）：xy = 毛细全量（给碎闪 Ns），zw = 毛细按
+            // _CapToNg 衰减后的温和版（给 Ng）。一份噪声求值喂两个用法，省一半采样。
+            // 为什么要拆：碎闪需要陡法线，而漫反射的 ndl = saturate(dot(Ng,L)) 需要
+            // 平法线 —— 毛细的逐像素抖动被 saturate 单向削顶后均值被压低，
+            // 实测整片水因此暗 1.6×（2026-10-04 轮）。_CapToNg=1.0 等价旧路径。
             // 两层：中频缓坡 + 高频毛细。**毛细那一层是碎闪的全部来源**。
             // fineW 让毛细在掠射时衰减：远处 1/_CapScale≈0.4m 的格在屏上只剩 1~2px，
             // 不衰减就会混叠成一排排等距暗纹（潭水那轮实测过，《05》D-9）。
-            float2 SkinGrad(float3 wp, float t, float fineW)
+            float4 SkinGrad(float3 wp, float t, float fineW)
             {
-                float2 mid  = NoiseSlope(wp.xz, _SlopeScale, float2(t * _FlowSpeed, t * _FlowSpeed * 0.7));
-                float2 cap  = NoiseSlope(wp.xz, _CapScale,   float2(-t * _FlowSpeed * 1.7, t * _FlowSpeed * 1.1));
-                return mid * _SlopeStrength + cap * (_CapStrength * fineW);
+                float2 mid = NoiseSlope(wp.xz, _SlopeScale, float2(t * _FlowSpeed, t * _FlowSpeed * 0.7)) * _SlopeStrength;
+                float2 cap = NoiseSlope(wp.xz, _CapScale,   float2(-t * _FlowSpeed * 1.7, t * _FlowSpeed * 1.1)) * (_CapStrength * fineW);
+                return float4(mid + cap, mid + cap * _CapToNg);
             }
 
             Varyings vert(Attributes v)
@@ -282,12 +294,14 @@ Shader "WaterProject/Water_Lagoon"
                 // 程序化皮肤 + 贴图波纹。加在这里而不是另开一份法线，
                 // 是因为下面 Ng（反射/折射）和 Ns（碎闪）**都**从 grad 派生，
                 // 一处相加就同时拿到"波纹让反射动起来"和"波纹让碎闪跳起来"。
-                float2 grad = SkinGrad(worldPos, t, fineW) + WaveSlope(worldPos, t);
+                float4 g = SkinGrad(worldPos, t, fineW);
+                float2 grad   = g.xy + WaveSlope(worldPos, t);   // 碎闪用（毛细全量）
+                float2 gradNg = g.zw + WaveSlope(worldPos, t);   // 漫反射/反射/折射用
 
                 // 两份法线：反射/折射用温和的，碎闪用放大过的。
                 // 静态混一份的话，pow 420 之下毛细那点坡度会被抹平，碎闪直接消失。
                 float3 swellN = normalize(IN.normalWS);
-                float3 Ng = normalize(lerp(swellN, float3(-grad.x, 1.0, -grad.y), 0.75));
+                float3 Ng = normalize(lerp(swellN, float3(-gradNg.x, 1.0, -gradNg.y), 0.75));
                 float3 Ns = normalize(float3(-grad.x * _GlitterBand, 1.0, -grad.y * _GlitterBand));
 
                 // ── 屏幕空间 UV：用 clipPos ──
@@ -296,11 +310,27 @@ Shader "WaterProject/Water_Lagoon"
                 float2 screenUV = sp.xy / sp.w;
 
                 // ── 水深 ──
+                // _DepthSource=1：vd = 0 − 解析地面高度（menu 91 烘焙的 R16，与
+                // TerrainData 同一次 LandHeight）。默认 0 = 深度纹理旧路径（空操作）。
+                // 换源的原因见 IsletFloorHBinder.cs 文件头：URP14 的深度纹理在本机
+                // 两条取帧通路里都不可信（离屏全远平面；GameView ~10m 外膨胀→20m 归零）。
                 // gap 是【视深】；vd 才是垂直水深，带宽与吸收都用它（《05》D-2/D-3）
-                float sceneDepth = LinearEyeDepth(SampleSceneDepth(screenUV), _ZBufferParams);
-                float waterDepth = IN.clipPos.w;
-                float gap = max(sceneDepth - waterDepth, 0.0);
-                float vd  = gap * max(abs(V.y), 0.06);
+                float vd;
+                if (_DepthSource > 0.5)
+                {
+                    // 足印外（clamp 到边缘）= rim 的 -7.5m → vd 7.5m：出礁盘即"深水"，物理正确
+                    float2 fuv = (worldPos.xz - _IsletFloorHRect.xy) / _IsletFloorHRect.z;
+                    float floorY = lerp(_IsletFloorHRect.w, _IsletFloorHH,
+                                        SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv, 0).r);
+                    vd = max(-floorY, 0.0);
+                }
+                else
+                {
+                    float sceneDepth = LinearEyeDepth(SampleSceneDepth(screenUV), _ZBufferParams);
+                    float waterDepth = IN.clipPos.w;
+                    float gap = max(sceneDepth - waterDepth, 0.0);
+                    vd  = gap * max(abs(V.y), 0.06);
+                }
 
                 float depthMix = 1.0 - exp(-vd * _Absorb);          // 水色：浅→深
                 float sandMix  = exp(-vd * _SandAbsorb);            // 沙底还能返多少光
@@ -320,7 +350,9 @@ Shader "WaterProject/Water_Lagoon"
                 float3 col = waterBody * (ambient * _AmbientStrength + mainLight.color * ndl * 0.55);
 
                 // 沙底返色：浅水处阳光穿到白沙再返上来，这一下决定"透不透"
-                col += _SandReturn.rgb * sandMix * (ambient * 0.5 + mainLight.color * ndl) * 0.55;
+                // 0.55→0.35（2026-10-04 轮）：解析深度接通后 sandMix 在全场都有
+                // 0.4~0.7，原系数把 G/B 一起抬超目标 ~20%；实测三带同步收敛。
+                col += _SandReturn.rgb * sandMix * (ambient * 0.5 + mainLight.color * ndl) * 0.35;
 
                 // ── ② 折射：真的把水底搬上来（浅水才搬）──
                 // 参考帧里沙洲之所以看得见，是因为水底**有形状有明暗**，
@@ -364,6 +396,9 @@ Shader "WaterProject/Water_Lagoon"
                 col = lerp(col, _FoamColor.rgb, saturate(foam) * _FoamStrength);
 
                 // ── 调试：先看通道通不通，再解释数值 ──
+                // （mode 3 曾在 2026-10-04 轮临时征用为深度链路解剖 R/G/B 三件套，
+                //   排查完 URP14 深度纹理问题后已复原；那次排查的结论与替代方案
+                //   见 IsletFloorHBinder.cs 文件头与 _DepthSource 注释）
                 if (_DebugMode > 2.5) return half4(grad.x * 0.5 + 0.5, grad.y * 0.5 + 0.5, fres, 1);
                 if (_DebugMode > 1.5) return half4(reflW, saturate(gl * 4), sandMix, 1);
                 if (_DebugMode > 0.5) return half4(saturate(vd / 6.0), saturate(depthMix), saturate(shallow), 1);
