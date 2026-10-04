@@ -645,8 +645,14 @@ namespace WaterProject.EditorTools
             var leafSh = Shader.Find("WaterProject/TreeLeaf");
             if (leafSh == null) WriteProbe("!! MENU93 TreeLeaf NOT FOUND —— 叶片会退回 URP Lit，不会随风动\n");
 
+            // ⚠ 2026-10-04 用户反馈"树干太光滑，真实的树应该有一圈圈的纹理"：
+            //   树干换程序生成的叶痕环纹贴图（Tools/gen_palm_bark.py，亮度乘子契约
+            //   均值≈1，纵向 10 圈/v 单位 ≈ 真实 ~0.2m 间距；u 整数频 ⇒ 绕干无缝）。
+            //   UV 契约见 build_palm.py：u=绕圈，v=高度×3。
+            var barkRings = EnsureRepeatTex("Assets/Art/Textures/Islet/T_PalmBark_Rings.png");
             var bark = ShadedMat("Islet_PalmBark", Shader.Find("Universal Render Pipeline/Lit"),
-                                 new Color(0.230f, 0.170f, 0.128f), 0.72f, 0.05f, white);
+                                 new Color(0.230f, 0.170f, 0.128f), 0.72f, 0.05f,
+                                 barkRings != null ? barkRings : white);
             var coco = ShadedMat("Islet_PalmCoco", Shader.Find("Universal Render Pipeline/Lit"),
                                  new Color(0.230f, 0.290f, 0.130f), 0.62f, 0.08f, white);
             // 上一版 (0.135,0.400,0.115) 是"草坪绿"：R 太低、B 也低，
@@ -1027,8 +1033,34 @@ namespace WaterProject.EditorTools
             }
             AssetDatabase.SaveAssets();
 
-            var cliffPrefab = RockPrefab(cliffFbx, "Islet_Rock_Cliff_01", rockLo, rockMid, rockHi, moss);
-            var reefPrefab  = RockPrefab(reefFbx,  "Islet_Rock_Reef_01",  rockLo, rockMid, rockHi, moss);
+            // ── 第 10 轮（2026-10-04 用户："石头做得太粗糙了"）──
+            // 粗糙的真身：材质槽是**按整面涂**的——苔/岩边界是 1~3m 大面块的硬边，
+            // 182m 外读成像素画。建模侧 paint_slots 已把苔权重烘进顶点色 R，
+            // 这里换上**按像素混合**的 splat 材质，四个旧槽全部指向同一只
+            // （槽本身只剩占位意义，高度三档改由 shader 按局部 Z 插值）。
+            // ⚠ _HMin/_HMax 必须 = build_rock.py PROFILE 的 z 范围（当前 -3/50），
+            //   改 PROFILE 必须同步这两行。
+            var splat = ShadedMat("Islet_Rock_Splat", Shader.Find("WaterProject/IsletRockSplat"),
+                                  Color.white, 0f, 0f, white);
+            if (splat != null)
+            {
+                splat.SetColor("_RockLo",    new Color(0.0135f, 0.0884f, 0.1456f));
+                splat.SetColor("_RockMid",   new Color(0.0160f, 0.1008f, 0.1636f));
+                splat.SetColor("_RockHi",    new Color(0.0190f, 0.1181f, 0.1870f));
+                splat.SetColor("_MossColor", new Color(0.0140f, 0.1160f, 0.0770f));
+                splat.SetFloat("_HMin",      -3f);
+                splat.SetFloat("_HMax",       50f);
+                splat.SetFloat("_MidPoint",   0.35f);
+                splat.SetFloat("_FillLight",  0.20f);
+                splat.SetFloat("_AmbStrength", 1.0f);
+                EditorUtility.SetDirty(splat);
+                AssetDatabase.SaveAssets();
+                s_rockDiag += " splat[ok]";
+            }
+            else WriteProbe("!! MENU94 IsletRockSplat NOT FOUND —— 岩石退回四槽 URP Lit\n");
+
+            var cliffPrefab = RockPrefab(cliffFbx, "Islet_Rock_Cliff_01", rockLo, rockMid, rockHi, moss, splat);
+            var reefPrefab  = RockPrefab(reefFbx,  "Islet_Rock_Reef_01",  rockLo, rockMid, rockHi, moss, splat);
             if (cliffPrefab == null || reefPrefab == null) return;
 
             // 重跑要替换而不是再叠一份
@@ -1082,7 +1114,8 @@ namespace WaterProject.EditorTools
 
         /// <summary>从一个单网格 FBX 造 Prefab，材质槽**按槽名**绑（序号会随 Blender 创建顺序变）。</summary>
         static UnityEngine.GameObject RockPrefab(UnityEngine.GameObject fbx, string nm,
-                                                 Material lo, Material mid, Material hi, Material moss)
+                                                 Material lo, Material mid, Material hi, Material moss,
+                                                 Material splat = null)
         {
             string pp = FbxFolder + "/" + nm + ".prefab";
             var tmp = (UnityEngine.GameObject)PrefabUtility.InstantiatePrefab(fbx);
@@ -1097,6 +1130,7 @@ namespace WaterProject.EditorTools
             var bound = new Material[src.Length];
             for (int i = 0; i < src.Length; i++)
             {
+                if (splat != null) { bound[i] = splat; continue; }   // 第 10 轮：全槽 splat
                 string n = src[i] != null ? src[i].name : "";
                 bound[i] = n.Contains("Moss") ? moss
                          : n.Contains("Hi")   ? hi
@@ -1577,6 +1611,24 @@ namespace WaterProject.EditorTools
             imp.sRGBTexture = true;
             imp.SaveAndReimport();
             return AssetDatabase.LoadAssetAtPath<Texture2D>(p);
+        }
+
+        /// <summary>加载一张程序生成的贴图，并确保导入设置正确（sRGB + Repeat 平铺）。
+        /// 与 T_WaveNormal 同一条教训：**导入设置决定资产含义**，生成器写对了
+        /// 不等于 Unity 读对了。</summary>
+        static Texture2D EnsureRepeatTex(string path)
+        {
+            var t = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (t == null) return null;
+            var imp = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (imp != null && (!imp.sRGBTexture || imp.wrapMode != TextureWrapMode.Repeat))
+            {
+                imp.sRGBTexture = true;
+                imp.wrapMode = TextureWrapMode.Repeat;
+                imp.SaveAndReimport();
+                t = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            }
+            return t;
         }
 
         static Material ShadedMat(string nm, Shader sh, Color rgb, float smooth, float metal, Texture2D baseMap,
