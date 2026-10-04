@@ -590,12 +590,16 @@ namespace WaterProject.EditorTools
             const int S = 512;
 
             // 干沙：暖白偏米，细颗粒 + 低频沙丘 + 极细 ripple
+            // ⚠ 第 12 轮（2026-10-04 远观验收）：dune 0.11→0.05——0.9 频的 FBM 在
+            //   1.6m 平铺下是"每张图 1~2 个大包"，远处读成一格一格的凸点网格
+            //   （鹅卵石纹）；幅度减半 + 平铺放大到 2.6m，包读成缓沙丘。
+            //   ripple 的斜向细纹保留——那是真实沙纹，近景靠它撑质感。
             var sandDry = MakeTex(TexFolder + "/Islet_SandDry.png", S, (u, v) =>
             {
                 float dune  = Fbm(u * 0.9f, v * 0.9f, 3);
                 float grain = Fbm(u * 9.0f, v * 9.0f, 2);
                 float rip   = 0.5f + 0.5f * Mathf.Sin((u * 7.0f + v * 2.0f) * 3.0f + dune * 4f);
-                float k = 0.47f + 0.11f * dune + 0.05f * (grain - 0.5f) + 0.035f * rip;
+                float k = 0.47f + 0.05f * dune + 0.05f * (grain - 0.5f) + 0.035f * rip;
                 return new Color(k, k * 0.965f, k * 0.855f);
             }, Color.white);
 
@@ -631,10 +635,14 @@ namespace WaterProject.EditorTools
 
             return new[]
             {
-                MakeLayer("SandDry", sandDry, 1.6f, new Color(1.00f, 0.985f, 0.94f), 0.18f),
+                // ⚠ 第 12 轮：tint 的 B 0.94→0.80——实测干沙 B/G=0.964，色板
+                //   sand_dry (225,218,192) 的 B/G=0.855，沙子偏冷（蓝色天光把 B 抬上去了，
+                //   纹理自带 0.855 也被淹没）；亮度与 R/G 已达标，只收蓝。
+                //   平铺 1.6→2.6m 与纹理侧的"减包"配套（见 sandDry 注释）。
+                MakeLayer("SandDry", sandDry, 2.6f, new Color(1.00f, 0.985f, 0.80f), 0.18f),
                 // 湿沙 smoothness 0.42→0.16：水下那片沙是被折射搬进画面的，
                 // 高光一亮就等于给水加了一层白底
-                MakeLayer("SandWet", sandWet, 1.4f, new Color(0.90f, 0.92f, 0.95f), 0.16f),
+                MakeLayer("SandWet", sandWet, 2.2f, new Color(0.88f, 0.91f, 0.86f), 0.16f),
                 MakeLayer("Rock",    rock,    4.0f, new Color(0.86f, 0.92f, 1.00f), 0.10f),
                 MakeLayer("Grass",   grass,   2.2f, new Color(0.92f, 1.00f, 0.90f), 0.12f),
             };
