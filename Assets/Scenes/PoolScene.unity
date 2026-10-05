@@ -507,11 +507,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   segments: 64
-  life: 1.15
-  stagger: 0.22
-  maxRadius: 1.9
-  bandWidth: 0.34
-  foamColor: {r: 0.92, g: 0.98, b: 1, a: 0.62}
+  life: 1.45
+  stagger: 0.26
+  maxRadius: 2.3
+  bandWidth: 0.44
+  foamColor: {r: 0.92, g: 0.98, b: 1, a: 0.85}
 --- !u!1 &641802349
 GameObject:
   m_ObjectHideFlags: 0

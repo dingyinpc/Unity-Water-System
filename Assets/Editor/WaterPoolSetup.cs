@@ -363,6 +363,17 @@ namespace WaterProject.EditorTools
                 go.AddComponent<WaterProject.Logic.PoolRippleRings>();   // 入水可见涟漪环（全程序化）
             var sfx = go.GetComponent<WaterProject.Logic.PoolSplashFX>();
             sfx.splashClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Pool_Splash.wav");
+            // 涟漪环参数每次重写：场景里序列化的是组件入场景那天的类默认值，
+            // 改 C# 默认不会追到已存在的实例（和上面 splashClip 同一个道理）
+            var rings = go.GetComponent<WaterProject.Logic.PoolRippleRings>();
+            if (rings != null)
+            {
+                rings.life = 1.45f;
+                rings.stagger = 0.26f;
+                rings.maxRadius = 2.3f;
+                rings.bandWidth = 0.44f;
+                rings.foamColor = new Color(0.92f, 0.98f, 1.0f, 0.85f);
+            }
 
             SaveScene();
             WriteProbe("POOL92 water built  verts=" + v.Length + "  tris=" + (idx.Length / 6) + "\n");

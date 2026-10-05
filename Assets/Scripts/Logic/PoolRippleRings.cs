@@ -23,15 +23,15 @@ namespace WaterProject.Logic
         [Tooltip("整环段数（软边环带 = 每段 4 圈顶点）")]
         public int segments = 64;
         [Tooltip("单环从出生到消失的扩散时长（秒）")]
-        public float life = 1.15f;
+        public float life = 1.45f;
         [Tooltip("相邻环的错拍（秒）：第 2/3 环晚这一点再出生")]
-        public float stagger = 0.22f;
+        public float stagger = 0.26f;
         [Tooltip("满强度时最外环的最大半径（米）")]
-        public float maxRadius = 1.9f;
+        public float maxRadius = 2.3f;
         [Tooltip("环带世界宽度（米，随扩散收到约 45%）")]
-        public float bandWidth = 0.34f;
+        public float bandWidth = 0.44f;
         [Tooltip("泡沫色（alpha 是满强度的峰值不透明度）")]
-        public Color foamColor = new Color(0.92f, 0.98f, 1.0f, 0.62f);
+        public Color foamColor = new Color(0.92f, 0.98f, 1.0f, 0.85f);
 
         Material _mat;
         readonly List<Ring> _live = new List<Ring>(8);
@@ -77,7 +77,12 @@ namespace WaterProject.Logic
             m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
             m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             m.SetInt("_ZWrite", 0);
-            m.renderQueue = 3000;
+            // ⚠ 队列必须晚于水面（Water_Pool = Transparent/3000）：透明物体按
+            //   "bounds 中心距相机"由远及近画 —— 水面网格盖满全池，bounds 中心
+            //   几乎总比环更近 ⇒ 水面排在环**之后**绘制，掠射角菲涅尔 alpha≈1
+            //   把整环覆盖（实测：环自检 vis=False、画面无环）。画在 3100 让环
+            //   合成在最终水色之上；深度测试仍在，池壁/压沿台等不透明体照常遮挡。
+            m.renderQueue = 3100;
             return m;
         }
 
@@ -177,11 +182,12 @@ namespace WaterProject.Logic
                     _free.Push(r);
                     continue;
                 }
-                // 半径先快后慢（easeOutQuad）；环带收到 ~45%；alpha 平方淡出
+                // 半径先快后慢（easeOutQuad）；环带收到 ~45%；alpha 指数 1.6 淡出
+                //（平方淡出实测偏快：环龄过半就几乎读不到，白 foam 存在感不足）
                 float ease = 1f - (1f - k) * (1f - k);
                 float radius = Mathf.Lerp(0.10f, maxRadius * Mathf.Clamp(r.str, 0.35f, 1.4f), ease);
                 float band = bandWidth * Mathf.Lerp(1f, 0.45f, k) * Mathf.Clamp(r.str, 0.4f, 1.2f);
-                float alpha = foamColor.a * (1f - k) * (1f - k);
+                float alpha = foamColor.a * Mathf.Pow(1f - k, 1.6f);
                 Rebuild(r.mesh, radius, Mathf.Max(band, 0.02f), alpha);
                 if (!r.logged)   // 取证：首个重建拍打一次渲染自检（网格/剔除/材质队列/层）
                 {
