@@ -15,6 +15,7 @@
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using System.Linq;                       // clip 挑选用 OfType/Where/FirstOrDefault
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -352,6 +353,129 @@ namespace WaterProject.EditorTools
             if (m == null) { m = new Material(sh); AssetDatabase.CreateAsset(m, p); }
             else m.shader = sh;
             return m;
+        }
+
+        // ═════════════════════════ 93 ═════════════════════════
+        // 第三人称人物（KayKit Knight，CC0，来源与许可见 Docs/外接组件记录.md）。
+        // FBX 由 Blender 无头管线从 GLB 转出（E:/Blender/Blender临时/build_character2.py，
+        // 76 个动作全烘焙成 takes）。本菜单做四件事：实例化+缩放、URP 材质贴图、
+        // 程序化 AnimatorController（Idle/Walk/Run 三态 Speed 阈值）、挂 PoolThirdPerson。
+        [MenuItem("Tools/Pool/93 建人物(模型+动画机+涟漪联动)")]
+        public static void BuildCharacter()
+        {
+            if (!EnsureNotPlaying("POOL93")) return;
+            Run("POOL93", () =>
+            {
+            if (EditorSceneManager.GetActiveScene().path != ScenePath)
+            { WriteProbe("POOL93 REFUSED: 先跑 Tools/Pool/90\n"); return; }
+
+            const string FbxPath = "Assets/Art/Models/Pool/Pool_Character.fbx";
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
+            if (prefab == null)
+            { WriteProbe("POOL93 REFUSED: 找不到 " + FbxPath + "（先跑 Blender 转换）\n"); return; }
+
+            var old = GameObject.Find("PoolCharacter");
+            if (old != null) Object.DestroyImmediate(old);
+
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            go.name = "PoolCharacter";
+            // 模型原生高 ~2.0m（报告 knight_dims.y），1.35m 水深要淹到大腿根 → 缩到 1.45m
+            go.transform.position = new Vector3(0f, -PoolD, 1.0f);
+            go.transform.localScale = Vector3.one * 0.9f;   // 1.8m 高：1.35m 水淹到大腿上部（0.72 时淹到脖子）
+
+            // ── 材质：FBX 不带贴图，自建 URP/Lit 贴 KayKit 渐变图集 ──
+            var mat = PoolKnightMaterial();
+            foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+                r.sharedMaterial = mat;
+
+            // ── 动画机：程序化三态控制器 ──
+            var clips = AssetDatabase.LoadAllAssetsAtPath(FbxPath)
+                .OfType<AnimationClip>().Where(c => !c.name.StartsWith("__")).ToArray();
+            WriteProbe("POOL93 clips(" + clips.Length + "): " +
+                       string.Join(", ", clips.Select(c => c.name).Take(12).ToArray()) +
+                       (clips.Length > 12 ? " ..." : "") + "\n");
+            var animator = go.GetComponent<Animator>();
+            if (animator == null) animator = go.AddComponent<Animator>();
+            animator.runtimeAnimatorController = BuildCharacterCtrl(clips);
+
+            // ── 控制脚本 ──
+            if (go.GetComponent<WaterProject.Logic.PoolThirdPerson>() == null)
+                go.AddComponent<WaterProject.Logic.PoolThirdPerson>();
+
+            SaveScene();
+            WriteProbe("POOL93 character built at (0,-PoolD,1.0)\n");
+            });
+        }
+
+        static Material PoolKnightMaterial()
+        {
+            string p = MatFolder + "/Pool_Knight_Mat.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m == null)
+            {
+                m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                AssetDatabase.CreateAsset(m, p);
+            }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/Pool/Pool_Knight_Tex.png");
+            if (tex != null) m.SetTexture("_BaseMap", tex);
+            m.SetFloat("_Smoothness", 0.10f);
+            return m;
+        }
+
+        static UnityEditor.Animations.AnimatorController BuildCharacterCtrl(AnimationClip[] clips)
+        {
+            // CreateAnimatorControllerAtPath 不会自建目录（实测 UnityException）
+            if (!AssetDatabase.IsValidFolder("Assets/Art/Animations"))
+                AssetDatabase.CreateFolder("Assets/Art", "Animations");
+            string p = "Assets/Art/Animations/PoolCharacter.controller";
+            if (AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(p) != null)
+                AssetDatabase.DeleteAsset(p);
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(p);
+            ctrl.AddParameter("Speed", AnimatorControllerParameterType.Float);
+            var sm = ctrl.layers[0].stateMachine;
+
+            // 取**最短**匹配名：包含 "Idle" 的有 2H_Melee_Idle/Unarmed_Idle/Idle……
+            //   字母序会挑到 2H_Melee_Idle（拿剑站姿），最短才是纯净 Idle
+            System.Func<string, string, AnimationClip> find = (must, fallback) =>
+                clips.FirstOrDefault(c => c.name == must || c.name == "Rig|" + must)
+                ?? clips.Where(c => c.name.IndexOf(fallback, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                        .OrderBy(c => c.name.Length).FirstOrDefault();
+            var idleClip = find("Unarmed_Idle", "Idle");
+            var walkClip = find("Walking_A", "Walking");
+            var runClip = find("Running_A", "Running");
+            WriteProbe("POOL93 ctrl clips: idle=" + (idleClip != null ? idleClip.name : "!!") +
+                       " walk=" + (walkClip != null ? walkClip.name : "!!") +
+                       " run=" + (runClip != null ? runClip.name : "!!") + "\n");
+
+            var idle = sm.AddState("Idle"); idle.motion = idleClip;
+            var walk = sm.AddState("Walk"); walk.motion = walkClip;
+            var run = sm.AddState("Run"); run.motion = runClip;
+            sm.defaultState = idle;
+            void Link(UnityEditor.Animations.AnimatorState a, UnityEditor.Animations.AnimatorState b,
+                      UnityEditor.Animations.AnimatorConditionMode mode, float th)
+            {
+                var t = a.AddTransition(b);
+                t.AddCondition(mode, th, "Speed");
+                t.hasExitTime = false;
+                t.duration = 0.15f;
+            }
+            Link(idle, walk, UnityEditor.Animations.AnimatorConditionMode.Greater, 0.15f);
+            Link(walk, idle, UnityEditor.Animations.AnimatorConditionMode.Less, 0.10f);
+            Link(walk, run, UnityEditor.Animations.AnimatorConditionMode.Greater, 2.0f);
+            Link(run, walk, UnityEditor.Animations.AnimatorConditionMode.Less, 2.0f);
+            AssetDatabase.SaveAssets();
+            return ctrl;
+        }
+
+        // ═════════════════════════ 97 ═════════════════════════
+        // 人物自动巡游开关（Play 中切；桥取帧验证用——桥没法替人按 WASD）
+        [MenuItem("Tools/Pool/97 人物自动巡游开关")]
+        public static void ToggleAutoWalk()
+        {
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch == null) { WriteProbe("POOL97 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
+            ch.autoWalk = !ch.autoWalk;
+            WriteProbe("POOL97 autoWalk -> " + ch.autoWalk + "\n");
         }
 
         // ═════════════════════════ 95 ═════════════════════════
