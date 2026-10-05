@@ -44,6 +44,9 @@ namespace WaterProject.Logic
         bool _airborne;
         Vector3 _airDir = Vector3.forward;
 
+        /// <summary>当前水平移速（球推挤用它吃人物动量）。</summary>
+        public float CurrentSpeed => _lastSpeed;
+
         static readonly int P_Speed = Animator.StringToHash("Speed");
         static readonly int P_Jump = Animator.StringToHash("Jump");
 

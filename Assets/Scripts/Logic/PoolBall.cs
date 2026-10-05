@@ -33,10 +33,15 @@ namespace WaterProject.Logic
 
         Vector3 _vel;
         float _prevY;
+        WaterProject.Logic.PoolThirdPerson _char;
         bool _wasAbove;
         float _nextWake;
 
-        void Awake() { Instance = this; }
+        void Awake()
+        {
+            Instance = this;
+            _char = FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+        }
         void OnDestroy() { if (Instance == this) Instance = null; }
 
         /// <summary>从世界点沿方向抛出（PoolThirdPerson 的 B 键 / menu98 测试）。</summary>
@@ -94,6 +99,26 @@ namespace WaterProject.Logic
             }
 
             transform.position = pos;
+
+            // ── 人物推球：重叠沿分离方向推开，球吃人物动量，顶得狠还会蹦 ──
+            if (_char != null)
+            {
+                Vector3 d = transform.position - _char.transform.position; d.y = 0f;
+                float dist = d.magnitude;
+                float minDist = radius + 0.42f;
+                if (dist < minDist && dist > 1e-4f)
+                {
+                    Vector3 n = d / dist;
+                    float push = minDist - dist;
+                    transform.position += n * push;
+                    float into = Vector3.Dot(_vel, n);
+                    if (into < 0f) _vel -= n * into;
+                    _vel += n * (_char.CurrentSpeed * 1.1f + 0.3f);
+                    _vel.y += push * 2.0f;
+                    if (PoolRipples.Instance != null && push > 0.02f)
+                        PoolRipples.Instance.SpawnDrop(new Vector3(transform.position.x, 0f, transform.position.z), 0.45f);
+                }
+            }
 
             // ── 漂浮尾迹涟漪 ──
             if (PoolRipples.Instance != null && submerged > 0.02f && _vel.magnitude > 0.25f

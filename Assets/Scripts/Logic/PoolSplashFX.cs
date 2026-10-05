@@ -16,8 +16,12 @@ namespace WaterProject.Logic
     {
         public static PoolSplashFX Instance { get; private set; }
 
+        [Tooltip("水花音效（menu92 从 Assets/Audio/Pool_Splash.wav 赋值）")]
+        public AudioClip splashClip;
+
         ParticleSystem _ps;
         ParticleSystem.MainModule _main;
+        AudioSource _src;
 
         void Awake()
         {
@@ -72,6 +76,10 @@ namespace WaterProject.Logic
             rdr.receiveShadows = false;
 
             _main = mu;
+            _src = gameObject.AddComponent<AudioSource>();
+            _src.playOnAwake = false;
+            _src.spatialBlend = 0.6f;          // 一半立体：水花该有方位感
+            _src.volume = 0.7f;
         }
 
         void OnDestroy() { if (Instance == this) Instance = null; }
@@ -84,6 +92,8 @@ namespace WaterProject.Logic
                                                               2.2f + strength * 2.6f);
             int count = Mathf.Clamp(Mathf.RoundToInt(14f + strength * 26f), 8, 64);
             _ps.Emit(count);
+            if (splashClip != null)
+                _src.PlayOneShot(splashClip, Mathf.Clamp(0.35f + strength * 0.5f, 0.3f, 1f));
         }
     }
 }

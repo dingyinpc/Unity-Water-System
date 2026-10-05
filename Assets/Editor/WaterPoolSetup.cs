@@ -153,10 +153,19 @@ namespace WaterProject.EditorTools
             var skySh = Shader.Find("WaterProject/Sky_SimpleBlue");
             if (skySh != null)
             {
-                var skyMat = new Material(skySh) { name = "PoolSky" };
-                // 地面半球默认蓝灰在 ACES+饱和下偏暖棕（历轮截图的"棕色带"），
-                // 显式压成远海青蓝——泳池周围的"地平线以下"读成远处海面
+                // ⚠ 必须存成**资产**再赋给 RenderSettings：new Material() 不落盘，
+                //   场景保存后回退到内置 Default-Skybox（带棕灰地面+太阳盘）——
+                //   历轮截图的"棕色带"就是它，不是调色问题（场景文件里
+                //   m_SkyboxMaterial = {guid: 0000...f000, fileID: 10304} 实锤）
+                const string SkyPath = "Assets/Art/Materials/Pool_Sky.mat";
+                var skyMat = AssetDatabase.LoadAssetAtPath<Material>(SkyPath);
+                if (skyMat == null)
+                {
+                    skyMat = new Material(skySh) { name = "Pool_Sky" };
+                    AssetDatabase.CreateAsset(skyMat, SkyPath);
+                }
                 skyMat.SetColor("_GroundColor", new Color(0.15f, 0.28f, 0.36f));
+                EditorUtility.SetDirty(skyMat);
                 RenderSettings.skybox = skyMat;
             }
             RenderSettings.ambientMode = AmbientMode.Trilight;
@@ -276,10 +285,13 @@ namespace WaterProject.EditorTools
             {
                 var sh = Shader.Find("Universal Render Pipeline/Lit");
                 m = new Material(sh);
-                m.SetColor("_BaseColor", new Color(0.60f, 0.57f, 0.52f));
-                m.SetFloat("_Smoothness", 0.15f);
                 AssetDatabase.CreateAsset(m, p);
             }
+            // 每次都调色（旧资产也要吃到新值）：暖灰×太阳3.0 在 ACES 下过曝成
+            // "棕色带"（历轮截图上部那条），换浅灰蓝石材+低光滑度压亮度
+            m.SetColor("_BaseColor", new Color(0.74f, 0.78f, 0.82f));
+            m.SetFloat("_Smoothness", 0.08f);
+            EditorUtility.SetDirty(m);
             return m;
         }
 
@@ -347,6 +359,8 @@ namespace WaterProject.EditorTools
                 go.AddComponent<WaterProject.Logic.PoolRipples>();
             if (go.GetComponent<WaterProject.Logic.PoolSplashFX>() == null)
                 go.AddComponent<WaterProject.Logic.PoolSplashFX>();
+            var sfx = go.GetComponent<WaterProject.Logic.PoolSplashFX>();
+            sfx.splashClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Pool_Splash.wav");
 
             SaveScene();
             WriteProbe("POOL92 water built  verts=" + v.Length + "  tris=" + (idx.Length / 6) + "\n");
