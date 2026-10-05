@@ -345,6 +345,8 @@ namespace WaterProject.EditorTools
             // ── 涟漪系统（波动方程管理器）──
             if (go.GetComponent<WaterProject.Logic.PoolRipples>() == null)
                 go.AddComponent<WaterProject.Logic.PoolRipples>();
+            if (go.GetComponent<WaterProject.Logic.PoolSplashFX>() == null)
+                go.AddComponent<WaterProject.Logic.PoolSplashFX>();
 
             SaveScene();
             WriteProbe("POOL92 water built  verts=" + v.Length + "  tris=" + (idx.Length / 6) + "\n");

@@ -190,7 +190,12 @@ Shader "WaterProject/Water_Pool"
                 if (_DebugMode > 1.5) return half4(saturate(gradMag * 8), 0, 0, 1);
                 if (_DebugMode > 0.5) return half4(saturate(h * 2 + 0.5), 0, 0, 1);
 
-                float alpha = saturate(_Opacity + fres * 0.55);
+                // 水线接缝：网格贴壁边缘的折射采样 clamp 出一圈亮线，
+                // 边缘 0.15m 内 alpha 渐隐让水"融"进池壁
+                float2 eDist = min(wuv, 1.0 - wuv);
+                float edgeFade = saturate(min(eDist.x, eDist.y) / 0.03);
+                edgeFade = edgeFade * edgeFade * (3.0 - 2.0 * edgeFade);
+                float alpha = saturate(_Opacity + fres * 0.55) * lerp(0.25, 1.0, edgeFade);
                 return half4(body, alpha);
             }
             ENDHLSL

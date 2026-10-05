@@ -75,6 +75,9 @@ namespace WaterProject.Logic
                 float impact = Mathf.Max(0f, -_vel.y);
                 PoolRipples.Instance.SpawnDrop(new Vector3(pos.x, 0f, pos.z),
                                                Mathf.Max(splashMin, impact * 0.35f));
+                if (PoolSplashFX.Instance != null)
+                    PoolSplashFX.Instance.Burst(new Vector3(pos.x, 0f, pos.z),
+                                                Mathf.Clamp(impact * 0.30f, 0.3f, 1.1f));
             }
             _wasAbove = above;
 

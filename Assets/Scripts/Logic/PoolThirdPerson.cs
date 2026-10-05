@@ -193,6 +193,8 @@ namespace WaterProject.Logic
             if (PoolRipples.Instance == null) return;
             Vector3 c = new Vector3(atWater.x, 0f, atWater.z);
             PoolRipples.Instance.SpawnDrop(c, Mathf.Clamp(impact * 0.28f, 0.9f, 1.5f));
+            if (PoolSplashFX.Instance != null)
+                PoolSplashFX.Instance.Burst(c, Mathf.Clamp(impact * 0.35f, 0.5f, 1.4f));
             for (int i = 0; i < 4; i++)
             {
                 float a = i * 1.5708f + Random.Range(-0.4f, 0.4f);
