@@ -562,12 +562,23 @@ namespace WaterProject.EditorTools
             return m;
         }
 
+        // ── Play-only 守卫：下面五个"运行时行为测试"菜单在编辑模式没有意义且会留脏 ──
+        //（实测：menu100 在编辑模式跑 → Object.Destroy 报"Destroy may not be called
+        //  from edit mode"，且环的 Update 不跑、往场景里塞失活的环对象把场景标脏）
+        static bool PlayOnly(string tag)
+        {
+            if (Application.isPlaying) return true;
+            WriteProbe(tag + " REFUSED: 仅限 Play 模式（先 Tools/Play/90）\n");
+            return false;
+        }
+
         // ═════════════════════════ 98 ═════════════════════════
         // 测试抛球（Play 中）：从人物胸口沿面向斜上抛——等价于按一次 B 键，
         // 供桥取帧用（桥按不了键盘）
         [MenuItem("Tools/Pool/98 测试抛球")]
         public static void TestToss()
         {
+            if (!PlayOnly("POOL98")) return;
             var ball = Object.FindObjectOfType<WaterProject.Logic.PoolBall>();
             var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
             if (ball == null) { WriteProbe("POOL98 REFUSED: 没有 PoolBall（先跑 Tools/Pool/94）\n"); return; }
@@ -591,6 +602,7 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Pool/97 人物自动巡游开关")]
         public static void ToggleAutoWalk()
         {
+            if (!PlayOnly("POOL97")) return;
             var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
             if (ch == null) { WriteProbe("POOL97 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
             ch.autoWalk = !ch.autoWalk;
@@ -602,6 +614,7 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Pool/99 测试跳水")]
         public static void TestDive()
         {
+            if (!PlayOnly("POOL99")) return;
             var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
             if (ch == null) { WriteProbe("POOL99 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
             ch.TestJump();
@@ -614,6 +627,7 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Pool/100 涟漪环直测(池心)")]
         public static void TestRippleRings()
         {
+            if (!PlayOnly("POOL100")) return;
             var rings = Object.FindObjectOfType<WaterProject.Logic.PoolRippleRings>();
             if (rings == null) { WriteProbe("POOL100 REFUSED: 场景里没有 PoolRippleRings\n"); return; }
             rings.Rings(new Vector3(0f, 0f, 0f), 1.2f);
@@ -647,6 +661,7 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Pool/96 注波测试(中心+贴壁两点)")]
         public static void TestDrops()
         {
+            if (!PlayOnly("POOL96")) return;
             var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
             if (rip == null) { WriteProbe("POOL96 REFUSED: 场景里没有 PoolRipples\n"); return; }
             rip.SpawnDrop(new Vector3(0f, 0f, 0f), 1.0f);
