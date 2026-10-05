@@ -277,7 +277,8 @@ namespace UnityCopilot
 
                     switch (opcode)
                     {
-                        case 0x8:                              // Close — signal disconnect
+                        case 0x8:                              // Close — ack then signal disconnect
+                            SendCloseAck(stream);
                             return null;
                         case 0x9:                              // Ping — reply with Pong, keep reading
                             SendPong(stream, payload);
@@ -318,6 +319,15 @@ namespace UnityCopilot
             try { lock (stream) { stream.Write(frame, 0, frame.Length); } } catch { /* ignore */ }
         }
 
+        // ── RFC 6455：收到 Close 帧必须回一个 Close 帧，关闭握手才算完成 ──
+        // 不回的话 ClientWebSocket.CloseAsync 只能靠超时/异常收场，连接在
+        // "客户端已关、服务器还当它开着"的半开状态里多滞留一拍。
+        private static void SendCloseAck(NetworkStream stream)
+        {
+            var frame = new byte[] { 0x88, 0x00 };   // FIN=1, opcode=Close, 空载荷（服务器帧不加掩码）
+            try { lock (stream) { stream.Write(frame, 0, frame.Length); } } catch { /* ignore */ }
+        }
+
         // ── Send a WebSocket text frame ────────────────────────────────
         public static void SendFrame(NetworkStream stream, string text)
         {
@@ -344,7 +354,14 @@ namespace UnityCopilot
 
             frame.AddRange(payload);
             byte[] frameBytes = frame.ToArray();
-            lock (stream) { stream.Write(frameBytes, 0, frameBytes.Length); }
+            // ⚠ 写失败必须静默：IsOpen 检查到真正写入之间有竞态窗口（客户端
+            //   收完响应立刻关连接是桥客户端的常态用法），写死连接的
+            //   IOException/ObjectDisposedException 若抛出去，会被
+            //   ProcessMainThreadQueue 误判成 handler 异常刷 "Handler error"
+            //   ——但 handler 早就成功了，纯粹是传输层已断。会话的清理由读
+            //   线程的 finally 负责，这里只管尽力写。
+            try { lock (stream) { stream.Write(frameBytes, 0, frameBytes.Length); } }
+            catch { /* transport closed — client gone, ignore */ }
         }
 
         // ── Main-thread queue processing ───────────────────────────────
