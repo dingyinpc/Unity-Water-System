@@ -198,6 +198,9 @@ namespace WaterProject.Logic
             PoolRipples.Instance.SpawnDrop(c, Mathf.Clamp(impact * 0.28f, 0.9f, 1.5f));
             if (PoolSplashFX.Instance != null)
                 PoolSplashFX.Instance.Burst(c, Mathf.Clamp(impact * 0.35f, 0.5f, 1.4f));
+            // 可见涟漪环：高度场余波之外，入水那一拍先给"以人为中心"的直感环
+            if (PoolRippleRings.Instance != null)
+                PoolRippleRings.Instance.Rings(c, Mathf.Clamp(impact * 0.32f, 0.75f, 1.25f));
             for (int i = 0; i < 4; i++)
             {
                 float a = i * 1.5708f + Random.Range(-0.4f, 0.4f);

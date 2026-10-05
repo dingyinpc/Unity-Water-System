@@ -83,6 +83,10 @@ namespace WaterProject.Logic
                 if (PoolSplashFX.Instance != null)
                     PoolSplashFX.Instance.Burst(new Vector3(pos.x, 0f, pos.z),
                                                 Mathf.Clamp(impact * 0.30f, 0.3f, 1.1f));
+                // 球入水的涟漪环（比跳水小一号）
+                if (PoolRippleRings.Instance != null)
+                    PoolRippleRings.Instance.Rings(new Vector3(pos.x, 0f, pos.z),
+                                                   Mathf.Clamp(impact * 0.30f, 0.35f, 0.9f));
             }
             _wasAbove = above;
 

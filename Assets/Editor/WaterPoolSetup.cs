@@ -359,6 +359,8 @@ namespace WaterProject.EditorTools
                 go.AddComponent<WaterProject.Logic.PoolRipples>();
             if (go.GetComponent<WaterProject.Logic.PoolSplashFX>() == null)
                 go.AddComponent<WaterProject.Logic.PoolSplashFX>();
+            if (go.GetComponent<WaterProject.Logic.PoolRippleRings>() == null)
+                go.AddComponent<WaterProject.Logic.PoolRippleRings>();   // 入水可见涟漪环（全程序化）
             var sfx = go.GetComponent<WaterProject.Logic.PoolSplashFX>();
             sfx.splashClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Pool_Splash.wav");
 
@@ -593,6 +595,29 @@ namespace WaterProject.EditorTools
             if (ch == null) { WriteProbe("POOL99 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
             ch.TestJump();
             WriteProbe("POOL99 dive started\n");
+        }
+
+        // ═════════════════════════ 100 ═════════════════════════
+        // 涟漪环直测：跳过跳水链路，直接在池心发一组环 —— 把"环本身画不画得出来"
+        // 和"入水有没有触发 Splash"两件事拆开验证（跳水的取证走 99+95）。
+        [MenuItem("Tools/Pool/100 涟漪环直测(池心)")]
+        public static void TestRippleRings()
+        {
+            var rings = Object.FindObjectOfType<WaterProject.Logic.PoolRippleRings>();
+            if (rings == null) { WriteProbe("POOL100 REFUSED: 场景里没有 PoolRippleRings\n"); return; }
+            rings.Rings(new Vector3(0f, 0f, 0f), 1.2f);
+            // 渲染管二分标记：一个原生球放在池心 —— 球可见而环不可见 = 环的网格/材质问题；
+            // 球也不可见 = 取证相机/运行时对象这条链本身断了
+            var sph = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sph.name = "Pool100Marker";
+            sph.transform.position = new Vector3(0f, 0.5f, 0f);
+            sph.transform.localScale = Vector3.one * 0.5f;
+            Object.Destroy(sph, 12f);
+            WriteProbe("POOL100 rings spawned @center life=" + rings.life.ToString("F2")
+                + " live=" + rings.LiveCount
+                + " tickAlive=" + rings.TickAlive
+                + " timeScale=" + Time.timeScale.ToString("F2")
+                + " paused=" + EditorApplication.isPaused + "\n");
         }
 
         // ═════════════════════════ 95 ═════════════════════════

@@ -29,6 +29,10 @@ namespace WaterProject.Logic
             _ps = gameObject.AddComponent<ParticleSystem>();
             _ps.loop = false;
             _ps.playOnAwake = false;
+            // ⚠ AddComponent 发生在 Play 中时，新粒子系统按默认 playOnAwake=true 当场就 Play 了——
+            // 这一行若直接设 main.duration 会报 "Setting the duration while system is still playing
+            // is not supported"（实测控制台刷屏的就是它）。按报错给的路走：先彻底停住再配置。
+            _ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
 
             var mu = _ps.main;
             mu.duration = 5f;
@@ -87,6 +91,9 @@ namespace WaterProject.Logic
         /// <summary>在水面点炸一次水花。strength 0..1.5：0.3=球入水，1.0+=跳水。</summary>
         public void Burst(Vector3 waterPos, float strength)
         {
+            // duration 5s 一圈，loop=false——超时后系统停走，Emit 出的粒子不会再被推进；
+            // 停了就重新 Play（不清已有的存活水花），保证任何时刻的 Burst 都能动起来。
+            if (!_ps.isPlaying) _ps.Play();
             transform.position = waterPos + Vector3.up * 0.06f;
             _main.startSpeed = new ParticleSystem.MinMaxCurve(1.2f + strength * 1.6f,
                                                               2.2f + strength * 2.6f);

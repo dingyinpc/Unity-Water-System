@@ -386,6 +386,7 @@ GameObject:
   - component: {fileID: 502948032}
   - component: {fileID: 502948031}
   - component: {fileID: 502948034}
+  - component: {fileID: 502948035}
   m_Layer: 0
   m_Name: PoolWater
   m_TagString: Untagged
@@ -493,6 +494,24 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   splashClip: {fileID: 8300000, guid: 2e8c26142af84ee47adb4247c5f8febc, type: 3}
+--- !u!114 &502948035
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 502948029}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d13629b89085af4aa2fca802f1d008b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  segments: 64
+  life: 1.15
+  stagger: 0.22
+  maxRadius: 1.9
+  bandWidth: 0.34
+  foamColor: {r: 0.92, g: 0.98, b: 1, a: 0.62}
 --- !u!1 &641802349
 GameObject:
   m_ObjectHideFlags: 0
