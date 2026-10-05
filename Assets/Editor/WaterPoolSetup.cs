@@ -467,6 +467,69 @@ namespace WaterProject.EditorTools
             return ctrl;
         }
 
+        // ═════════════════════════ 94 ═════════════════════════
+        // 沙滩球：程序化条纹材质 + PoolBall 浮力物理（Kerner 球版，见 PoolBall.cs 头注释）
+        [MenuItem("Tools/Pool/94 建球(沙滩球+浮力)")]
+        public static void BuildBall()
+        {
+            if (!EnsureNotPlaying("POOL94")) return;
+            Run("POOL94", () =>
+            {
+            var old = GameObject.Find("PoolBall");
+            if (old != null) Object.DestroyImmediate(old);
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "PoolBall";
+            // 直径 0.48m → PoolBall.radius 0.24（字段默认一致）
+            go.transform.localScale = Vector3.one * 0.48f;
+            go.transform.position = new Vector3(0f, 1.6f, 0f);
+            var col = go.GetComponent<SphereCollider>();
+            if (col != null) Object.DestroyImmediate(col);   // 自定义物理，碰撞体无用
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = PoolBallMaterial();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            if (go.GetComponent<WaterProject.Logic.PoolBall>() == null)
+                go.AddComponent<WaterProject.Logic.PoolBall>();
+
+            SaveScene();
+            WriteProbe("POOL94 ball built\n");
+            });
+        }
+
+        static Material PoolBallMaterial()
+        {
+            string p = MatFolder + "/Pool_Ball.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            var sh = Shader.Find("WaterProject/Pool_Ball");
+            if (m == null) { m = new Material(sh); AssetDatabase.CreateAsset(m, p); }
+            else m.shader = sh;
+            return m;
+        }
+
+        // ═════════════════════════ 98 ═════════════════════════
+        // 测试抛球（Play 中）：从人物胸口沿面向斜上抛——等价于按一次 B 键，
+        // 供桥取帧用（桥按不了键盘）
+        [MenuItem("Tools/Pool/98 测试抛球")]
+        public static void TestToss()
+        {
+            var ball = Object.FindObjectOfType<WaterProject.Logic.PoolBall>();
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ball == null) { WriteProbe("POOL98 REFUSED: 没有 PoolBall（先跑 Tools/Pool/94）\n"); return; }
+            Vector3 from, dir;
+            if (ch != null)
+            {
+                from = ch.transform.position + Vector3.up * 1.2f;
+                dir = ch.transform.forward * 0.75f + Vector3.up * 0.65f;
+            }
+            else
+            {
+                from = new Vector3(0f, 0.8f, -2f);
+                dir = new Vector3(0f, 0.65f, 0.75f);
+            }
+            ball.Toss(from, dir, 4.2f);
+            WriteProbe("POOL98 tossed from " + from + "\n");
+        }
+
         // ═════════════════════════ 97 ═════════════════════════
         // 人物自动巡游开关（Play 中切；桥取帧验证用——桥没法替人按 WASD）
         [MenuItem("Tools/Pool/97 人物自动巡游开关")]

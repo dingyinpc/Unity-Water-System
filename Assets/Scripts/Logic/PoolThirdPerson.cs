@@ -78,6 +78,14 @@ namespace WaterProject.Logic
 
             if (_anim != null) _anim.SetFloat(P_Speed, speed);
 
+            // ── B 键抛球：从胸口沿人物面向斜上抛 ──
+            if (Input.GetKeyDown(KeyCode.B) && PoolBall.Instance != null)
+            {
+                Vector3 from = transform.position + Vector3.up * 1.2f;
+                Vector3 dir = transform.forward * 0.75f + Vector3.up * 0.65f;
+                PoolBall.Instance.Toss(from, dir, 4.2f);
+            }
+
             // ── 涟漪联动 ──
             if (PoolRipples.Instance != null)
             {
