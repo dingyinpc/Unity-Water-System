@@ -23,6 +23,10 @@ namespace WaterProject.Logic
         public float moveRippleInterval = 0.24f;
         public float idleRippleInterval = 1.9f;
 
+        [Header("跳跃/跳水")]
+        public float jumpVel = 6.5f;     // 池底起跳要顶破 1.35m 水面：6.5²/2g ≈ 1.76m 净高
+        public float gravity = 12f;      // 比真实 9.81 大一档——跳跃手感要"脆"
+
         [Header("相机跟随")]
         public Vector3 camOffset = new Vector3(0f, 3.6f, -6.0f);
         public float lookAhead = 1.2f;
@@ -36,8 +40,12 @@ namespace WaterProject.Logic
         Transform _camT;
         Vector3 _camPos;
         float _nextMoveRipple, _nextIdleRipple, _autoAngle;
+        float _vy, _airSpeed, _lastSpeed;      // 跳跃垂直速度 / 起跳锁定水平速度 / 上一帧步速
+        bool _airborne;
+        Vector3 _airDir = Vector3.forward;
 
         static readonly int P_Speed = Animator.StringToHash("Speed");
+        static readonly int P_Jump = Animator.StringToHash("Jump");
 
         void Start()
         {
@@ -50,31 +58,67 @@ namespace WaterProject.Logic
         {
             float speed = 0f;
 
-            if (autoWalk)
+            if (_airborne)
             {
-                // 椭圆巡游：往下一个路径点走，走到就切下一个
-                _autoAngle += Time.deltaTime * walkSpeed /
-                              Mathf.Max(0.5f, Mathf.PI * 2f * 0.5f * (autoWalkRadiusX + autoWalkRadiusZ) / Mathf.PI);
-                Vector3 target = new Vector3(Mathf.Sin(_autoAngle) * autoWalkRadiusX, floorY,
-                                             Mathf.Cos(_autoAngle) * autoWalkRadiusZ);
-                Vector3 to = target - transform.position; to.y = 0f;
-                if (to.magnitude > 0.08f)
+                // ── 空中：重力 + 起跳时锁定的水平动量 + 破水溅花 ──
+                _vy -= gravity * Time.deltaTime;
+                StepToward(_airDir, _airSpeed);
+                speed = _airSpeed;
+                bool wasAbove = transform.position.y > 0f;
+                Vector3 p = transform.position;
+                p.y += _vy * Time.deltaTime;
+                // 破水而入：以穿越水面那一刻的速度溅花（水中阻尼之前的速度）
+                if (wasAbove && p.y <= 0f && _vy < 0f) Splash(p, -_vy);
+                // 入水后强阻尼：人在水里减速下沉
+                if (p.y < 0f && _vy < 0f) _vy *= Mathf.Exp(-4f * Time.deltaTime);
+                if (p.y <= floorY)
                 {
-                    StepToward(to.normalized, walkSpeed);
-                    speed = walkSpeed;
+                    p.y = floorY;
+                    _airborne = false;
+                    _vy = 0f;
                 }
+                transform.position = p;
             }
             else
             {
-                var input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-                var dir = new Vector3(input.x, 0f, input.y);
-                if (dir.sqrMagnitude > 1e-6f)
+                // ── 地面：空格起跳（池底起跳要顶破 1.35m 水面）──
+                if (Input.GetKeyDown(KeyCode.Space))
                 {
-                    bool run = Input.GetKey(KeyCode.LeftShift);
-                    speed = Mathf.Min(dir.magnitude, 1f) * (run ? runSpeed : walkSpeed);
-                    StepToward(dir.normalized, speed);
+                    _vy = jumpVel;
+                    _airborne = true;
+                    _airDir = transform.forward;
+                    _airSpeed = Mathf.Max(_lastSpeed * 0.6f, 0.7f);
+                    if (_anim != null) _anim.SetTrigger(P_Jump);
                 }
+
+                if (autoWalk)
+                {
+                    // 椭圆巡游：往下一个路径点走，走到就切下一个
+                    _autoAngle += Time.deltaTime * walkSpeed /
+                                  Mathf.Max(0.5f, Mathf.PI * 2f * 0.5f * (autoWalkRadiusX + autoWalkRadiusZ) / Mathf.PI);
+                    Vector3 target = new Vector3(Mathf.Sin(_autoAngle) * autoWalkRadiusX, floorY,
+                                                 Mathf.Cos(_autoAngle) * autoWalkRadiusZ);
+                    Vector3 to = target - transform.position; to.y = 0f;
+                    if (to.magnitude > 0.08f)
+                    {
+                        StepToward(to.normalized, walkSpeed);
+                        speed = walkSpeed;
+                    }
+                }
+                else
+                {
+                    var input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+                    var dir = new Vector3(input.x, 0f, input.y);
+                    if (dir.sqrMagnitude > 1e-6f)
+                    {
+                        bool run = Input.GetKey(KeyCode.LeftShift);
+                        speed = Mathf.Min(dir.magnitude, 1f) * (run ? runSpeed : walkSpeed);
+                        StepToward(dir.normalized, speed);
+                    }
+                }
+                transform.position = new Vector3(transform.position.x, floorY, transform.position.z);
             }
+            _lastSpeed = speed;
 
             if (_anim != null) _anim.SetFloat(P_Speed, speed);
 
@@ -86,8 +130,8 @@ namespace WaterProject.Logic
                 PoolBall.Instance.Toss(from, dir, 4.2f);
             }
 
-            // ── 涟漪联动 ──
-            if (PoolRipples.Instance != null)
+            // ── 涟漪联动（空中不算脚步涟漪——人在水上呢）──
+            if (PoolRipples.Instance != null && !_airborne)
             {
                 if (speed > 0.15f)
                 {
@@ -122,14 +166,39 @@ namespace WaterProject.Logic
 
         void StepToward(Vector3 dir, float speed)
         {
+            // ⚠ 不碰 y：地面态 y=floorY 由 Update 维护，空中态 y 归跳跃物理管
             Vector3 p = transform.position + dir * (speed * Time.deltaTime);
             p.x = Mathf.Clamp(p.x, -poolHalf.x, poolHalf.x);
             p.z = Mathf.Clamp(p.z, -poolHalf.y, poolHalf.y);
-            p.y = floorY;
             transform.position = p;
             Quaternion look = Quaternion.LookRotation(new Vector3(dir.x, 0f, dir.z), Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, look,
                                                   1f - Mathf.Exp(-turnLerp * Time.deltaTime));
+        }
+
+        /// <summary>测试跳水：等价按一次空格（menu99/桥调用——桥按不了键盘）。</summary>
+        public void TestJump()
+        {
+            if (_airborne) return;
+            _vy = jumpVel;
+            _airborne = true;
+            _airDir = transform.forward;
+            _airSpeed = Mathf.Max(_lastSpeed * 0.6f, 0.7f);
+            if (_anim != null) _anim.SetTrigger(P_Jump);
+        }
+
+        /// <summary>破水溅花：落点一颗大水滴 + 四颗卫星水滴（波场里炸成一组交叉环）。</summary>
+        void Splash(Vector3 atWater, float impact)
+        {
+            if (PoolRipples.Instance == null) return;
+            Vector3 c = new Vector3(atWater.x, 0f, atWater.z);
+            PoolRipples.Instance.SpawnDrop(c, Mathf.Clamp(impact * 0.28f, 0.9f, 1.5f));
+            for (int i = 0; i < 4; i++)
+            {
+                float a = i * 1.5708f + Random.Range(-0.4f, 0.4f);
+                Vector3 sp = c + new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * 0.55f;
+                PoolRipples.Instance.SpawnDrop(sp, 0.65f);
+            }
         }
     }
 }

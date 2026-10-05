@@ -152,7 +152,13 @@ namespace WaterProject.EditorTools
             // ── 天空：天顶/地平双色的简单蓝天（家族里最便宜的一片天）──
             var skySh = Shader.Find("WaterProject/Sky_SimpleBlue");
             if (skySh != null)
-                RenderSettings.skybox = new Material(skySh) { name = "PoolSky" };
+            {
+                var skyMat = new Material(skySh) { name = "PoolSky" };
+                // 地面半球默认蓝灰在 ACES+饱和下偏暖棕（历轮截图的"棕色带"），
+                // 显式压成远海青蓝——泳池周围的"地平线以下"读成远处海面
+                skyMat.SetColor("_GroundColor", new Color(0.15f, 0.28f, 0.36f));
+                RenderSettings.skybox = skyMat;
+            }
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = new Color(0.42f, 0.56f, 0.72f);
             RenderSettings.ambientEquatorColor = new Color(0.36f, 0.46f, 0.58f);
@@ -397,6 +403,9 @@ namespace WaterProject.EditorTools
             var animator = go.GetComponent<Animator>();
             if (animator == null) animator = go.AddComponent<Animator>();
             animator.runtimeAnimatorController = BuildCharacterCtrl(clips);
+            // 就地剪辑 + 自定义物理：根运动必须关——Jump_Full_Long 带烘焙位移，
+            // 开着的话动画每帧把根位置写回烘焙轨迹，覆盖跳跃物理（实测 Y 钉死）
+            animator.applyRootMotion = false;
 
             // ── 控制脚本 ──
             if (go.GetComponent<WaterProject.Logic.PoolThirdPerson>() == null)
@@ -432,6 +441,7 @@ namespace WaterProject.EditorTools
                 AssetDatabase.DeleteAsset(p);
             var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(p);
             ctrl.AddParameter("Speed", AnimatorControllerParameterType.Float);
+            ctrl.AddParameter("Jump", AnimatorControllerParameterType.Trigger);
             var sm = ctrl.layers[0].stateMachine;
 
             // 取**最短**匹配名：包含 "Idle" 的有 2H_Melee_Idle/Unarmed_Idle/Idle……
@@ -463,6 +473,23 @@ namespace WaterProject.EditorTools
             Link(walk, idle, UnityEditor.Animations.AnimatorConditionMode.Less, 0.10f);
             Link(walk, run, UnityEditor.Animations.AnimatorConditionMode.Greater, 2.0f);
             Link(run, walk, UnityEditor.Animations.AnimatorConditionMode.Less, 2.0f);
+
+            // Jump：三态都能被 Trigger 打断，播完回 Idle（Speed 仍会立刻接走走路态）
+            var jumpClip = find("Jump_Full_Long", "Jump_Full");
+            WriteProbe("POOL93 jump clip: " + (jumpClip != null ? jumpClip.name : "!!") + "\n");
+            var jump = sm.AddState("Jump");
+            jump.motion = jumpClip;
+            jump.speed = 1.15f;   // 片长约 1.2s，压到 ~1.05s 贴合腾空时间
+            void JumpLink(UnityEditor.Animations.AnimatorState a)
+            {
+                var t = a.AddTransition(jump);
+                t.AddCondition(UnityEditor.Animations.AnimatorConditionMode.If, 0f, "Jump");
+                t.hasExitTime = false;
+                t.duration = 0.08f;
+            }
+            JumpLink(idle); JumpLink(walk); JumpLink(run);
+            var back = jump.AddTransition(idle);
+            back.exitTime = 0.96f; back.duration = 0.10f;
             AssetDatabase.SaveAssets();
             return ctrl;
         }
@@ -539,6 +566,17 @@ namespace WaterProject.EditorTools
             if (ch == null) { WriteProbe("POOL97 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
             ch.autoWalk = !ch.autoWalk;
             WriteProbe("POOL97 autoWalk -> " + ch.autoWalk + "\n");
+        }
+
+        // ═════════════════════════ 99 ═════════════════════════
+        // 测试跳水（Play 中）：等价按一次空格——起跳→顶破水面→落水溅花
+        [MenuItem("Tools/Pool/99 测试跳水")]
+        public static void TestDive()
+        {
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch == null) { WriteProbe("POOL99 REFUSED: 场景里没有 PoolThirdPerson\n"); return; }
+            ch.TestJump();
+            WriteProbe("POOL99 dive started\n");
         }
 
         // ═════════════════════════ 95 ═════════════════════════
