@@ -157,6 +157,7 @@ Shader "WaterProject/Water_Ocean"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
+            #include "SSR.hlsl"
 
             #include "OceanShore.hlsl"
 
@@ -261,66 +262,6 @@ Shader "WaterProject/Water_Ocean"
                 return normalize(float3(-tot.x, 1.0, -tot.y));
             }
 
-            // ───────── SSR 屏幕空间反射（P0-2 / 参考 C8）─────────
-            // 反射方向射线步进 → 屏幕UV 比较 _CameraDepthTexture → 二分精化定位交点；
-            // 命中可信度 = 深度差(命中厚度) × 追踪距离 × 屏幕边缘（参考 C8 三因子）。
-            // miss ⇒ 返回 0 色且 conf=0，由调用方回退到天空渐变兜底（参考的 CubeMap 槽位）。
-            float2 ClipToScreenUV(float4 c)
-            {
-                float4 sp = c * 0.5;
-                sp.xy = float2(sp.x, sp.y * _ProjectionParams.x) + sp.w;
-                return sp.xy / sp.w;
-            }
-
-            float3 TraceSSR(float3 wp, float3 rd, out float conf)
-            {
-                conf = 0.0;
-                float3 col = float3(0, 0, 0);
-                float3 P1 = wp + rd * _SSRMaxDist;
-                float4 c0 = mul(UNITY_MATRIX_VP, float4(wp, 1.0));
-                float4 c1 = mul(UNITY_MATRIX_VP, float4(P1, 1.0));
-                float vz0 = -mul(UNITY_MATRIX_V, float4(wp, 1.0)).z;
-                float vz1 = -mul(UNITY_MATRIX_V, float4(P1, 1.0)).z;
-                if (c0.w <= 1e-3 || c1.w <= 1e-3 || vz1 <= vz0 + 1e-3) return col;
-
-                float2 u0 = ClipToScreenUV(c0), u1 = ClipToScreenUV(c1);
-                int steps = (int)clamp(_SSRSteps, 4.0, 48.0);
-                float tHit = -1.0, tPrev = 0.0;
-                [loop]
-                for (int i = 1; i <= steps; i++)
-                {
-                    float t = (float)i / steps;
-                    float2 uv = lerp(u0, u1, t);
-                    if (uv.x < -0.03 || uv.x > 1.03 || uv.y < -0.03 || uv.y > 1.03) { tPrev = t; break; }
-                    float sceneVz = LinearEyeDepth(SampleSceneDepth(uv), _ZBufferParams);
-                    float vz = lerp(vz0, vz1, t);
-                    if (vz > sceneVz - _SSRThickness)
-                    {
-                        float lo = tPrev, hi = t;
-                        [loop]
-                        for (int j = 0; j < 6; j++)
-                        {
-                            float m = (lo + hi) * 0.5;
-                            float svm = LinearEyeDepth(SampleSceneDepth(lerp(u0, u1, m)), _ZBufferParams);
-                            if (lerp(vz0, vz1, m) > svm - _SSRThickness) hi = m; else lo = m;
-                        }
-                        tHit = (lo + hi) * 0.5;
-                        break;
-                    }
-                    tPrev = t;
-                }
-                if (tHit < 0.0) return col;
-
-                float2 uvH = lerp(u0, u1, tHit);
-                float sceneH = LinearEyeDepth(SampleSceneDepth(uvH), _ZBufferParams);
-                float vzH = lerp(vz0, vz1, tHit);
-                float cThick = saturate(1.0 - abs(vzH - sceneH) / max(_SSRThickness, 1e-3));
-                float cDist  = 1.0 - tHit * tHit;
-                float2 e = min(uvH, 1.0 - uvH);
-                float cEdge = saturate(min(e.x, e.y) * _SSREdgeFade);
-                conf = cThick * cDist * cEdge;
-                return SampleSceneColor(uvH);
-            }
 
             Varyings vert(Attributes v)
             {
@@ -396,7 +337,7 @@ Shader "WaterProject/Water_Ocean"
 
                 // ── SSR（P0-2 / 参考 C8）：命中处用真实场景色替换天空兜底 ──
                 float ssrConf = 0.0;
-                float3 ssrCol = TraceSSR(worldPos, reflDir, ssrConf);
+                float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
                 float3 reflCol = lerp(skyCol, ssrCol, ssrConf);   // miss ⇒ 天空渐变兜底
                 col = lerp(col, reflCol, saturate(fres * _SkyReflect));
 
@@ -492,3 +433,7 @@ Shader "WaterProject/Water_Ocean"
 //   法线来自没被裁的解析浪面，所以水线附近明暗与几何会有轻微不一致。那里恰好
 //   被沫带整片盖住，肉眼读不出来 —— 记下来，别在别的水体上照抄这个 max()。
 // ────────────────────────────────────────────────────────────────────────────
+
+// touch: 强制重编（Unity 不追踪自定义 #include 依赖）
+
+// touch2

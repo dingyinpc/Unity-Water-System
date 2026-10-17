@@ -51,16 +51,15 @@
 
 ## 4 补齐实施
 
-### 4.1 代码（`Water_Ocean.shader`）
+### 4.1 代码
 
-- **`TraceSSR(worldPos, reflDir, out conf)`**：沿反射方向取 `_SSRMaxDist` 端点，投影到屏幕 UV；
-  步进 `_SSRSteps`（默认 24）逐步比较 `LinearEyeDepth(SampleSceneDepth(uv))`；
-  命中后 **6 次二分精化**定位交点（与参考 C8 的"步进 + 二分搜索"一致）。
-- **命中可信度**（C8 三因子）：`conf = cThick(深度差/命中厚度) × cDist(1−t²) × cEdge(屏幕边缘×_SSREdgeFade)`。
-- **miss 回退**：`reflCol = lerp(skyCol, ssrCol, ssrConf)` —— conf=0 时保持原天空渐变（参考的 CubeMap 槽位）。
-- **铁律遵守**：`Varyings` 新增 `float4 clipPos : TEXCOORD3`（**不用 `SV_POSITION` 读裁剪坐标**，《05》A-1）。
-- 参数入 `Properties` + CBUFFER；A/B 旋钮 = 菜单 97~101（唯一真源逻辑与 94~96 一致）。
-- 调试位：`_SSRDebug` 1=命中可信度 2=SSR 色（独立于 `_DebugMode`）。
+- **`Assets/Art/Shaders/SSR.hlsl`（新增，共享）**：`TraceSSR(wp, rd, maxDist, stepsF, thickness, edgeFade, out conf)` ——
+  步进 + 6 次二分 + 三因子可信度；**参数走显式传参**，不依赖调用方在何处声明 uniform（见 §6-6 的坑）。
+  由 `Water_Ocean` 与 `Water_Advanced` 共用（消重复，符合"只写一处"纪律）。
+- **miss 回退**：`reflBase = lerp(skyCol, ssrCol, ssrConf)` —— conf=0 时与旧路径**逐位一致**，零回归。
+  太阳碎闪**拆出独立项**（照《05》原文："碎闪要单独，否则会被场景色整条抹掉"）。
+- **铁律遵守**：`Varyings` 新增 `float4 clipPos : TEXCOORD3`（**不读片元 `SV_POSITION`**，《05》A-1）。
+- A/B 旋钮：Ocean 走菜单 97~101；`Water_Advanced` 走同一套 `_SSRStrength/_SSRDebug`（Main 侧 A/B 待切场景后补）。
 
 可复现：
 ```powershell
@@ -81,10 +80,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tools/bridge_menu.ps1 -Menu 
 
 | # | 判据 | 结果 |
 | --- | --- | --- |
-| 1 | 编译干净（C# + shader） | ✅ 0 硬错误 |
+| 1 | 编译干净（C# + 两份水 shader） | ✅ **新增量判定工具** `Tools/check_shader.ps1`（mark/report），report 全绿 |
 | 2 | **无视觉回归**：SSR 关/开 两张 Play 截图 | ✅ 118618 vs 118642 字节（近乎逐字节一致） |
 | 3 | 命中可信度图（`_SSRDebug=1`） | ✅ 出图正常，水面上 conf≈0 |
-| 4 | 6m 验证柱在场时命中 | ⚠️ **仍未命中**（见 5.2 的原因分析） |
+| 4 | 共享实现接入 `Water_Advanced`（Main） | ✅ 编译通过（**真机命中验证待切 Main**） |
+| 5 | 6m 验证柱在场时命中 | ⚠️ **仍未命中**（见 5.2 的原因分析） |
 
 ### 5.2 为什么 OceanScene 上 SSR 命中为 0（物理论证，非缺陷）
 
@@ -110,3 +110,6 @@ Main 相机俯角 **+26°**、水面大、岸边有树/石/沙 ⇒ 反射线会�
 3. **SSR 调试位不会自动复位**（`_SSRDebug=1` 会一直开着）——本次已用菜单 101 复原；后续应给 99/100 加上"下次截图后自动复位"。
 4. **机位临时抬高菜单（104）实测没能让画面看向水面**（画面全是天空），待定位（怀疑旋转未被当前渲染帧采纳）→ 同 P0-1 §6 的教训："观测通道先于被观测量"应先验证机位 change 生效再截。
 5. **Ocean 主水面在转发模式下没有可用的高大近岸几何**；若想 Ocean 也有真实倒影，需场景级新增"岸壁"（参考 f800 的做法），属场景设计决策，留待用户定。
+6. **⚠ Unity 不追踪自定义 `#include` 的依赖**：改 `SSR.hlsl` 不会重新编译引用它的 Water_Ocean/Water_Advanced，
+   必须同时 touch 引用方（或改其内容）才会重编。本步因为这个把"旧缓存错误"误判了两轮；
+   **找一个判定工具 `Tools/check_shader.ps1`（mark/report 基线增量），以后改 .hlsl 必须跑它**。

@@ -76,6 +76,13 @@ Shader "WaterProject/Water_Advanced"
         _AmbientStrength  ("环境光强度", Float) = 0.35
         _DepthDebug       ("深度调试输出 1:R=gap G=depthMix B=fres 2:rawDepth/scene/eye 3:screenUV", Range(0,3)) = 0
         _SkyReflect       ("天空反射权重", Range(0,2)) = 1
+        // ── SSR 屏幕空间反射（P0-2 / 参考 C7–C8）──
+        _SSRStrength      ("SSR 反射强度", Range(0, 1)) = 0.85
+        _SSRMaxDist       ("SSR 追踪最大距离(米)", Float) = 40
+        _SSRSteps         ("SSR 步进数", Range(4, 48)) = 24
+        _SSRThickness     ("命中厚度容差(米)", Float) = 0.5
+        _SSREdgeFade      ("屏幕边缘淡出", Float) = 24
+        _SSRDebug         ("SSR 调试 0关/1可信度/2SSR色", Float) = 0
     }
 
     SubShader
@@ -121,7 +128,10 @@ Shader "WaterProject/Water_Advanced"
                 float  _InteractionAmp, _InteractionNorm, _InteractionFoam;
                 float  _CrestJ, _CrestSoft, _CrestFoam, _ShoreFoam, _FoamLift;
                 float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength, _FresnelPow, _AmbientStrength, _DepthDebug, _SkyReflect;
+                float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
             CBUFFER_END
+
+            #include "SSR.hlsl"
 
             // 全局（交互系统每帧提供）
             TEXTURE2D(_InteractionTex); SAMPLER(sampler_InteractionTex);
@@ -430,9 +440,13 @@ Shader "WaterProject/Water_Advanced"
                 float3 reflDir = reflect(-V, N);
                 // reflDir.y≈0 是掠射反射，应当取"地平线色"（亮）；旧映射 *0.5+0.5 会把它推到天顶暗色 → 低机位水面发黑发闷
                 float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y));
-                // 太阳闪烁与场景主光方向对齐（不硬编码方向）
-                skyCol += _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
-                col += skyCol * fres * _SkyReflect * (1.0 - interA * 0.4);
+                // ── SSR（P0-2 / 参考 C8）：conf=0 时 reflCol==skyCol ⇒ 与旧路径逐位一致，零回归 ──
+                float ssrConf = 0.0;
+                float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
+                float3 reflBase = lerp(skyCol, ssrCol, ssrConf);
+                // 太阳碎闪不跟 SSR 走（《05》原文：碎闪要拆出来单独，否则会被"场景色"整条抹掉）
+                float3 reflCol = reflBase + _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
+                col += reflCol * fres * _SkyReflect * (1.0 - interA * 0.4);
 
                 // ── 透光感 [Beer–Lambert]：阳光沿反射反方向穿透水体，随深度指数衰减 ──
                 float trans = exp(-max(gap, 0.0) * _Absorb * 0.6);          // 透射率 0浅→1深
@@ -485,4 +499,8 @@ Shader "WaterProject/Water_Advanced"
         }
     }
     FallBack "Universal Render Pipeline/Unlit"
-}
+}// touch: 强制重导 SSR include 顺序修正
+
+// touch: 强制重编（Unity 不追踪自定义 #include 依赖）
+
+// touch2
