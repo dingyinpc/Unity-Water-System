@@ -187,19 +187,16 @@ Shader "WaterProject/ShallowWaterSim"
                     float t = saturate(w * 0.5 + 0.5);         // 归一到 0..1（尺度可调）
                     float3 col = lerp(float3(0.15, 0.15, 0.55), float3(1.0, 0.25, 0.15), t);
                     // 每 8 格画一个速度箭头（青色）
-                    float2 cell = uv * _SWGridN / 8.0;
-                    float arrow = 0;
-                    if (frac(cell.x) < 0.5 && frac(cell.y) < 0.5)
-                    {
-                        float2 c = uv * _SWGridN / 8.0;
-                        float2 dir = normalize(vel + 1e-6);
-                        float len = saturate(length(vel) * 40.0) * 0.45;
-                        // 局部坐标下沿方向画一段（近似：方向投影）
-                        float2 loc = frac(c) - 0.5;
-                        float along = dot(loc, dir);
-                        float perp = abs(dot(loc, float2(-dir.y, dir.x)));
-                        arrow = (along > 0 && along < len && perp < 0.06) ? 1.0 : 0.0;
-                    }
+                    float2 c = uv * _SWGridN / 8.0;
+                    float2 loc = frac(c) - 0.5;
+                    float2 dir = normalize(vel + 1e-6);
+                    float len = saturate(length(vel) * 200.0) * 0.42;
+                    float along = dot(loc, dir);
+                    float perp  = abs(dot(loc, float2(-dir.y, dir.x)));
+                    // 杆 + 箭头（沿方向的一段细线，加一个靠近末端的加宽三角）
+                    float shaft = (abs(along) < len * 0.5 && perp < 0.045) ? 1.0 : 0.0;
+                    float head  = (along > len * 0.2 && along < len * 0.5 && perp < (len * 0.5 - along) * 0.55 + 0.02) ? 1.0 : 0.0;
+                    float arrow = saturate(shaft + head) * step(1e-4, length(vel));
                     col = lerp(col, float3(0.0, 0.95, 0.95), arrow);
                     return float4(col, 1);
                 }

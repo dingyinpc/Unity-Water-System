@@ -22,6 +22,8 @@ namespace WaterProject.Logic
 
         [Header("水")]
         public float waterLevel = 0f;      // 静水位 y（世界米）
+        [Tooltip("潮差倾斜：海面离岸越高（>0）→ 产生向岸水位梯度（参考 C15 用）")]
+        public float tideSlope = 0.012f;
         [Header("地形（Editor 端采样真实网格烘焙；R=地形 y）")]
         public Texture2D terrainTex;
         [Tooltip("初始状态贴图（Editor 烘焙：R=h G=terrain B=wet A=0）；留空则由 terrainTex 现算")]
@@ -170,9 +172,14 @@ namespace WaterProject.Logic
             while (_acc >= step && guard++ < 8) { Step(); _acc -= step; }
         }
 
-        /// <summary>把当前状态可视化到一张 RT（供 Editor 导出 PNG 做检测报告）。</summary>
-        public RenderTexture RenderViz(int mode)
+        /// <summary>编辑模式预热：手动推进 n 步（导出调试图前用，让速度场显现）。</summary>
+        public void Warmup(int steps)
         {
+            for (int i = 0; i < steps; i++) Step();
+        }
+
+        /// <summary>把当前状态可视化到一张 RT（供 Editor 导出 PNG 做检测报告）。</summary>
+        public RenderTexture RenderViz(int mode)        {
             if (_mat == null) return null;
             _mat.SetTexture(P_State, _stateCur);
             _mat.SetTexture(P_Vel, _velCur);

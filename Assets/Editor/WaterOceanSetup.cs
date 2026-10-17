@@ -83,6 +83,11 @@ namespace WaterProject.EditorTools
         // ───────── 对外访问器（唯一来源：近岸流模拟等模块引用这两支）─────────
         public static float ShoreZAt(float x) => CShoreZ(x);
         public static float SandYAt(float x, float off) => CSandY(x, off);
+        // 机位常量（近岸流模拟定域中心用，避免依赖"当前打开的是哪个场景"）
+        public static float CamXPublic => CamX;
+        public static float CamOffPublic => CamOff;
+        public static float EyeHPublic => EyeH;
+        public static Vector3 CamEulerPublic => CamEuler;
 
         static float CShoreZ(float x)
         {
