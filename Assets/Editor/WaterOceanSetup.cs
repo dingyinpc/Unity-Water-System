@@ -80,6 +80,10 @@ namespace WaterProject.EditorTools
         const float EyeH = 1.62f;
         static readonly Vector3 CamEuler = new Vector3(-4.5f, 58f, 0f);
 
+        // ───────── 对外访问器（唯一来源：近岸流模拟等模块引用这两支）─────────
+        public static float ShoreZAt(float x) => CShoreZ(x);
+        public static float SandYAt(float x, float off) => CSandY(x, off);
+
         static float CShoreZ(float x)
         {
             float u = x - Shore.x;
