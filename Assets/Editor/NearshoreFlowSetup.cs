@@ -95,6 +95,22 @@ namespace WaterProject.EditorTools
             WriteProbe($"MENU92 vizMode -> {sim.vizMode} (1干湿网格/2水位+速度/3水深)\n");
         }
 
+        // ═════════════════════════ 94~96 · A/B 验证（P0-1 接水面）═════════════════════════
+        const string OceanMatPath = "Assets/Art/Materials/Ocean_Water.mat";
+
+        static void SetFlowFoam(float v)
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
+            if (m == null) { WriteProbe("SWAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
+            m.SetFloat("_FlowFoamStrength", v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            WriteProbe($"SWAB _FlowFoamStrength -> {v}\n");
+        }
+
+        [MenuItem("Tools/Ocean/94 流场泡沫=0(关)")] public static void FlowFoamOff() => SetFlowFoam(0f);
+        [MenuItem("Tools/Ocean/95 流场泡沫=1(强)")] public static void FlowFoamOn() => SetFlowFoam(1f);
+        [MenuItem("Tools/Ocean/96 流场泡沫还原(0.35)")] public static void FlowFoamRestore() => SetFlowFoam(0.35f);
+
         // ═════════════════════════ 93 ═════════════════════════
         [MenuItem("Tools/Ocean/93 移除近岸流模拟对象(清理)")]
         public static void RemoveSim()

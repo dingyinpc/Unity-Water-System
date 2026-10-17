@@ -60,6 +60,11 @@ Shader "WaterProject/Water_Ocean"
         _BreakFoam        ("碎浪泡沫强度", Range(0, 1)) = 0.85
         _Whitecap         ("远海白帽强度", Range(0, 1)) = 0.20
 
+        // ── 近岸流场（P0-1 / 参考 C17）──
+        _FlowAdvect       ("泡沫随流位移(米/单位速度)", Float) = 30
+        _FlowFoamGain     ("流速→泡沫增益", Range(0, 200)) = 60
+        _FlowFoamStrength ("流场泡沫强度", Range(0, 1)) = 0.35
+
         // ── 冲滩沫带的"样子"（"能冲多远"在 OceanShore 里，与沙滩共用）──
         _SwashFoam        ("沫带强度", Range(0, 1)) = 0.75
 
@@ -137,10 +142,16 @@ Shader "WaterProject/Water_Ocean"
                 float  _SwashFoam;
                 float  _DetailStrength, _DetailScale, _DetailFlow, _RippleStrength, _RippleScale;
                 float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
+                float  _FlowAdvect, _FlowFoamGain, _FlowFoamStrength;
                 float  _DebugMode;
             CBUFFER_END
 
             #include "OceanShore.hlsl"
+
+            // ── 近岸流场（P0-1）：NearshoreFlowSim 每帧 SetGlobalTexture/Vector ──
+            TEXTURE2D(_SWState); SAMPLER(sampler_SWState);
+            TEXTURE2D(_SWVel);   SAMPLER(sampler_SWVel);
+            float4 _SWDomain;    // (minX, minZ, sizeX, sizeZ)
 
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings
@@ -267,6 +278,14 @@ Shader "WaterProject/Water_Ocean"
                 float depth = WaterDepth(worldPos.x, offDist);
                 float up = max(-offDist, 0.0);                 // 往岸上爬了多远
 
+                // ── 近岸流场采样（P0-1）：泡沫随水流平流 + 流活跃处增沫 ──
+                float2 swUV = (worldPos.xz - _SWDomain.xy) / max(_SWDomain.zw, 1e-4);
+                float2 flow = float2(0, 0);
+                if (swUV.x > 0 && swUV.x < 1 && swUV.y > 0 && swUV.y < 1)
+                    flow = SAMPLE_TEXTURE2D_LOD(_SWVel, sampler_SWVel, swUV, 0).rg;
+                float flowMag = length(flow);
+                float2 adv = flow * _FlowAdvect;               // 泡沫图案随水流位移（米）
+
                 float3 V = normalize(_WorldSpaceCameraPos - worldPos);
 
                 // 掠射即等价于远处：高频皮肤要按视角衰减，否则混叠成灯芯绒（《05》D-17）。
@@ -342,12 +361,16 @@ Shader "WaterProject/Water_Ocean"
                 float swash = (offDist <= 0.0)
                             ? saturate(1.0 + offDist / max(reach, 0.5))
                             : saturate(1.0 - offDist / 3.0);
-                float sn = ValueNoise(float2(worldPos.x * 0.09, offDist * 0.5 - t * 0.8));
+                float sn = ValueNoise(float2(worldPos.x * 0.09 + adv.x, offDist * 0.5 - t * 0.8 + adv.y));
                 // 卡阈值出蕾丝前缘，而不是平滑渐变的雾白 —— 后者会被浅水提亮整个盖掉，
                 // 于是"浪冲到哪儿了"这条信息在画面上根本读不出来。
                 float washFoam = smoothstep(0.30, 0.92, swash * (0.30 + 1.15 * sn)) * _SwashFoam;
 
-                float foam = saturate(breakFoam + whitecap + washFoam);
+                // 流场泡沫（P0-1）：流速活跃的近岸浅水处增沫（只在模拟域内、且水深不深时）
+                float flowFoam = saturate(flowMag * _FlowFoamGain) * _FlowFoamStrength
+                               * saturate(1.0 - depth / 8.0);
+
+                float foam = saturate(breakFoam + whitecap + washFoam + flowFoam);
                 col = lerp(col, _FoamColor.rgb, foam);
 
                 // ── 调试通道：先看通道通不通，再解释数值（《06》附 B）──

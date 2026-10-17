@@ -624,6 +624,11 @@ namespace WaterProject.EditorTools
             m.SetFloat("_BreakFoam", 0.95f);
             m.SetFloat("_Whitecap", 0.20f);
 
+            // 近岸流场（P0-1 / 参考 C17）：泡沫随水流平流 + 流活跃处增沫
+            m.SetFloat("_FlowAdvect", 30f);
+            m.SetFloat("_FlowFoamGain", 60f);
+            m.SetFloat("_FlowFoamStrength", 0.35f);
+
             m.SetFloat("_SwashFoam", 0.75f);
 
             // 皮肤尺度比潭线大一个量级是刻意的：海要的是"远处还读得出纹理"。
