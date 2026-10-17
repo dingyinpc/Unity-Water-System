@@ -42,6 +42,12 @@ Material:
     - _Opacity: 0.95
     - _RippleScale: 3
     - _RippleStrength: 0.1
+    - _SSRDebug: 0
+    - _SSREdgeFade: 24
+    - _SSRMaxDist: 90
+    - _SSRSteps: 24
+    - _SSRStrength: 0.85
+    - _SSRThickness: 0.8
     - _ShoalGain: 1.7
     - _ShoalRange: 7
     - _ShoreSlope: 0.055

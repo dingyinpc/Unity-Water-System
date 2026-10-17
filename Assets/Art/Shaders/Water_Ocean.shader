@@ -83,6 +83,14 @@ Shader "WaterProject/Water_Ocean"
         _SunGloss         ("太阳碎闪锐度", Float) = 200
         _SunStrength      ("太阳碎闪强度", Range(0, 3)) = 1.5
 
+        // ── SSR 屏幕空间反射（P0-2 / 参考 C7–C8）──
+        _SSRStrength      ("SSR 反射强度", Range(0, 1)) = 0.85
+        _SSRMaxDist       ("SSR 追踪最大距离(米)", Float) = 90
+        _SSRSteps         ("SSR 步进数", Range(4, 48)) = 24
+        _SSRThickness     ("命中厚度容差(米)", Float) = 0.8
+        _SSREdgeFade      ("屏幕边缘淡出", Float) = 24
+        _SSRDebug         ("SSR 调试 0关/1可信度/2SSR色", Float) = 0
+
         // ── 调试 ──
         _DebugMode        ("调试输出(0关/1水深/2破碎/3沫带)", Float) = 0
 
@@ -143,8 +151,12 @@ Shader "WaterProject/Water_Ocean"
                 float  _DetailStrength, _DetailScale, _DetailFlow, _RippleStrength, _RippleScale;
                 float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
                 float  _FlowAdvect, _FlowFoamGain, _FlowFoamStrength;
+                float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
             CBUFFER_END
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
 
             #include "OceanShore.hlsl"
 
@@ -157,6 +169,9 @@ Shader "WaterProject/Water_Ocean"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
+                // ⚠ 本项目最贵的坑（《05》A-1）：片元里不能用 SV_POSITION 当裁剪坐标，
+                //   屏幕空间采样必须另带一份。SSR 的深度比较全靠它。
+                float4 clipPos    : TEXCOORD3;
                 float3 worldPos   : TEXCOORD0;
                 float  offDist    : TEXCOORD1;   // 有符号离岸距离：>0 海侧，<0 岸侧
                 float  fogCoord   : TEXCOORD2;
@@ -246,6 +261,67 @@ Shader "WaterProject/Water_Ocean"
                 return normalize(float3(-tot.x, 1.0, -tot.y));
             }
 
+            // ───────── SSR 屏幕空间反射（P0-2 / 参考 C8）─────────
+            // 反射方向射线步进 → 屏幕UV 比较 _CameraDepthTexture → 二分精化定位交点；
+            // 命中可信度 = 深度差(命中厚度) × 追踪距离 × 屏幕边缘（参考 C8 三因子）。
+            // miss ⇒ 返回 0 色且 conf=0，由调用方回退到天空渐变兜底（参考的 CubeMap 槽位）。
+            float2 ClipToScreenUV(float4 c)
+            {
+                float4 sp = c * 0.5;
+                sp.xy = float2(sp.x, sp.y * _ProjectionParams.x) + sp.w;
+                return sp.xy / sp.w;
+            }
+
+            float3 TraceSSR(float3 wp, float3 rd, out float conf)
+            {
+                conf = 0.0;
+                float3 col = float3(0, 0, 0);
+                float3 P1 = wp + rd * _SSRMaxDist;
+                float4 c0 = mul(UNITY_MATRIX_VP, float4(wp, 1.0));
+                float4 c1 = mul(UNITY_MATRIX_VP, float4(P1, 1.0));
+                float vz0 = -mul(UNITY_MATRIX_V, float4(wp, 1.0)).z;
+                float vz1 = -mul(UNITY_MATRIX_V, float4(P1, 1.0)).z;
+                if (c0.w <= 1e-3 || c1.w <= 1e-3 || vz1 <= vz0 + 1e-3) return col;
+
+                float2 u0 = ClipToScreenUV(c0), u1 = ClipToScreenUV(c1);
+                int steps = (int)clamp(_SSRSteps, 4.0, 48.0);
+                float tHit = -1.0, tPrev = 0.0;
+                [loop]
+                for (int i = 1; i <= steps; i++)
+                {
+                    float t = (float)i / steps;
+                    float2 uv = lerp(u0, u1, t);
+                    if (uv.x < -0.03 || uv.x > 1.03 || uv.y < -0.03 || uv.y > 1.03) { tPrev = t; break; }
+                    float sceneVz = LinearEyeDepth(SampleSceneDepth(uv), _ZBufferParams);
+                    float vz = lerp(vz0, vz1, t);
+                    if (vz > sceneVz - _SSRThickness)
+                    {
+                        float lo = tPrev, hi = t;
+                        [loop]
+                        for (int j = 0; j < 6; j++)
+                        {
+                            float m = (lo + hi) * 0.5;
+                            float svm = LinearEyeDepth(SampleSceneDepth(lerp(u0, u1, m)), _ZBufferParams);
+                            if (lerp(vz0, vz1, m) > svm - _SSRThickness) hi = m; else lo = m;
+                        }
+                        tHit = (lo + hi) * 0.5;
+                        break;
+                    }
+                    tPrev = t;
+                }
+                if (tHit < 0.0) return col;
+
+                float2 uvH = lerp(u0, u1, tHit);
+                float sceneH = LinearEyeDepth(SampleSceneDepth(uvH), _ZBufferParams);
+                float vzH = lerp(vz0, vz1, tHit);
+                float cThick = saturate(1.0 - abs(vzH - sceneH) / max(_SSRThickness, 1e-3));
+                float cDist  = 1.0 - tHit * tHit;
+                float2 e = min(uvH, 1.0 - uvH);
+                float cEdge = saturate(min(e.x, e.y) * _SSREdgeFade);
+                conf = cThick * cDist * cEdge;
+                return SampleSceneColor(uvH);
+            }
+
             Varyings vert(Attributes v)
             {
                 Varyings o;
@@ -264,6 +340,7 @@ Shader "WaterProject/Water_Ocean"
                 w.pos.y = max(w.pos.y, SandY(wp.x, offDist) + 0.035);
 
                 o.positionCS = TransformWorldToHClip(w.pos);
+                o.clipPos    = o.positionCS;      // 另存一份裁剪坐标（SSR 用，勿用 SV_POSITION）
                 o.worldPos   = w.pos;
                 o.offDist    = offDist;
                 o.fogCoord   = ComputeFogFactor(o.positionCS.z);
@@ -316,7 +393,12 @@ Shader "WaterProject/Water_Ocean"
                 float3 reflDir = reflect(-V, N);
                 reflDir.y = max(reflDir.y, 0.02);
                 float3 skyCol = lerp(_SkyHorizon.rgb, _SkyZenith.rgb, saturate(reflDir.y * 2.2));
-                col = lerp(col, skyCol, saturate(fres * _SkyReflect));
+
+                // ── SSR（P0-2 / 参考 C8）：命中处用真实场景色替换天空兜底 ──
+                float ssrConf = 0.0;
+                float3 ssrCol = TraceSSR(worldPos, reflDir, ssrConf);
+                float3 reflCol = lerp(skyCol, ssrCol, ssrConf);   // miss ⇒ 天空渐变兜底
+                col = lerp(col, reflCol, saturate(fres * _SkyReflect));
 
                 // ── ③ 太阳碎闪：pow 自带衰减，累加是合法的 ──
                 col += _SunColor.rgb * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss)
@@ -377,6 +459,9 @@ Shader "WaterProject/Water_Ocean"
                 if (_DebugMode > 2.5) return half4(saturate(washFoam), saturate(breakFoam), saturate(foam), 1.0);
                 if (_DebugMode > 1.5) return half4(saturate(breakage), saturate(gain / _ShoalGain), saturate(swash), 1.0);
                 if (_DebugMode > 0.5) return half4(saturate(depth / _MaxDepth), saturate(trans), saturate(fres), 1.0);
+                // SSR 调试（独立于 _DebugMode，0/1/2 = 关/可信度/SSR 色）
+                if (_SSRDebug > 1.5) return half4(ssrCol.rgb, 1.0);
+                if (_SSRDebug > 0.5) return half4(ssrConf.xxx, 1.0);
 
                 // 水膜在"上冲极限"处透过去，露出干沙 —— 边界因此会随潮汐呼吸。
                 // 岸上（up>0）才需要这个衰减；海侧始终实心，否则近岸浅水会莫名变淡。

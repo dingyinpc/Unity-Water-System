@@ -111,6 +111,70 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Ocean/95 流场泡沫=1(强)")] public static void FlowFoamOn() => SetFlowFoam(1f);
         [MenuItem("Tools/Ocean/96 流场泡沫还原(0.35)")] public static void FlowFoamRestore() => SetFlowFoam(0.35f);
 
+        // ── SSR A/B（P0-2）：strength<0 = 不改强度；dbg<0 = 不改调试位 ──
+        static void SetSSR(float strength, float dbg)
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
+            if (m == null) { WriteProbe("SSRAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
+            if (strength >= 0) m.SetFloat("_SSRStrength", strength);
+            if (dbg >= 0) m.SetFloat("_SSRDebug", dbg);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            WriteProbe($"SSRAB _SSRStrength -> {m.GetFloat("_SSRStrength")}  _SSRDebug -> {m.GetFloat("_SSRDebug")}\n");
+        }
+
+        [MenuItem("Tools/Ocean/97 SSR=0(关)")]               public static void SSROff() => SetSSR(0f, -1f);
+        [MenuItem("Tools/Ocean/98 SSR=1(开)")]               public static void SSROn() => SetSSR(1f, -1f);
+        [MenuItem("Tools/Ocean/99 SSR调试:命中可信度")]        public static void SSRConf() => SetSSR(1f, 1f);
+        [MenuItem("Tools/Ocean/100 SSR调试:SSR色")]           public static void SSRCol() => SetSSR(1f, 2f);
+        [MenuItem("Tools/Ocean/101 SSR还原(0.85/调试关)")]     public static void SSRRestore() => SetSSR(0.85f, 0f);
+
+        // ── SSR 机制验证（P0-2）：临时高大近岸几何，证明"命中→反射真实场景色"通路 ──
+        static GameObject _probe;
+        [MenuItem("Tools/Ocean/102 SSR 机制验证柱(临时建)")]
+        public static void SSRProbeOn()
+        {
+            var cam = Camera.main;
+            float x = cam ? cam.transform.position.x + 12f : -18f;
+            float z = WaterOceanSetup.ShoreZAt(x) + 6f;          // 岸线外 6m
+            SSRProbeOff();
+            _probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _probe.name = "SSRProbePillar";
+            _probe.transform.position = new Vector3(x, -0.4f, z);
+            _probe.transform.localScale = new Vector3(1.6f, 6.0f, 1.6f);
+            var mr = _probe.GetComponent<MeshRenderer>();
+            var m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            m.color = new Color(0.42f, 0.40f, 0.44f, 1f);
+            mr.sharedMaterial = m;
+            WriteProbe($"SSRPROBE on at ({x:F1},{z:F1})\n");
+        }
+        [MenuItem("Tools/Ocean/103 SSR 机制验证柱(临时删)")]
+        public static void SSRProbeOff()
+        {
+            var old = GameObject.Find("SSRProbePillar");
+            if (old != null) Object.DestroyImmediate(old);
+            WriteProbe("SSRPROBE off\n");
+        }
+        static Vector3 _camSaved;
+        static bool _camSavedValid;
+        [MenuItem("Tools/Ocean/104 SSR 机位升高(临时,视线向下)")]
+        public static void CamUpOn()
+        {
+            var cam = Camera.main; if (cam == null) return;
+            if (!_camSavedValid) { _camSaved = cam.transform.position; _camSavedValid = true; }
+            cam.transform.position = _camSaved + Vector3.up * 9f;
+            cam.transform.rotation = Quaternion.Euler(-26f, cam.transform.eulerAngles.y, 0f);
+            WriteProbe($"SSRCAM up at ({cam.transform.position.x:F1},{cam.transform.position.y:F1},{cam.transform.position.z:F1})\n");
+        }
+        [MenuItem("Tools/Ocean/105 SSR 机位还原")]
+        public static void CamUpOff()
+        {
+            var cam = Camera.main; if (cam == null) return;
+            if (!_camSavedValid) return;
+            cam.transform.position = _camSaved;
+            cam.transform.rotation = Quaternion.Euler(WaterOceanSetup.CamEulerPublic);
+            _camSavedValid = false;
+            WriteProbe("SSRCAM restore\n");
+        }
         // ═════════════════════════ 93 ═════════════════════════
         [MenuItem("Tools/Ocean/93 移除近岸流模拟对象(清理)")]
         public static void RemoveSim()
