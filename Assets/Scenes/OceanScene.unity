@@ -6727,6 +6727,71 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &745071684
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 745071686}
+  - component: {fileID: 745071685}
+  m_Layer: 0
+  m_Name: NearshoreFlowSim
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &745071685
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 745071684}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb082b8910be0c440859409ced3e5a35, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  minX: -250
+  minZ: -25.916983
+  sizeX: 440
+  sizeZ: 200
+  gridN: 256
+  waterLevel: 0
+  tideSlope: 0.012
+  terrainTex: {fileID: 2800000, guid: 449fb3d6485c09047921bec99a295b9e, type: 2}
+  state0Tex: {fileID: 2800000, guid: e7c3c459f07d1d34aaf858cc1a2b26e3, type: 2}
+  waveOn: 1
+  waveAmp: 0.85
+  waveLen: 74
+  waveDir: {x: -0.175, y: 0.985}
+  waveSpeed: 1
+  waveForce: 0.9
+  simHz: 60
+  flowK: 0.9
+  damping: 0.997
+  edgeBand: 0.05
+  edgeK: 0.85
+  vizMode: 1
+--- !u!4 &745071686
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 745071684}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &760829436
 GameObject:
   m_ObjectHideFlags: 0
@@ -14422,6 +14487,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1694626063}
   - component: {fileID: 1694626062}
+  - component: {fileID: 1694626064}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -14506,6 +14572,29 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1694626064
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1694626061}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Version: 3
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_LightLayerMask: 1
+  m_RenderingLayers: 1
+  m_CustomShadowLayers: 0
+  m_ShadowLayerMask: 1
+  m_ShadowRenderingLayers: 1
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
 --- !u!1 &1697229603
 GameObject:
   m_ObjectHideFlags: 0
@@ -20038,3 +20127,4 @@ SceneRoots:
   - {fileID: 1915512262}
   - {fileID: 396352884}
   - {fileID: 1269628540}
+  - {fileID: 745071686}

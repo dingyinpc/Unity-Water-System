@@ -34,6 +34,9 @@ Material:
     - _DetailFlow: 0.16
     - _DetailScale: 0.9
     - _DetailStrength: 0.3
+    - _FlowAdvect: 30
+    - _FlowFoamGain: 60
+    - _FlowFoamStrength: 0.35
     - _FresnelPow: 5
     - _MaxDepth: 10
     - _Opacity: 0.95
