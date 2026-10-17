@@ -32,7 +32,14 @@ Shader "WaterProject/ShallowWaterSim"
         _SWDamping  ("摩擦阻尼/步", Range(0.9,1)) = 0.997
         _SWEdgeBand ("边界吸收带宽(UV)", Range(0,0.3)) = 0.05
         _SWEdgeK    ("边界吸收强度", Range(0,1)) = 0.85
-        _SWVizMode  ("可视化 1干湿/2水位速度/3水深", Float) = 1
+        _SWVizMode  ("可视化 1干湿/2水位速度/3水深/4速度模长", Float) = 1
+        _SWWaveOn   ("涌浪驱动 0关/1开", Float) = 1
+        _SWWaveAmp  ("涌浪振幅 (m)", Float) = 0.85
+        _SWWaveLen  ("涌浪波长 (m)", Float) = 74
+        _SWWaveDir  ("涌浪传播方向 (x,z)", Vector) = (-0.175, 0.985, 0, 0)
+        _SWWaveSpeed("涌浪传播速度倍率", Float) = 1
+        _SWWaveForce("边界驱动接管强度", Range(0,1)) = 0.9
+        _SWTime     ("模拟时间 (s)", Float) = 0
     }
 
     SubShader
@@ -49,7 +56,11 @@ Shader "WaterProject/ShallowWaterSim"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             TEXTURE2D(_SWState);   SAMPLER(sampler_SWState);
+            TEXTURE2D(_SWTerrain); SAMPLER(sampler_SWTerrain);
             float _SWGridN, _SWWaterY, _SWDt, _SWFlowK, _SWDamping, _SWEdgeBand, _SWEdgeK;
+            float4 _SWDomain;
+            float _SWWaveOn, _SWWaveAmp, _SWWaveLen, _SWWaveSpeed, _SWWaveForce, _SWTime;
+            float4 _SWWaveDir;
 
             struct A { float4 positionOS : POSITION; float2 uv : TEXCOORD0; };
             struct V { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; };
@@ -98,6 +109,22 @@ Shader "WaterProject/ShallowWaterSim"
                 float hNew = hC + dh;
                 if (hNew < 0.0) hNew = 0.0;                    // 水深非负
                 hNew *= _SWDamping;                            // 摩擦/能量耗散
+
+                // ── 涌浪驱动（参考 C17）：外海按"岸线影响权重"把水位拉到涌浪高，波随模拟向岸传播 ──
+                if (_SWWaveOn > 0.5)
+                {
+                    float off = SAMPLE_TEXTURE2D_LOD(_SWTerrain, sampler_SWTerrain, uv, 0).g;
+                    float2 worldXZ = _SWDomain.xy + uv * _SWDomain.zw;
+                    float k = 6.2831853 / max(_SWWaveLen, 1.0);
+                    float omega = sqrt(9.81 * k) * max(_SWWaveSpeed, 0.01);
+                    float2 wd = normalize(_SWWaveDir.xy + 1e-6);
+                    float phase = k * dot(wd, worldXZ) - omega * _SWTime;
+                    float wTarget = _SWWaveAmp * sin(phase);
+                    // 离岸越远接管越强（岸线影响权重）；近岸让模拟自己演化
+                    float infl = saturate((off - 30.0) / 60.0) * _SWWaveForce;
+                    float wNow = tC + hNew;
+                    hNew = max(lerp(wNow, wTarget, infl) - tC, 0.0);
+                }
 
                 // 水面若被地形顶到（新格转湿）由 hNew 自然表达；地形原样透传
                 float wet = hNew > 1e-4 ? 1.0 : 0.0;
@@ -200,10 +227,16 @@ Shader "WaterProject/ShallowWaterSim"
                     col = lerp(col, float3(0.0, 0.95, 0.95), arrow);
                     return float4(col, 1);
                 }
-                else
+                else if (_SWVizMode < 3.5)
                 {
                     // 模式 3：水深（灰）
                     return float4(s.rrr, 1);
+                }
+                else
+                {
+                    // 模式 4：速度模长（灰：0→黑，≥0.2 m/s→白）——用于边界吸收量化
+                    float sp = saturate(length(vel) / 0.2);
+                    return float4(sp.xxx, 1);
                 }
             }
             ENDHLSL

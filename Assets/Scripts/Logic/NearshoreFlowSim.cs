@@ -29,6 +29,14 @@ namespace WaterProject.Logic
         [Tooltip("初始状态贴图（Editor 烘焙：R=h G=terrain B=wet A=0）；留空则由 terrainTex 现算")]
         public Texture2D state0Tex;
 
+        [Header("涌浪驱动（参考 C17）")]
+        public bool waveOn = true;
+        public float waveAmp = 0.85f;
+        public float waveLen = 74f;
+        public Vector2 waveDir = new Vector2(-0.175f, 0.985f);
+        public float waveSpeed = 1f;
+        [Range(0f, 1f)] public float waveForce = 0.9f;
+
         [Header("数值")]
         [Range(1, 60)] public int simHz = 60;
         [Range(0.1f, 3f)] public float flowK = 0.9f;
@@ -52,12 +60,20 @@ namespace WaterProject.Logic
         static readonly int P_EdgeBand= Shader.PropertyToID("_SWEdgeBand");
         static readonly int P_EdgeK   = Shader.PropertyToID("_SWEdgeK");
         static readonly int P_VizMode = Shader.PropertyToID("_SWVizMode");
+        static readonly int P_WaveOn  = Shader.PropertyToID("_SWWaveOn");
+        static readonly int P_WaveAmp = Shader.PropertyToID("_SWWaveAmp");
+        static readonly int P_WaveLen = Shader.PropertyToID("_SWWaveLen");
+        static readonly int P_WaveDir = Shader.PropertyToID("_SWWaveDir");
+        static readonly int P_WaveSpd = Shader.PropertyToID("_SWWaveSpeed");
+        static readonly int P_WaveFrc = Shader.PropertyToID("_SWWaveForce");
+        static readonly int P_SWTime  = Shader.PropertyToID("_SWTime");
 
         Material _mat;
         RenderTexture _stateA, _stateB, _velA, _velB;
         RenderTexture _stateCur, _velCur;
         float _acc;
         bool _ready;
+        float _simTime;
 
         public bool Ready => _ready;
         public RenderTexture StateCur => _stateCur;
@@ -144,6 +160,16 @@ namespace WaterProject.Logic
             _mat.SetFloat(P_Damping, damping);
             _mat.SetFloat(P_EdgeBand, edgeBand);
             _mat.SetFloat(P_EdgeK, edgeK);
+
+            // 涌浪驱动（参考 C17）
+            _mat.SetFloat(P_WaveOn, waveOn ? 1f : 0f);
+            _mat.SetFloat(P_WaveAmp, waveAmp);
+            _mat.SetFloat(P_WaveLen, waveLen);
+            _mat.SetVector(P_WaveDir, new Vector4(waveDir.x, waveDir.y, 0f, 0f));
+            _mat.SetFloat(P_WaveSpd, waveSpeed);
+            _mat.SetFloat(P_WaveFrc, waveForce);
+            _mat.SetFloat(P_SWTime, _simTime);
+            _simTime += 1f / Mathf.Max(simHz, 1);
 
             // Height：stateCur → stateNext
             _mat.SetTexture(P_State, _stateCur);

@@ -57,11 +57,16 @@ namespace WaterProject.EditorTools
             EditorUtility.SetDirty(sim);
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(simGo.scene);
 
-            // ── 建 + 预热 + 导出两张调试图（对齐参考 f1700 / f1850）──
+            // ── 建 + 预热 + 导出调试图（对齐参考 f1700 / f1850）──
             sim.Build();
             ExportViz(sim, 1, "Docs/screenshots/_sw_viz_wetdry.png");
             sim.Warmup(200);
-            ExportViz(sim, 2, "Docs/screenshots/_sw_viz_flow.png");
+            ExportViz(sim, 2, "Docs/screenshots/_sw_viz_flow_t1.png");
+            sim.Warmup(200);
+            ExportViz(sim, 2, "Docs/screenshots/_sw_viz_flow_t2.png");
+            sim.Warmup(200);
+            ExportViz(sim, 2, "Docs/screenshots/_sw_viz_flow.png");     // t3(600步)
+            ExportViz(sim, 4, "Docs/screenshots/_sw_viz_speed.png");
 
             WriteProbe($"MENU90 ok: domain({sim.minX:F1},{sim.minZ:F1}) size({sim.sizeX:F1},{sim.sizeZ:F1}) N={N} "
                      + $"shoreZ={shoreZ:F2} waterLevel={sim.waterLevel}\n");
@@ -74,7 +79,7 @@ namespace WaterProject.EditorTools
             var sim = Object.FindObjectOfType<NearshoreFlowSim>();
             if (sim == null) { WriteProbe("MENU91 REFUSED: 场景里没有 NearshoreFlowSim\n"); return; }
             sim.Build();
-            sim.Warmup(sim.vizMode >= 3 ? 0 : 200);   // 干湿/水位模式先预热出流场
+            sim.Warmup(sim.vizMode >= 3 ? 0 : 600);   // 干湿/水位模式先预热出流场
             ExportViz(sim, sim.vizMode, $"Docs/screenshots/_sw_viz_m{sim.vizMode}.png");
             WriteProbe($"MENU91 ok: viz mode {sim.vizMode}\n");
         }
@@ -123,7 +128,7 @@ namespace WaterProject.EditorTools
                     // 目标水位 = 静水位 + 潮差倾斜（离岸越高）→ 形成向岸的水位梯度（参考 C15）
                     float wTarget = waterLevel + tideSlope * off;
                     float h = Mathf.Max(wTarget - terr, 0f);
-                    tp[j * N + i] = new Color(terr, 0, 0, 1);
+                    tp[j * N + i] = new Color(terr, off, 0, 1);   // R=地形y  G=有符号离岸距离(>0 海侧)
                     sp[j * N + i] = new Color(h, terr, h > 1e-4f ? 1f : 0f, 0f);
                     if (terr < minT) minT = terr; if (terr > maxT) maxT = terr;
                     if (h < minH) minH = h; if (h > maxH) maxH = h;
