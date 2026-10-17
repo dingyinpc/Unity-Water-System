@@ -14,6 +14,18 @@
 | 2 | `analyze_frames.py` | **逐帧量测**：亮度 / 帧间差 / 全局 RGB / 亮部占比 /［分区框 RGB］/［色相分桶］→ `metrics.csv` + `plots.png` + `cuts.json` + `summary.txt` |
 | 3 | `contact_sheet.py` | 接触表拼图（每 N 帧取 1 张，快速纵览 / 供 AI 视觉查看） |
 | 4 | `extract_subtitles.py` | **烧录字幕卡提取**：白字掩码→分段→去背景→过滤→合并 → `card_*.png` + `strip_XX.jpg` 总览条 + `segments.csv`（帧级时间戳） |
+| 5 | `segment_report.py` | **分段逐帧量测**（检测报告专用）：对指定时间区间逐帧统计区域 RGB / 白沫占比 / 区域运动能量 → `seg_*.csv` + `seg_*.png` + `seg_*.txt` |
+
+## 分段逐帧量测（步骤 5，检测报告）
+
+```powershell
+python Tools/Video/segment_report.py "Docs/视频逐帧/<视频名>" --start 66 --end 78 --name P0-1_S9 `
+  --boxes "水面:4,28,54,72;近岸:60,20,96,74;天空:2,6,48,24"
+```
+
+- 用途：`Docs/学习路径与知识库/检测报告/Rxx_*.md` 的「参考侧逐帧量测」一节据此产出。
+- 指标：区域内均值 RGB、**白沫占比**（luma>200 与 min(B,G,R)>150 两档）、**区域运动能量**（与前一帧的灰度平均绝对差）、全局亮度/RGB/帧间差。
+- 约定：字幕带在底部，框坐标由调用方**自行避开 y>78%**；输出落 `<out>/analysis/seg_<name>.*`（随 frames 一起 gitignored）。
 
 ## 字幕卡提取（步骤 4，v3）
 
