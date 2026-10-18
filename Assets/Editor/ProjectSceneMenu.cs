@@ -62,7 +62,7 @@ namespace WaterProject.EditorTools
             if (m == null) { Probe("SSRAB(main) REFUSED: 当前场景找不到 WaterProject/Water_* 材质\n"); return; }
             if (strength >= 0f) m.SetFloat("_SSRStrength", strength);
             if (dbg >= 0f) m.SetFloat("_SSRDebug", dbg);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // ⚠ 只存这一个：SaveAssets() 会把别的脏资产一起刷（曾把昼夜色误写回）
             Probe($"SSRAB(main) {m.shader.name} -> strength={m.GetFloat("_SSRStrength")} debug={m.GetFloat("_SSRDebug")}\n");
         }
 
@@ -80,12 +80,26 @@ namespace WaterProject.EditorTools
             if (steps >= 0f) m.SetFloat("_SSRSteps", steps);
             if (maxDist >= 0f) m.SetFloat("_SSRMaxDist", maxDist);
             if (thickness >= 0f) m.SetFloat("_SSRThickness", thickness);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // ⚠ 只存这一个：SaveAssets() 会把别的脏资产一起刷（曾把昼夜色误写回）
             Probe($"SSRPARAM(main) {tag} -> steps={m.GetFloat("_SSRSteps")} dist={m.GetFloat("_SSRMaxDist")} thick={m.GetFloat("_SSRThickness")}\n");
         }
 
         [MenuItem("Tools/Project/135 SSR 密采(48步/120m/厚1.5)")] public static void SsrParamFine() => SetSSRParam(48f, 120f, 1.5f, "fine");
         [MenuItem("Tools/Project/136 SSR 默认(24步/40m/厚0.5)")]  public static void SsrParamDefault() => SetSSRParam(24f, 40f, 0.5f, "default");
+
+        // ── 150~152 体散射 A/B（P2-1 / 参考 S6）：按当前场景自动找水面材质 ──
+        static void SetScatter(float mode, string tag)
+        {
+            var m = ResolveWaterMat();
+            if (m == null) { Probe("SCATAB REFUSED: 当前场景找不到 WaterProject/Water_* 材质\n"); return; }
+            m.SetFloat("_ScatterMode", mode);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // ⚠ 只存这一个：SaveAssets() 会把别的脏资产一起刷（曾把昼夜色误写回）
+            Probe($"SCATAB(main) {m.shader.name} _ScatterMode -> {m.GetFloat("_ScatterMode")} ({tag})\n");
+        }
+
+        [MenuItem("Tools/Project/150 体散射=关(0)")]        public static void ScatOff()   => SetScatter(0f, "off");
+        [MenuItem("Tools/Project/151 体散射=解析(旧,1)")]    public static void ScatAnalytic() => SetScatter(1f, "analytic");
+        [MenuItem("Tools/Project/152 体散射=RayMarch(2)")]   public static void ScatRM()    => SetScatter(2f, "raymarch");
     }
 }
 #endif

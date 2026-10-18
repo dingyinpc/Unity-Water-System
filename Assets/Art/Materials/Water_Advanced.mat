@@ -52,6 +52,11 @@ Material:
     - _SSRSteps: 48
     - _SSRStrength: 0.85
     - _SSRThickness: 1.5
+    - _ScatterGain: 1.6
+    - _ScatterMaxDist: 12
+    - _ScatterMode: 2
+    - _ScatterSigma: 1
+    - _ScatterSteps: 10
     - _ScatterStrength: 0.45
     - _ShoreFoam: 0.3
     - _SkyReflect: 1

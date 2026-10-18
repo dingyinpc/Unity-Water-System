@@ -72,7 +72,7 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 | P0-2 | 屏幕空间反射 SSR | ✅ Main 真实验收通过（关/开差异 3.35% 像素、水面 conf>0.1=57.8%）；遗留 C7 抗闪（命中呈椒盐斑点） |
 | P1-1 | 昼夜系统 + 天空 | ✅ 主体完成（四时段真机量色通过）；缺月面/星空/双套渐变 |
 | P1-2 | 泡沫历史场（半拉格朗日平流） | ✅ Ocean 完成（关/开差异 8.00% 像素）；Main 无流场未接 |
-| P2-1 | 体散射 | ⏳ |
+| P2-1 | 水底散射 RayMarch（逐点主光阴影+逐级透射+有界混合） | ✅ Main+Pond（A/B 21.5%/28.7% 像素）；遗留：阴影定量/性能未测 |
 | P2-2 | 多尺度焦散 | ⏳ |
 | P2-3 | 体积雾 + 云影 | ⏳ |
 
@@ -90,5 +90,9 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 3. `ComputeScreenPos` 必须写 `o.zw = pos.zw`，漏掉会让整个屏幕空间采样错位（SSR 曾因此 conf 恒 0）。
 4. 本机相机 `Euler x` 取**正**才是俯视（负值是抬头）。
 5. **桥的 `getComponentProperties` 会让编辑器死锁**：主线程卡在 `EditorApplication.update → UnityBridgeServer.ProcessMainThreadQueue`，
-  弹 "Hold on (busy for …)" 且不再处理任何命令。**不要用该 action**；要读相机/组件参数就写一个只读菜单（写探针）。
-  恢复办法：`Stop-Process` 掉该 Unity PID → `python Tools/launch_unity.py`（会起新的编辑器实例，材质/场景无损）。
+   弹 "Hold on (busy for …)" 且不再处理任何命令。**不要用该 action**；要读相机/组件参数就写一个只读菜单（写探针）。
+   恢复办法：`Stop-Process` 掉该 Unity PID → `python Tools/launch_unity.py`（会起新的编辑器实例，材质/场景无损）。
+6. **`AssetDatabase.SaveAssets()` 会刷掉"全部脏资产"**（不只是你要存的那个）：A/B 菜单存水材质时，会把上轮 Play 遗留的
+   昼夜色一起写回别的 `.mat`，于是 git 工作区反复出现"莫名其妙的颜色改动"。**只存一个用 `AssetDatabase.SaveAssetIfDirty(obj)`**。
+7. **给暗场景做"发光类"效果（散射/泛光）别用 `col +=`**：加法无上界 → 暗场景里整片水变发光板（P2-1 的 Pond 实测）。
+   用**有界混合** `col = lerp(col, target, w)`，w∈[0,1]。

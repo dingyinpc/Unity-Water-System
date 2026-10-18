@@ -103,7 +103,7 @@ namespace WaterProject.EditorTools
             var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
             if (m == null) { WriteProbe("SWAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
             m.SetFloat("_FlowFoamStrength", v);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // 只存本材质（SaveAssets 会连带刷别的脏资产）
             WriteProbe($"SWAB _FlowFoamStrength -> {v}\n");
         }
 
@@ -117,7 +117,7 @@ namespace WaterProject.EditorTools
             var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
             if (m == null) { WriteProbe("FOAMAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
             m.SetFloat("_FoamHistStrength", v);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // 只存本材质（SaveAssets 会连带刷别的脏资产）
             WriteProbe($"FOAMAB {tag} _FoamHistStrength -> {m.GetFloat("_FoamHistStrength")}\n");
         }
 
@@ -154,7 +154,7 @@ namespace WaterProject.EditorTools
             if (m == null) { WriteProbe("SSRAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
             if (strength >= 0) m.SetFloat("_SSRStrength", strength);
             if (dbg >= 0) m.SetFloat("_SSRDebug", dbg);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // 只存本材质（SaveAssets 会连带刷别的脏资产）
             WriteProbe($"SSRAB _SSRStrength -> {m.GetFloat("_SSRStrength")}  _SSRDebug -> {m.GetFloat("_SSRDebug")}\n");
         }
 
@@ -202,7 +202,7 @@ namespace WaterProject.EditorTools
             if (steps >= 0) m.SetFloat("_SSRSteps", steps);
             if (maxDist >= 0) m.SetFloat("_SSRMaxDist", maxDist);
             if (thickness >= 0) m.SetFloat("_SSRThickness", thickness);
-            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);   // 只存本材质（SaveAssets 会连带刷别的脏资产）
             WriteProbe($"SSRPARAM {tag} -> steps={m.GetFloat("_SSRSteps")} dist={m.GetFloat("_SSRMaxDist")} thick={m.GetFloat("_SSRThickness")}\n");
         }
         [MenuItem("Tools/Ocean/106 SSR 密采(48步/200m/厚1.5)")] public static void SSRParamFine() => SetSSRParam(48f, 200f, 1.5f, "fine");

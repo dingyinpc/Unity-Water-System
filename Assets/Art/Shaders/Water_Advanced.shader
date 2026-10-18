@@ -29,6 +29,12 @@ Shader "WaterProject/Water_Advanced"
         _ScatterStrength  ("体积散射强度", Float) = 0.45
         _SunTransmission  ("阳光透射强度", Float) = 0.9
         _TransGloss       ("透射高光锐度", Float) = 48.0
+        // ── 水底散射 RayMarch（P2-1 / 参考 S6 C11）──
+        _ScatterMode      ("体散射 0关/1解析(旧)/2RayMarch", Float) = 2
+        _ScatterSteps     ("RayMarch 步数", Range(1, 32)) = 10
+        _ScatterMaxDist   ("RayMarch 最大光程(米)", Float) = 12
+        _ScatterSigma     ("消光系数倍率(×_Absorb)", Float) = 1.0
+        _ScatterGain      ("RayMarch 散射增益", Float) = 1.6
 
         // ── 格斯特纳波 [2] ──
         _WaveCount        ("波数量", Float) = 4
@@ -104,6 +110,9 @@ Shader "WaterProject/Water_Advanced"
             #pragma domain domain
             #pragma fragment frag
             #pragma target 5.0
+            // 体散射 RayMarch 要在路径采样点上取主光阴影（参考 C11「结合主光阴影」）
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
 
             #define MAX_WAVES 8
             #define MAX_RIPPLES 8
@@ -118,6 +127,7 @@ Shader "WaterProject/Water_Advanced"
                 float4 _DeepColor, _ShallowColor, _FoamColor, _SkyZenith, _SkyHorizon, _SunColor;
             float4 _WaterScatter;
             float _ScatterStrength, _SunTransmission, _TransGloss;
+            float _ScatterMode, _ScatterSteps, _ScatterMaxDist, _ScatterSigma, _ScatterGain;
                 float  _Absorb, _Opacity;
                 float  _WaveCount, _WaveTimeScale, _WaveAmpScale;
                 float4 _Waves[MAX_WAVES];
@@ -378,6 +388,40 @@ Shader "WaterProject/Water_Advanced"
                 return o;
             }
 
+            // ============================ 水底散射 RayMarch [S6 / C11] ============================
+            // 沿"水面点 → 屏幕深度重建的场景点"的**可见水体路径**定步长采样：
+            //   每步用 Beer–Lambert 累积透射率（越深越暗），并采样**主光阴影**（波影/障碍遮挡）；
+            //   散射颜色 = Σ 透射率 × 阴影 × 前向相位 × 步长。
+            // ⚠ 终点用 SampleSceneDepth 重建世界坐标（精确），不用 surfPos + V*depth（V 是径向、depth 是轴向，离屏中心会偏）。
+            float3 VolumeScatterRM(float3 surfPos, float2 screenUV, float3 V, Light L,
+                                   float sigmaT, int steps, float maxDist, out float pathLenOut)
+            {
+                float rawDepth = SampleSceneDepth(screenUV);
+                float3 endPos = ComputeWorldSpacePosition(screenUV, rawDepth, UNITY_MATRIX_I_VP);
+                float3 delta = endPos - surfPos;
+                float pathLen = min(length(delta), maxDist);
+                pathLenOut = pathLen;
+                if (pathLen <= 1e-4) return float3(0, 0, 0);
+
+                float N = (float)steps;
+                float seg = pathLen / N;
+                float phase = 0.5 + 0.5 * dot(V, L.direction);       // 前向散射：视向朝太阳更亮
+                float sunH  = saturate(0.5 + L.direction.y);          // 太阳高度调制（晨昏偏暗）
+
+                float3 acc = 0;
+                [loop]
+                for (int i = 0; i < steps; i++)
+                {
+                    float t = ((float)i + 0.5) / N;
+                    float3 p = surfPos + delta * t;
+                    float d  = pathLen * t;
+                    float Tr = exp(-d * sigmaT);                      // 到该采样点的透射率
+                    float shadow = GetMainLight(TransformWorldToShadowCoord(p)).shadowAttenuation;
+                    acc += Tr * shadow * seg;
+                }
+                return acc * L.color * phase * sunH;
+            }
+
             // ============================ 片段 ============================
             half4 frag(WaterVaryings IN) : SV_Target
             {
@@ -455,9 +499,27 @@ Shader "WaterProject/Water_Advanced"
                 float sunTrans = pow(saturate(dot(reflDir, mainLight.direction)), _TransGloss);
                 col += _SunColor * _SunTransmission * sunTrans * (0.2 + 0.8 * trans);
 
-                // ── 透光感：体积散射（水体自身泛光，视向朝向太阳更亮，深水衰减）──
-                float viewSun = saturate(dot(V, mainLight.direction)) * 0.5 + 0.5;
-                col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * _ScatterStrength * (0.35 + 0.65 * trans);
+                // ── 透光感：体积散射（P2-1 / 参考 S6 C11）──
+                //   _ScatterMode：0=关 / 1=解析近似(旧基线) / 2=RayMarch（逐点主光阴影 + 逐级透射累积）
+                if (_ScatterMode > 1.5)
+                {
+                    float pathLen;
+                    float3 sc = VolumeScatterRM(worldPos, screenUV, V, mainLight,
+                                                max(_Absorb, 1e-3) * _ScatterSigma,
+                                                (int)clamp(_ScatterSteps, 1.0, 32.0),
+                                                _ScatterMaxDist, pathLen);
+                    // ⚠ 用**有界混合**而不是 `col +=`：加法在暗场景里会把水顶成发光板（Pond 实测过）。
+                    //   浅水路径短 → 权重小、能看穿湖底；深水路径长 → 水体色接管。
+                    float pathW = saturate(pathLen / max(_ScatterMaxDist, 1e-3)) * 0.6 + 0.4;
+                    float w = saturate(length(sc) * _ScatterGain) * _ScatterStrength * pathW;
+                    // 散射色随主光（晨昏偏暖）微调 → 满足 C11「结合太阳高度」
+                    col = lerp(col, _WaterScatter.rgb * (0.6 + 0.8 * saturate(sc)), w);
+                }
+                else if (_ScatterMode > 0.5)
+                {
+                    float viewSun = saturate(dot(V, mainLight.direction)) * 0.5 + 0.5;
+                    col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * _ScatterStrength * (0.35 + 0.65 * trans);
+                }
 
                 // 浅滩（gap 小）额外泛光，光能透到底的提亮
                 col += _ShallowColor * _ScatterStrength * 0.28 * (1.0 - trans);

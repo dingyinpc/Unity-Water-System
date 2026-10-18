@@ -50,6 +50,12 @@ Material:
     - _RefractStrength: 0.12
     - _RippleScale: 6.5
     - _RippleStrength: 0.075
+    - _ScatterGain: 1.4
+    - _ScatterMaxDist: 6
+    - _ScatterMode: 2
+    - _ScatterSigma: 1
+    - _ScatterSteps: 10
+    - _ScatterStrength: 0.35
     - _ShoreFoam: 0.28
     - _ShoreWidth: 0.55
     - _SkyReflect: 0.9
@@ -67,4 +73,5 @@ Material:
     - _SkyHorizon: {r: 0.196, g: 0.286, b: 0.276, a: 1}
     - _SkyZenith: {r: 0.66, g: 0.7, b: 0.56, a: 1}
     - _SunColor: {r: 1, g: 0.88, b: 0.62, a: 1}
+    - _WaterScatter: {r: 0.34, g: 0.7, b: 0.78, a: 1}
   m_BuildTextureStacks: []

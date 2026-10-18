@@ -33,6 +33,15 @@ Shader "WaterProject/Water_Pond"
         _Opacity          ("整体不透明度", Float) = 0.82
         _MaxDepth         ("归一化最大水深(米)", Float) = 1.6
 
+        // ── 水底散射 RayMarch（P2-1 / 参考 S6 C11）──
+        _WaterScatter     ("水体散射色", Color) = (0.34, 0.70, 0.78, 1)
+        _ScatterMode      ("体散射 0关/1解析(旧)/2RayMarch", Float) = 2
+        _ScatterSteps     ("RayMarch 步数", Range(1, 32)) = 10
+        _ScatterMaxDist   ("RayMarch 最大光程(米)", Float) = 6
+        _ScatterSigma     ("消光系数倍率(×_Absorb)", Float) = 1.0
+        _ScatterGain      ("RayMarch 散射增益", Float) = 1.4
+        _ScatterStrength  ("体散射强度", Range(0, 1)) = 0.35
+
         // ── 细波（几何）──
         _WaveAmp          ("几何波幅(米)", Float) = 0.010
         _WaveScale        ("波频率倍率", Float) = 1.0
@@ -94,6 +103,9 @@ Shader "WaterProject/Water_Pond"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 3.5
+            // P2-1：体散射 RayMarch 在路径采样点取主光阴影
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
@@ -110,7 +122,39 @@ Shader "WaterProject/Water_Pond"
                 float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
                 float  _CrestJ, _CrestSoft, _CrestFoam, _ShoreFoam, _ShoreWidth;
                 float  _AmbientStrength, _DebugMode;
+                float4 _WaterScatter;
+                float  _ScatterMode, _ScatterSteps, _ScatterMaxDist, _ScatterSigma, _ScatterGain, _ScatterStrength;
             CBUFFER_END
+
+            // ── 水底散射 RayMarch [S6 / C11]（与 Water_Advanced 同款实现）──
+            float3 VolumeScatterRM(float3 surfPos, float2 screenUV, float3 V, Light L,
+                                   float sigmaT, int steps, float maxDist, out float pathLenOut)
+            {
+                float rawDepth = SampleSceneDepth(screenUV);
+                float3 endPos = ComputeWorldSpacePosition(screenUV, rawDepth, UNITY_MATRIX_I_VP);
+                float3 delta = endPos - surfPos;
+                float pathLen = min(length(delta), maxDist);
+                pathLenOut = pathLen;
+                if (pathLen <= 1e-4) return float3(0, 0, 0);
+
+                float N = (float)steps;
+                float seg = pathLen / N;
+                float phase = 0.5 + 0.5 * dot(V, L.direction);
+                float sunH  = saturate(0.5 + L.direction.y);
+
+                float3 acc = 0;
+                [loop]
+                for (int i = 0; i < steps; i++)
+                {
+                    float t = ((float)i + 0.5) / N;
+                    float3 p = surfPos + delta * t;
+                    float d  = pathLen * t;
+                    float Tr = exp(-d * sigmaT);
+                    float shadow = GetMainLight(TransformWorldToShadowCoord(p)).shadowAttenuation;
+                    acc += Tr * shadow * seg;
+                }
+                return acc * L.color * phase * sunH;
+            }
 
             // 由 PondPlanarReflection 每帧写入：世界坐标 → 镜像相机裁剪空间
             float4x4 _WorldToReflClip;
@@ -273,6 +317,26 @@ Shader "WaterProject/Water_Pond"
                 // 浅滩：阳光打穿到沙底再返上来
                 float trans = exp(-gap * _Absorb * 0.6);
                 col += _ShallowColor.rgb * (1.0 - trans) * 0.35;
+
+                // ── 体散射（P2-1 / 参考 S6 C11）：0关 / 1解析(旧) / 2RayMarch ──
+                if (_ScatterMode > 1.5)
+                {
+                    float pathLen;
+                    float3 sc = VolumeScatterRM(worldPos, screenUV, V, mainLight,
+                                                max(_Absorb, 1e-3) * _ScatterSigma,
+                                                (int)clamp(_ScatterSteps, 1.0, 32.0),
+                                                _ScatterMaxDist, pathLen);
+                    // 有界混合（不是 col +=）：避免暗场景里水被顶成发光板
+                    float pathW = saturate(pathLen / max(_ScatterMaxDist, 1e-3)) * 0.6 + 0.4;
+                    float w = saturate(length(sc) * _ScatterGain) * _ScatterStrength * pathW;
+                    col = lerp(col, _WaterScatter.rgb * (0.6 + 0.8 * saturate(sc)), w);
+                }
+                else if (_ScatterMode > 0.5)
+                {
+                    // 解析近似（旧基线）：视向朝太阳更亮、深水衰减
+                    float viewSun = saturate(dot(V, mainLight.direction)) * 0.5 + 0.5;
+                    col += _WaterScatter.rgb * (0.30 + 0.70 * viewSun) * 0.35 * (0.35 + 0.65 * trans);
+                }
 
                 // ── ② 折射：把水底搬上来（浅水才搬）──
                 float3 refr = refract(-V, N, _Eta);
