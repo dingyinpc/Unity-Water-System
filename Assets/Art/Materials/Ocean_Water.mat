@@ -67,14 +67,14 @@ Material:
     - _Whitecap: 0.2
     - _WindAlign: 0.8
     m_Colors:
-    - _DeepColor: {r: 0.06, g: 0.045, b: 0.11, a: 1}
+    - _DeepColor: {r: 0.012, g: 0.075, b: 0.13, a: 1}
     - _FoamColor: {r: 0.94, g: 0.965, b: 0.975, a: 1}
-    - _ShallowColor: {r: 0.23, g: 0.15, b: 0.19, a: 1}
+    - _ShallowColor: {r: 0.15, g: 0.56, b: 0.58, a: 1}
     - _Shore: {r: -400, g: 0, b: 0, a: 0}
     - _ShoreA: {r: 22, g: 9, b: 3.2, a: 0}
     - _ShoreB: {r: 0.0033333334, g: 0.008333334, b: 0.022222223, a: 0}
-    - _SkyHorizon: {r: 0.95, g: 0.42, b: 0.32, a: 1}
-    - _SkyZenith: {r: 0.24, g: 0.12, b: 0.36, a: 1}
-    - _SunColor: {r: 1, g: 0.48, b: 0.3, a: 1}
+    - _SkyHorizon: {r: 0.7, g: 0.8, b: 0.91, a: 1}
+    - _SkyZenith: {r: 0.22, g: 0.44, b: 0.88, a: 1}
+    - _SunColor: {r: 1, g: 0.955, b: 0.885, a: 1}
     - _WindDir: {r: -0.175, g: 0, b: -0.985, a: 0}
   m_BuildTextureStacks: []
