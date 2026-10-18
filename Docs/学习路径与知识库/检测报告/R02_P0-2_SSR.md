@@ -115,7 +115,73 @@ Main 相机俯角 **+26°**、水面大、岸边有树/石/沙 ⇒ 反射线会�
 
 ---
 
-## 6 遗留与风险
+## 6 Main 场景真实验收（P0-2 收尾 · 2026-10-18）
+
+本节是本报告 §5 的**收尾**：把 R02 一直"待切 Main"的真实验收补上。（参考侧量测沿用 §1，无新增帧。）
+
+### 6.1 步骤（可复现）
+
+```powershell
+# 1) 切场景（用菜单，不用桥 openScene —— 后者在本机令编辑器崩溃）
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/bridge_menu.ps1 -Menu "Tools/Project/120 打开 Main（复刻视频主线）"
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/bridge_menu.ps1 -Menu "Tools/Project/125 当前场景(写探针)"
+# → MENU125 当前场景=Main 水面渲染器=1 :: WaterProject/Water_Advanced @ Water
+# 2) 进 Play → 冻结 → 截图（关/开/可信度）
+#    Tools/Play/90 · Tools/Ocean/108 · Tools/Ocean/85
+#    Tools/Project/130/131/132 ；分析：python Tools/img_ab.py A.png B.png --heat diff.png
+```
+
+### 6.2 抓到并修掉的两个真 bug（本节重点）
+
+第一次 A/B：关/开两张**只差 146 像素（0.04%，全在左上角 HUD 帧号）** ⇒ SSR 开关对画面**毫无影响**。回读 shader 发现：
+
+1. **`_SSRStrength` 从没接线**：`Water_Advanced` 与 `Water_Ocean` 都只在 `Properties`/`CBUFFER` 里声明了它，**片元里从未使用** ⇒ 菜单改强度画面不变。
+   修：`reflBase = lerp(skyCol, ssrCol, ssrConf * _SSRStrength)`（0=纯天空兜底，1=命中处全用场景色）。
+2. **`Water_Advanced` 没有 `_SSRDebug` 分支**（只有 `Water_Ocean` 有）⇒ 132/133 调试图在 Main 点了没反应（截图与"开"逐字节相同）。
+   修：把两条 debug 早退补进 `Water_Advanced` frag。
+
+> 印证 §5.5：`_SSRStrength` 之所以"看不出没用"，是被 Ocean 的"conf 本来=0"掩盖成"看不见很正常"；换到有物体的 Main 才暴露。**这正是"Ocean 不适合当 SSR 演示场景"的第二个代价。**
+
+### 6.3 修正后的真机结果（冻结 A/B，896×379，Main）
+
+| 参数（追踪） | 关 vs 开 变化像素 | 最大通道差 | 水面命中可信度（灰=R=G=B 掩膜） |
+| --- | --- | --- | --- |
+| 默认 24步/40m/厚0.5 | **0.90%**（3052 px） | 133 | conf>0.1 = 16.5%，均值 0.088 |
+| 密采 48步/120m/厚1.5 | **3.35%**（11378 px） | 140 | conf>0.1 = 57.8%，conf>0.5 = 29.0%，均值 0.306 |
+
+- 可信度图（`_SSRDebug=1`）在**水线附近与石群之间出现成片灰/白**（=真的"看见"了石头），与 Ocean "整片黑" 形成对照 ⇒ **SSR 在 Main 确实生效**。
+- 差异**集中在画面中段的水面**（石头倒影带）；岸、石、天不受影响（非水面像素不走该 shader）。
+
+### 6.4 定稿参数
+
+`Water_Advanced.mat` 采用密采参数并落盘（**唯一写入点 = .mat**）：
+`_SSRStrength=0.85 _SSRSteps=48 _SSRMaxDist=120 _SSRThickness=1.5 _SSREdgeFade=24 _SSRDebug=0`。
+
+### 6.5 判据与结果
+
+| # | 判据 | 结果 |
+| --- | --- | --- |
+| 1 | 编译干净（C# + 两份水 shader） | ✅ `check_shader.ps1 -Mode report` 绿 |
+| 2 | Main 上 SSR 关/开**能测出差异** | ✅ 密采 3.35% 像素 |
+| 3 | 命中可信度非 0（真有可反射物） | ✅ 水面 conf>0.1 达 57.8% |
+| 4 | 冻结后结论可复现 | ✅ 关/开差异全在水面；重启编辑器后重截均值一致 |
+| 5 | 零回归（Ocean 侧 conf=0） | ✅ conf=0 ⇒ `lerp(sky,ssr,0)=sky`，与旧路径逐位一致 |
+
+### 6.6 人话版小结
+
+- **之前**：SSR 这套"在水面里映出岸上东西"的代码写好了，但在海的场景里啥也映不出来（眼前全是天，没东西可撞）。这次换到 **Main（一个有石头有岸的水塘，相机从上往下俯视）** 去验收。
+- **第一次测**：开关 SSR，两张图几乎一模一样——**因为代码里一个总开关根本没接上**（声明了却没用），另一个"调试图"在 Main 的 shader 里压根没写。这两个是真 bug，已修。
+- **修完再测**：开关 SSR 画面有 **3.35% 的像素**发生变化，而且**变化全落在水面上**；"可信度图"上水面里有成片亮起来的地方，正是"这束光撞到了石头，所以那里映出了石头"。**结论：SSR 真的在工作。**
+- **定稿**：把实测最好的一组参数（48 步/120 米/厚 1.5）存进水面材质，以后打开就是这个效果。
+
+### 6.7 工具与已知事故
+
+- **新增 `Tools/img_ab.py`**：两张图给数（阈值像素占比 + 差异热图），中文路径走 `np.fromfile + cv2.imdecode`。
+- **⚠ 桥的 `getComponentProperties` 会把编辑器卡死在 "Hold on"**：本轮为读 Main 相机参数用了它，主线程卡死 30+ 分钟（"Hold on" 对话框明写 `EditorApplication.update: UnityCopilot.UnityBridgeServer.ProcessMainThreadQueue`）。**规避：不要用该 action**；要读相机/组件参数就写个只读菜单。已用 `Tools/launch_unity.py` 重启编辑器恢复，材质/场景状态无损。
+
+---
+
+## 7 遗留与风险
 
 1. **C7 抗闪未实现**（法线Mip + `SampleGrad` 屏幕足迹）；我们的替代（掠射衰减 `fineW`、三层八度）已有一半，但不是参考做法。
 2. **性能未测**：24 步 + 6 步二分 × 全屏水像素；需 Play 探针 FRAME ms（下一步一并测）。
@@ -130,3 +196,9 @@ Main 相机俯角 **+26°**、水面大、岸边有树/石/沙 ⇒ 反射线会�
 8. **OceanScene 不适合当 SSR 演示场景**（低机位 + 大面积天空）。SSR 的真实验收应在 **Main**；若要 Ocean 也有倒影，需场景级加"岸壁"。
 9. **冻结法**（`Time.timeScale=0` + 停流场）是本轮确立的 A/B 标准动作：不冻结时海沫/波浪动画会产生 20~30 的像素差，
    足以掩盖或伪造一个 SSR 效果。**结论性 A/B 一律先冻结**（菜单 108/109）。
+10. **C7 抗闪仍未做（收尾后更明显）**：命中可信度图呈**椒盐斑点**——射线在掠射角下逐像素"穿过/撞上"薄几何，覆盖率够但边缘会闪。
+    参考的解法（法线 Mip + `SampleGrad` 屏幕足迹）未实现。**这是 P0-2 之后最该补的一项**（否则动起来会看到反光抖动）。
+11. **SSR 性能未测**：密采 48 步 × 6 次二分 × 全屏水像素，成本不低；待 Play 探针 FRAME ms（与 P1-2 一并测）。
+12. **`getComponentProperties` 会卡死编辑器**（见 §6.7）：这是桥工具缺陷，不属 SSR，但本轮踩到，**新会话勿用**。
+13. **参数写入点**：Main 的 SSR 参数现在**只**写在 `Water_Advanced.mat`（shader Properties 里的默认值仅作新材质初始值）；
+    调参用菜单 135/136，改完即 `AssetDatabase.SaveAssets()` 落盘，避免"改了没存 = 下次又变默认"。

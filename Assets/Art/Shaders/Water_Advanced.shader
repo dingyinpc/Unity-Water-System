@@ -443,7 +443,9 @@ Shader "WaterProject/Water_Advanced"
                 // ── SSR（P0-2 / 参考 C8）：conf=0 时 reflCol==skyCol ⇒ 与旧路径逐位一致，零回归 ──
                 float ssrConf = 0.0;
                 float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
-                float3 reflBase = lerp(skyCol, ssrCol, ssrConf);
+                // _SSRStrength 是 SSR 的**总开关**（0=纯天空兜底，1=命中处全用场景色）：
+                // 不乘它的话 A/B 菜单改了强度但画面不变（P0-2 收尾时抓到的真 bug）。
+                float3 reflBase = lerp(skyCol, ssrCol, ssrConf * _SSRStrength);
                 // 太阳碎闪不跟 SSR 走（《05》原文：碎闪要拆出来单独，否则会被"场景色"整条抹掉）
                 float3 reflCol = reflBase + _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += reflCol * fres * _SkyReflect * (1.0 - interA * 0.4);
@@ -491,6 +493,11 @@ Shader "WaterProject/Water_Advanced"
                     return half4(saturate(SampleSceneDepth(screenUV)), saturate(sceneDepth * 0.04), saturate(waterDepth * 0.04), 1.0);
                 if (_DepthDebug > 0.5)
                     return half4(saturate(gap * 0.25), saturate(depthMix), saturate(fres), 1.0);
+
+                // SSR 调试（独立于 _DepthDebug；0/1/2 = 关/命中可信度/SSR 色）
+                // 与 Water_Ocean 对齐，Main 侧 SSR 验收要用它看"到底有没有命中"。
+                if (_SSRDebug > 1.5) return half4(ssrCol.rgb, 1.0);
+                if (_SSRDebug > 0.5) return half4(ssrConf.xxx, 1.0);
 
                 float alpha = saturate(_Opacity + fres * 0.1 - foam * 0.2);
                 return half4(col + _FoamColor * interFoam * 0.12, alpha);   // 交互泡沫收敛，避免突兀白圈

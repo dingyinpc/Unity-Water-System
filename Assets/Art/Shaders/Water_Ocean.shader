@@ -338,7 +338,7 @@ Shader "WaterProject/Water_Ocean"
                 // ── SSR（P0-2 / 参考 C8）：命中处用真实场景色替换天空兜底 ──
                 float ssrConf = 0.0;
                 float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
-                float3 reflCol = lerp(skyCol, ssrCol, ssrConf);   // miss ⇒ 天空渐变兜底
+                float3 reflCol = lerp(skyCol, ssrCol, ssrConf * _SSRStrength);   // miss ⇒ 天空渐变兜底
                 col = lerp(col, reflCol, saturate(fres * _SkyReflect));
 
                 // ── ③ 太阳碎闪：pow 自带衰减，累加是合法的 ──

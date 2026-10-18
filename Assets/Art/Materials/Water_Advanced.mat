@@ -46,6 +46,12 @@ Material:
     - _MaxUVOffset: 0.025
     - _Opacity: 0.76
     - _RefractStrength: 0.3
+    - _SSRDebug: 0
+    - _SSREdgeFade: 24
+    - _SSRMaxDist: 120
+    - _SSRSteps: 48
+    - _SSRStrength: 0.85
+    - _SSRThickness: 1.5
     - _ScatterStrength: 0.45
     - _ShoreFoam: 0.3
     - _SkyReflect: 1

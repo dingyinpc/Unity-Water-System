@@ -69,7 +69,7 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 | 编号 | 内容 | 状态 |
 | --- | --- | --- |
 | P0-1 | 近岸浅水流场（干湿网格→水位梯度→涌浪→接水材质） | ✅ 完成，波速实测 10.8 vs 理论 10.75 m/s（0.5% 误差） |
-| P0-2 | 屏幕空间反射 SSR | ⚠️ 代码完成并接入两处水面；Ocean 机位无物可反射，真实验收转 `Main` |
+| P0-2 | 屏幕空间反射 SSR | ✅ Main 真实验收通过（关/开差异 3.35% 像素、水面 conf>0.1=57.8%）；遗留 C7 抗闪（命中呈椒盐斑点） |
 | P1-1 | 昼夜系统 + 天空 | ✅ 主体完成（四时段真机量色通过）；缺月面/星空/双套渐变 |
 | P1-2 | 泡沫历史场 | ⏳ 下一步 |
 | P2-1 | 体散射 | ⏳ |
@@ -89,3 +89,6 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
    `Evaluate` 恒白）→ 已改朴素 `ColorKey[]` + 手写插值。新写曲线时别用 `Gradient`。
 3. `ComputeScreenPos` 必须写 `o.zw = pos.zw`，漏掉会让整个屏幕空间采样错位（SSR 曾因此 conf 恒 0）。
 4. 本机相机 `Euler x` 取**正**才是俯视（负值是抬头）。
+5. **桥的 `getComponentProperties` 会让编辑器死锁**：主线程卡在 `EditorApplication.update → UnityBridgeServer.ProcessMainThreadQueue`，
+  弹 "Hold on (busy for …)" 且不再处理任何命令。**不要用该 action**；要读相机/组件参数就写一个只读菜单（写探针）。
+  恢复办法：`Stop-Process` 掉该 Unity PID → `python Tools/launch_unity.py`（会起新的编辑器实例，材质/场景无损）。
