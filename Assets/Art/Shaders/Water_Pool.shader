@@ -43,6 +43,11 @@ Shader "WaterProject/Water_Pool"
         _CausticsStrength("焦散强度", Float) = 0.55
         _CausticsScale   ("焦散密度", Float) = 0.55
         _CausticsSpeed   ("焦散速度", Float) = 1.0
+        // 多尺度 + 色散（P2-2 / 参考 S8 C12–C13）
+        _CausticMode     ("焦散 0关/1单层(旧)/2多尺度色散", Float) = 2
+        _CausticDepthMix ("焦散深度混合 0细网/1大斑", Range(0,1)) = 0.35
+        _CausticDisperse ("焦散色散强度", Range(0,1)) = 0.6
+        _CausticDetile   ("三角去平铺强度", Range(0,1)) = 1.0
 
         // ── 反射/高光 ──
         _SkyColor        ("天空反射色", Color) = (0.55, 0.75, 0.92, 1)
@@ -84,6 +89,7 @@ Shader "WaterProject/Water_Pool"
                 float  _RefractStrength, _MaxUVOffset;
                 float  _WaveAmp, _NormalStrength, _IdleStrength, _CrestFoam;
                 float  _CausticsStrength, _CausticsScale, _CausticsSpeed;
+                float  _CausticMode, _CausticDepthMix, _CausticDisperse, _CausticDetile;
                 float  _FresnelPow, _SkyReflect, _SunGloss, _SunStrength;
                 float  _DebugMode;
             CBUFFER_END
@@ -125,6 +131,58 @@ Shader "WaterProject/Water_Pool"
                 return s * _IdleStrength;
             }
 
+            // ==================== 多尺度焦散（P2-2 / 参考 S8 C12–C13）====================
+            float2 Hash22(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.xx + p3.yz) * p3.zy);
+            }
+
+            // 单层焦散图案：两个正弦网格取峰 → 亮网
+            float CausticPat(float2 p, float t, float speed)
+            {
+                float a = sin(p.x * 5.3 + t * 1.05 * speed + sin(p.y * 3.9 - t * 0.75 * speed));
+                float b = sin(p.y * 4.7 - t * 0.85 * speed + sin(p.x * 4.1 + t * 0.63 * speed));
+                return pow(saturate(1.0 - abs(a * b)), 3.0);
+            }
+
+            // 三角随机平移 + 重心权重混合（C12）：把平面划成三角格，三顶点各取固定随机偏移采样，
+            // 按重心权重混合 → 打破周期性平铺（同 S8 的"三角形偏移"签名）。
+            float CausticDeTile(float2 p, float t, float speed, float detile)
+            {
+                const float K1 = 0.366025404, K2 = 0.211324865;
+                float2 i = floor(p + (p.x + p.y) * K1);
+                float2 a = p - i + (i.x + i.y) * K2;
+                float o = step(a.y, a.x);
+                float2 b = a - float2(o, 1.0 - o) + K2;
+                float2 c = a - 1.0 + 2.0 * K2;
+
+                float2 oa = (Hash22(i) * 2.0 - 1.0) * detile;
+                float2 ob = (Hash22(i + float2(o, 1.0 - o)) * 2.0 - 1.0) * detile;
+                float2 oc = (Hash22(i + 1.0) * 2.0 - 1.0) * detile;
+
+                float wa = max(0.5 - dot(a, a), 0.0);
+                float wb = max(0.5 - dot(b, b), 0.0);
+                float wc = max(0.5 - dot(c, c), 0.0);
+                float ws = max(wa + wb + wc, 1e-4);
+
+                return (wa * CausticPat(p + oa, t, speed)
+                      + wb * CausticPat(p + ob, t, speed)
+                      + wc * CausticPat(p + oc, t, speed)) / ws;
+            }
+
+            // RGB 色散（C13）：三通道用略微不同的尺度/偏移采样 → 水底彩虹边缘
+            // ⚠ detile 由调用方按层给：三角偏移在**低频层**会在格边露出块状拼接（本轮实测水面出现大块 facet），
+            //   所以只让**高频细网层**去平铺（它的格小、接缝近乎像素级）。
+            float3 CausticRGB(float2 p, float t, float speed, float disp, float detile)
+            {
+                float cr = CausticDeTile(p * (1.0 + 0.05 * disp) + float2( 0.02, 0.0) * disp, t, speed, detile);
+                float cg = CausticDeTile(p, t, speed, detile);
+                float cb = CausticDeTile(p * (1.0 - 0.05 * disp) + float2(-0.02, 0.01) * disp, t, speed, detile);
+                return float3(cr, cg, cb);
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
                 float3 wp = IN.worldPos;
@@ -159,17 +217,40 @@ Shader "WaterProject/Water_Pool"
                                      -_MaxUVOffset, _MaxUVOffset);
                 float3 bottom = SampleSceneColor(saturate(screenUV + uvOff)).rgb;
                 // 清水隔层：池深 1.35m 的吸收把池底压向水色（Beer–Lambert）
-                float see = exp(-_FloorDepth * _Absorb);
-                float3 body = lerp(_WaterColor.rgb, bottom * (_WaterColor.rgb * 1.35 + 0.08), see);
-
-                // ── ② 焦散：打在搬上来的池底上，波场梯度调制（涟漪过处焦散晃）──
-                float2 cp = wp.xz * _CausticsScale;
-                float c1 = sin(cp.x * 5.3 + t * 1.05 * _CausticsSpeed + sin(cp.y * 3.9 - t * 0.75));
-                float c2 = sin(cp.y * 4.7 - t * 0.85 * _CausticsSpeed + sin(cp.x * 4.1 + t * 0.63));
-                float ca = pow(saturate(1.0 - abs(c1 * c2)), 3.0);
+                // ── ② 焦散（P2-2 / 参考 S8 C12–C13）：0关 / 1单层(旧) / 2多尺度+RGB色散 ──
                 // 梯度调制：波谷(负梯度一侧)聚光、波峰散光；再吃一点"有波才晃"的静态底
-                ca *= 0.45 + 0.9 * saturate(gradMag * 6.0 + 0.25);
-                body += _SunColor.rgb * ca * _CausticsStrength * see * 0.85;
+                float gradMod = 0.45 + 0.9 * saturate(gradMag * 6.0 + 0.25);
+                float3 caustic = 0;
+                if (_CausticMode > 1.5)
+                {
+                    float2 q = wp.xz * _CausticsScale;
+                    float d = saturate(_CausticDepthMix);          // 0 细网(浅) → 1 大斑(深)
+                    float wF = 1.0 - smoothstep(0.0, 0.5, d);
+                    float wM = 1.0 - abs(d * 2.0 - 1.0);
+                    float wC = smoothstep(0.5, 1.0, d);
+                    // 三层：细网 / 中 / 大斑，加权合成（C12 水深连续混合）
+                    // 去平铺强度按层递减：细网层满强度、中层次之、大斑层不用（避免块状接缝）
+                    float3 cF = CausticRGB(q * 2.2, t, _CausticsSpeed * 1.30, _CausticDisperse, _CausticDetile * 1.00);
+                    float3 cM = CausticRGB(q * 1.0, t, _CausticsSpeed * 1.00, _CausticDisperse, _CausticDetile * 0.35);
+                    float3 cC = CausticRGB(q * 0.45, t, _CausticsSpeed * 0.70, _CausticDisperse, _CausticDetile * 0.00);
+                    caustic = (cF * wF + cM * wM + cC * wC) / max(wF + wM + wC, 1e-4);
+                }
+                else if (_CausticMode > 0.5)
+                {
+                    float2 cp = wp.xz * _CausticsScale;
+                    float c1 = sin(cp.x * 5.3 + t * 1.05 * _CausticsSpeed + sin(cp.y * 3.9 - t * 0.75));
+                    float c2 = sin(cp.y * 4.7 - t * 0.85 * _CausticsSpeed + sin(cp.x * 4.1 + t * 0.63));
+                    caustic = pow(saturate(1.0 - abs(c1 * c2)), 3.0).xxx;
+                }
+                // ⚠ 焦散**乘性打在池底**：亮网处的底更亮、网眼更暗。
+                //   纯加法会被已经很亮的白色池底削平（本轮实测：加法 A/B 最大通道差只 23，几乎看不出网）。
+                float3 bottomLit = bottom * (1.0 + caustic * _CausticsStrength * 1.3 * gradMod);
+
+                // 清水隔层：池深 1.35m 的吸收把池底压向水色（Beer–Lambert）
+                float see = exp(-_FloorDepth * _Absorb);
+                float3 body = lerp(_WaterColor.rgb, bottomLit * (_WaterColor.rgb * 1.35 + 0.08), see);
+                // 水柱里再补一点散射亮，避免"只有底亮、水不亮"
+                body += _SunColor.rgb * caustic * _CausticsStrength * 0.22 * gradMod;
 
                 // ── ③ 反射：lerp 替换（D-1），泳池克制 ──
                 float fres = pow(1.0 - saturate(dot(V, N)), _FresnelPow);

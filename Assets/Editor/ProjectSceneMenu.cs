@@ -100,6 +100,37 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Project/150 体散射=关(0)")]        public static void ScatOff()   => SetScatter(0f, "off");
         [MenuItem("Tools/Project/151 体散射=解析(旧,1)")]    public static void ScatAnalytic() => SetScatter(1f, "analytic");
         [MenuItem("Tools/Project/152 体散射=RayMarch(2)")]   public static void ScatRM()    => SetScatter(2f, "raymarch");
+
+        // ── 160~162 焦散 A/B（P2-2 / 参考 S8）：按当前场景自动找水面材质 ──
+        static void SetCaustic(float mode, string tag)
+        {
+            var m = ResolveWaterMat();
+            if (m == null) { Probe("CAUSAB REFUSED: 当前场景找不到 WaterProject/Water_* 材质\n"); return; }
+            if (!m.HasProperty("_CausticMode")) { Probe($"CAUSAB REFUSED: {m.shader.name} 没有 _CausticMode\n"); return; }
+            m.SetFloat("_CausticMode", mode);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            Probe($"CAUSAB(main) {m.shader.name} _CausticMode -> {m.GetFloat("_CausticMode")} ({tag})\n");
+        }
+
+        [MenuItem("Tools/Project/160 焦散=关(0)")]          public static void CausOff()      => SetCaustic(0f, "off");
+        [MenuItem("Tools/Project/161 焦散=单层(旧,1)")]      public static void CausSingle()   => SetCaustic(1f, "single");
+        [MenuItem("Tools/Project/162 焦散=多尺度+色散(2)")]  public static void CausMulti()    => SetCaustic(2f, "multi");
+
+        // 焦散参数定稿档（细网为主，去平铺适度）——唯一写入点 = 材质
+        static void SetCausticParams(float depthMix, float detile, float disperse, string tag)
+        {
+            var m = ResolveWaterMat();
+            if (m == null || !m.HasProperty("_CausticDepthMix")) { Probe("CAUSP REFUSED\n"); return; }
+            m.SetFloat("_CausticMode", 2f);            // ⚠ 必须一起置 2：否则只是改了参数、模式还停在上一次（本轮踩到：161→163 截图逐字节相同）
+            m.SetFloat("_CausticDepthMix", depthMix);
+            m.SetFloat("_CausticDetile", detile);
+            m.SetFloat("_CausticDisperse", disperse);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            Probe($"CAUSP(main) depthMix={m.GetFloat("_CausticDepthMix")} detile={m.GetFloat("_CausticDetile")} disperse={m.GetFloat("_CausticDisperse")} ({tag})\n");
+        }
+
+        [MenuItem("Tools/Project/163 焦散=细网定稿(0.15/0.6/0.5)")] public static void CausFine() => SetCausticParams(0.15f, 0.6f, 0.5f, "fine");
+        [MenuItem("Tools/Project/164 焦散=大斑档(0.7/1.0/0.6)")]    public static void CausCoarse() => SetCausticParams(0.7f, 1.0f, 0.6f, "coarse");
     }
 }
 #endif
