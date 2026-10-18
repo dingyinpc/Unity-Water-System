@@ -6776,6 +6776,18 @@ MonoBehaviour:
   damping: 0.997
   edgeBand: 0.05
   edgeK: 0.85
+  foamOn: 1
+  foamDecay: 0.8
+  foamGen: 0.6
+  foamAdvect: 1
+  foamShore: 1
+  foamShoreDepth: 2
+  foamCrest: 0.8
+  foamSlope: 0.6
+  foamFlow: 0.8
+  foamFlowRef: 0.05
+  foamNoise: 0.75
+  foamNoiseScale: 0.08
   vizMode: 1
 --- !u!4 &745071686
 Transform:
@@ -7120,6 +7132,61 @@ Transform:
   m_LocalRotation: {x: 0.0017809067, y: 0.54480284, z: -0.018335894, w: -0.83836186}
   m_LocalPosition: {x: -280.85416, y: 1.95924, z: -9.128307}
   m_LocalScale: {x: 0.2385738, y: 0.17012607, z: 0.27075794}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &821479560
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 821479562}
+  - component: {fileID: 821479561}
+  m_Layer: 0
+  m_Name: AtmosphereField
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &821479561
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 821479560}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9990f69f50e0d994bb627a855c18d1c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  minX: -1200
+  minZ: -1600
+  sizeX: 2400
+  sizeZ: 2000
+  res: 256
+  cloudScale: 0.006
+  cloudCover: 0.52
+  cloudDrift: 0.01
+  cloudHeight: 220
+  optical: 1.8
+  sunLight: {fileID: 0}
+--- !u!4 &821479562
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 821479560}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -20349,3 +20416,4 @@ SceneRoots:
   - {fileID: 745071686}
   - {fileID: 1684909703}
   - {fileID: 1374894488}
+  - {fileID: 821479562}

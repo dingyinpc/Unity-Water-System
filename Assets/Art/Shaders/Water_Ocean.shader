@@ -69,6 +69,16 @@ Shader "WaterProject/Water_Ocean"
         _FoamHistStrength ("泡沫历史强度", Range(0, 1)) = 0.6
         _FoamHistBias     ("泡沫历史阈值(低于它不显示)", Range(0, 0.9)) = 0.3
 
+        // ── 大气耦合（P2-3 / 参考 S14 云影 + S15 远景雾）──
+        _CloudShadowOn    ("云影衰减高光 0关/1开", Float) = 1
+        _CloudShadowStrength ("云影强度", Range(0, 1)) = 0.85
+        _FogOn            ("远景雾 0关/1开", Float) = 0
+        _FogDensity       ("雾密度(1/米)", Float) = 0.012
+        _FogFalloff       ("雾高度衰减(1/米)", Float) = 0.05
+        _FogBaseY         ("雾基准高度(米)", Float) = -2
+        _FogColor         ("雾色", Color) = (0.72, 0.78, 0.82, 1)
+        _FogSunLen        ("雾中太阳光程(米)", Float) = 260
+
         // ── 冲滩沫带的"样子"（"能冲多远"在 OceanShore 里，与沙滩共用）──
         _SwashFoam        ("沫带强度", Range(0, 1)) = 0.75
 
@@ -156,6 +166,8 @@ Shader "WaterProject/Water_Ocean"
                 float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
                 float  _FlowAdvect, _FlowFoamGain, _FlowFoamStrength;
                 float  _FoamHistStrength, _FoamHistBias;
+                float  _CloudShadowOn, _CloudShadowStrength, _FogOn, _FogDensity, _FogFalloff, _FogBaseY, _FogSunLen;
+                float4 _FogColor;
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
             CBUFFER_END
@@ -171,6 +183,11 @@ Shader "WaterProject/Water_Ocean"
             TEXTURE2D(_SWVel);   SAMPLER(sampler_SWVel);
             TEXTURE2D(_SWFoam);  SAMPLER(sampler_SWFoam);   // 泡沫历史密度场（P1-2）
             float4 _SWDomain;    // (minX, minZ, sizeX, sizeZ)
+
+            // 大气场（P2-3 / S14）：AtmosphereField 组件逐帧写
+            TEXTURE2D(_AFCloudTex); SAMPLER(sampler_AFCloudTex);
+            float4 _AFRect;      // (minX, minZ, sizeX, sizeZ)
+            float  _AFOn;
 
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings
@@ -333,11 +350,32 @@ Shader "WaterProject/Water_Ocean"
 
                 Light mainLight = GetMainLight();
 
+                // ── 大气耦合（P2-3 / 参考 S14 云影 + S15 雾）：云影透射率 × 雾中太阳可见度 ──
+                //   ⚠ 必须同时衰减**直射漫反射**：本机位水面高光近 0，只乘 GGX 的话 A/B 测不出（实测 0.01%）。
+                float cloudTrans = 1.0;
+                if (_CloudShadowOn > 0.5 && _AFOn > 0.5)
+                {
+                    float2 cuv = (worldPos.xz - _AFRect.xy) / max(_AFRect.zw, 1e-3);
+                    if (all(cuv == saturate(cuv)))
+                    {
+                        float tr = SAMPLE_TEXTURE2D_LOD(_AFCloudTex, sampler_AFCloudTex, cuv, 0).r;
+                        float2 e = min(cuv, 1.0 - cuv);
+                        float ew = saturate(min(e.x, e.y) * 8.0);   // 边缘平滑衰减，防锐边
+                        cloudTrans = lerp(1.0, tr, ew * _CloudShadowStrength);
+                    }
+                }
+                float fogVis = (_FogOn > 0.5) ? exp(-_FogDensity * _FogSunLen) : 1.0;
+                float sunAtt = saturate(cloudTrans * fogVis);
+
                 // ──  水色：Beer–Lambert 按【垂直】水深 ──
                 float depthMix = 1.0 - exp(-depth * _Absorb);
                 float3 waterBase = lerp(_ShallowColor.rgb, _DeepColor.rgb, depthMix);
                 float ndl = saturate(dot(N, mainLight.direction));
-                float3 col = waterBase * (SampleSH(N) + mainLight.color * ndl * 0.30);
+                // 云影既衰减**直射**也衰减一部分**天光**（云整体遮暗天空→水面变暗）。
+                // ⚠ 本机位太阳很低、水面直射≈0，只衰减直射的话云影完全看不出来（实测 0.00%）。
+                float3 illum = SampleSH(N) * lerp(1.0, sunAtt, 0.6)
+                             + mainLight.color * ndl * 0.30 * sunAtt;
+                float3 col = waterBase * illum;
 
                 // 浅水透光：阳光打到沙底再返上来
                 float trans = exp(-depth * _Absorb * 0.5);
@@ -348,6 +386,9 @@ Shader "WaterProject/Water_Ocean"
                 float3 reflDir = reflect(-V, N);
                 reflDir.y = max(reflDir.y, 0.02);
                 float3 skyCol = lerp(_SkyHorizon.rgb, _SkyZenith.rgb, saturate(reflDir.y * 2.2));
+                // 云影也改**反射的天空色**：云下天更灰更亮（不是深蓝）→ 水面倒影随之变化。
+                // ⚠ 本机位太阳低、水面直射≈0、主色由反射主导：只衰减漫反射的话云影测不出（实测 0.00%）。
+                skyCol = lerp(skyCol, skyCol * 0.72 + 0.22, saturate(1.0 - cloudTrans) * _CloudShadowStrength * 0.9);
 
                 // ── SSR（P0-2 / 参考 C8）：命中处用真实场景色替换天空兜底 ──
                 float ssrConf = 0.0;
@@ -355,12 +396,12 @@ Shader "WaterProject/Water_Ocean"
                 float3 reflCol = lerp(skyCol, ssrCol, ssrConf * _SSRStrength);   // miss ⇒ 天空渐变兜底
                 col = lerp(col, reflCol, saturate(fres * _SkyReflect));
 
-                // ── ③ 太阳碎闪：pow 自带衰减，累加是合法的 ──
+                // ── ③ 太阳碎闪：pow 自带衰减，累加是合法的；乘 sunAtt 受大气遮挡（sunAtt 见上）──
                 col += _SunColor.rgb * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss)
-                     * _SunStrength * saturate(0.2 + fres);
+                     * _SunStrength * saturate(0.2 + fres) * sunAtt;
                 float3 H = normalize(mainLight.direction + V);
                 col = lerp(col, _SunColor.rgb,
-                           saturate(pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength));
+                           saturate(pow(saturate(dot(N, H)), _SpecPower) * _SpecStrength * sunAtt));
 
                 // ── ④ 碎浪 —— 这是"海"最硬的识别特征 ──
                 // 破碎深度按**主浪**的波高算（γ = H/d ≈ _BreakerIndex）。
@@ -426,6 +467,18 @@ Shader "WaterProject/Water_Ocean"
                                        + fres * 0.05 - washFoam * 0.20);
                 // 冲上来的那圈沫本身要更接近实心白，否则薄薄一层看不出"水到过这里"
                 alpha = max(alpha, washFoam * 0.85 * step(0.001, up));
+
+                // ── 远景雾（P2-3 / 参考 S15）：沿视线到水面的**解析高度雾**（Beer–Lambert 积分）──
+                //   密度随高度指数衰减：d(y)=exp(-(y-_FogBaseY)*_FogFalloff)；
+                //   取相机/水面两点平均，光程 = density × 距离。参考是全 raymarch+3D噪声，此处为闭式近似。
+                if (_FogOn > 0.5)
+                {
+                    float distV = length(worldPos - _WorldSpaceCameraPos);
+                    float dCam  = exp(-max(_WorldSpaceCameraPos.y - _FogBaseY, 0.0) * _FogFalloff);
+                    float dSurf = exp(-max(worldPos.y - _FogBaseY, 0.0) * _FogFalloff);
+                    float opt = _FogDensity * distV * (dCam + dSurf) * 0.5;
+                    col = lerp(_FogColor.rgb, col, exp(-opt));
+                }
 
                 col = MixFog(col, IN.fogCoord);
                 return half4(col, alpha);
