@@ -1,0 +1,91 @@
+# AGENTS.md — 接手须知
+
+> 本文件给**任何新接入的 agent / 新会话**看。读完这一页就能直接干活，不必翻聊天记录。
+> 维护方式：每个大步骤完成时更新「当前进度」和「下一步」。
+
+## 1 项目是什么
+
+复刻抖音博主「雨鱼鱼雨雨雨」《unity 水体 shader》的完整效果。
+Unity **2022.3.57f1c2** + URP **14.0.11**，工程根目录就是本仓库根目录。
+
+作者**完全不懂技术**：一切技术决策由 agent 自主负责；交付物 = 可运行的效果 + 零基础能读懂的文档。
+所以：术语要用大白话解释一遍，报告里必须有「人话版小结」。
+
+## 2 铁律（违反会浪费大量时间，都是踩过的坑）
+
+1. **PowerShell 执行策略是 Restricted**：跑 `.ps1` 必须
+   `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/xxx.ps1 ...`
+   直接用 `opencode` 命令同理：用 `opencode.cmd`，不要用 `opencode.ps1`。
+2. **Python 读中文路径**：用 `cv2.imdecode(np.fromfile(path, np.uint8), ...)`，或先复制到 ASCII 临时路径。
+3. **不要用桥的 `openScene`**：本机两次让编辑器崩溃/退出（手动打开正常）。
+   切场景用菜单 `Tools/Project/120~124`（`EditorSceneManager.OpenScene`）。
+4. **改 `.hlsl` 后必须 touch 引用它的 shader**：Unity 不追踪自定义 include 依赖，否则用旧缓存。
+   每次改完跑 `Tools/check_shader.ps1 -Mode mark` → 改 → `-Mode report` 做增量判定。
+5. **A/B 结论必须先冻结**：`Tools/Ocean/108 冻结`（`Time.timeScale=0` + 停流场）。
+   不冻结时海沫/波浪动画本身就有 20~30 像素差，会伪造出「效果差异」。
+6. **参数只有一个写入点**：同一参数不要在材质、脚本、菜单里各写一份（《05》C-4 的教训）。
+   实例：天空 shader 用 `GetMainLight()` 取太阳方向，材质里不再存太阳角。
+7. **改完必须回读探针**：`Logs/water_probe.txt`。只截一张图就下结论 → 会误判（已有 3 次教训）。
+
+## 3 目录地图
+
+| 路径 | 内容 |
+| --- | --- |
+| `Docs/学习路径与知识库/08_参考视频知识点全解.md` | 参考视频 15 章 + 38 卡逐卡转录（**事实源**） |
+| `Docs/学习路径与知识库/09_对标差距分析与补齐路线.md` | 差距表 + P0~P2 路线 + 进度表 + 零基础导读 |
+| `Docs/学习路径与知识库/检测报告/` | R01(浅水流场) / R02(SSR) / R03(昼夜) 每步验收报告 |
+| `Docs/参考视频/`、`Docs/视频逐帧/` | 原片与 5568 帧（**gitignored，不入库**） |
+| `Assets/Art/Shaders/` | `Water_Ocean`(海岸) / `Water_Advanced`(主线) / `SSR.hlsl` / `ShallowWaterSim` / `Sky_Coast` |
+| `Assets/Scripts/Logic/` | `NearshoreFlowSim`(浅水模拟) / `DayNightCycle`(昼夜) |
+| `Assets/Scripts/MonoBehaviour/` | 水体表现脚本等 |
+| `Assets/Editor/` | 全部编辑器菜单（唯一操作入口） |
+| `Tools/` | Unity 桥、截图、逐帧量测、shader 增量判定 |
+| `Logs/water_probe.txt` | 所有菜单的探针输出（**排障第一现场**） |
+
+场景：`Main`（主线水塘）、`OceanScene`（海岸，当前主力）、`PondScene`、`PoolScene`、`IsletScene`。
+
+## 4 常用命令
+
+```powershell
+# 拉起 Unity（编辑器已关闭时）
+python Tools/launch_unity.py
+
+# 执行编辑器菜单（桥，端口 6400；需 Temp/UnityLockfile 存在）
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/bridge_menu.ps1 -Menu "Tools/Ocean/85 Play 中截图 Game 视图"
+
+# 强制刷新资源 + 编译（改完代码）
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/UnityBridgeClient.ps1 -Action "refreshAssets" -TimeoutSec 30
+
+# shader 增量判定
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/check_shader.ps1 -Mode mark
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/check_shader.ps1 -Mode report
+
+# 参考视频分段逐帧量测
+python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
+```
+
+## 5 当前进度（2026-10-18）
+
+| 编号 | 内容 | 状态 |
+| --- | --- | --- |
+| P0-1 | 近岸浅水流场（干湿网格→水位梯度→涌浪→接水材质） | ✅ 完成，波速实测 10.8 vs 理论 10.75 m/s（0.5% 误差） |
+| P0-2 | 屏幕空间反射 SSR | ⚠️ 代码完成并接入两处水面；Ocean 机位无物可反射，真实验收转 `Main` |
+| P1-1 | 昼夜系统 + 天空 | ✅ 主体完成（四时段真机量色通过）；缺月面/星空/双套渐变 |
+| P1-2 | 泡沫历史场 | ⏳ 下一步 |
+| P2-1 | 体散射 | ⏳ |
+| P2-2 | 多尺度焦散 | ⏳ |
+| P2-3 | 体积雾 + 云影 | ⏳ |
+
+## 6 交付纪律
+
+每一步（P0-x / P1-x）都要产出：**参考侧逐帧量测 → 我方实测 → 对比表 → 判据通过/不通过 → 遗留风险**，
+落到 `Docs/学习路径与知识库/检测报告/R0x_*.md`，并更新 `09` 的进度表。
+小改动只做本地 commit；**大版本才推 GitHub**。
+
+## 7 已知未解问题
+
+1. 桥 `openScene` 崩溃（改用菜单 120~124 规避）。
+2. `DayNightCycle` 的颜色曲线**不能用 `Gradient`**：本机实测被还原成默认白渐变（`colorKeys.Length` 读回 2、
+   `Evaluate` 恒白）→ 已改朴素 `ColorKey[]` + 手写插值。新写曲线时别用 `Gradient`。
+3. `ComputeScreenPos` 必须写 `o.zw = pos.zw`，漏掉会让整个屏幕空间采样错位（SSR 曾因此 conf 恒 0）。
+4. 本机相机 `Euler x` 取**正**才是俯视（负值是抬头）。
