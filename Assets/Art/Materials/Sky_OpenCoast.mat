@@ -28,11 +28,11 @@ Material:
     - _CloudCover: 0.68
     - _CloudDrift: 0.01
     - _CloudScale: 0.9
-    - _SunGlow: 0.3
+    - _SunGlow: 1.0202229
     m_Colors:
-    - _CloudColor: {r: 1, g: 0.998, b: 0.995, a: 1}
-    - _CloudShadow: {r: 0.43, g: 0.51, b: 0.63, a: 1}
-    - _GroundColor: {r: 0.3, g: 0.265, b: 0.205, a: 1}
-    - _HorizonColor: {r: 0.7, g: 0.8, b: 0.91, a: 1}
-    - _ZenithColor: {r: 0.22, g: 0.44, b: 0.88, a: 1}
+    - _CloudColor: {r: 0.7025762, g: 0.57496846, b: 0.5508915, a: 0.7146147}
+    - _CloudShadow: {r: 0.39791098, g: 0.1810382, b: 0.23689206, a: 0.69423}
+    - _GroundColor: {r: 0.33249998, g: 0.147, b: 0.111999996, a: 0.35}
+    - _HorizonColor: {r: 0.95, g: 0.42, b: 0.32, a: 1}
+    - _ZenithColor: {r: 0.24, g: 0.12, b: 0.36, a: 1}
   m_BuildTextureStacks: []
