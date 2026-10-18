@@ -111,6 +111,42 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Ocean/95 流场泡沫=1(强)")] public static void FlowFoamOn() => SetFlowFoam(1f);
         [MenuItem("Tools/Ocean/96 流场泡沫还原(0.35)")] public static void FlowFoamRestore() => SetFlowFoam(0.35f);
 
+        // ═════════════════ 140~143 · 泡沫历史场（P1-2 / 参考 S10 C18–C20）═════════════════
+        static void SetFoamHist(float v, string tag)
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
+            if (m == null) { WriteProbe("FOAMAB REFUSED: Ocean_Water.mat 不存在\n"); return; }
+            m.SetFloat("_FoamHistStrength", v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            WriteProbe($"FOAMAB {tag} _FoamHistStrength -> {m.GetFloat("_FoamHistStrength")}\n");
+        }
+
+        [MenuItem("Tools/Ocean/140 泡沫历史=0(关)")]  public static void FoamHistOff() => SetFoamHist(0f, "off");
+        [MenuItem("Tools/Ocean/141 泡沫历史=1(强)")]  public static void FoamHistOn()  => SetFoamHist(1f, "on");
+        [MenuItem("Tools/Ocean/142 泡沫历史还原(0.6)")] public static void FoamHistRestore() => SetFoamHist(0.6f, "restore");
+
+        [MenuItem("Tools/Ocean/143 导出泡沫历史调试图(写 PNG)")]
+        public static void ExportFoamViz()
+        {
+            var sim = Object.FindObjectOfType<NearshoreFlowSim>();
+            if (sim == null) { WriteProbe("MENU143 REFUSED: 场景里没有 NearshoreFlowSim\n"); return; }
+            sim.Build();
+            sim.Warmup(600);                          // 让泡沫历史生成/平流/衰减跑起来
+            ExportViz(sim, 5, "Docs/screenshots/foam_history.png");
+            WriteProbe($"MENU143 ok: 泡沫历史调试图 (viz mode 5)\n");
+        }
+
+        [MenuItem("Tools/Ocean/144 泡沫历史再推进300步并导出(看平流/衰减)")]
+        public static void AdvanceFoamViz()
+        {
+            var sim = Object.FindObjectOfType<NearshoreFlowSim>();
+            if (sim == null) { WriteProbe("MENU144 REFUSED: 场景里没有 NearshoreFlowSim\n"); return; }
+            if (!sim.Ready) sim.Build();
+            sim.Warmup(300);                          // 不重建：在既有历史上继续推进（证明是"历史"而非每帧重算）
+            ExportViz(sim, 5, "Docs/screenshots/foam_history_t300.png");
+            WriteProbe($"MENU144 ok: 泡沫历史再推进 300 步 -> foam_history_t300.png\n");
+        }
+
         // ── SSR A/B（P0-2）：strength<0 = 不改强度；dbg<0 = 不改调试位 ──
         static void SetSSR(float strength, float dbg)
         {

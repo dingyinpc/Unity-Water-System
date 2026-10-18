@@ -44,8 +44,33 @@ namespace WaterProject.Logic
         [Range(0f, 0.3f)] public float edgeBand = 0.05f;
         [Range(0f, 1f)] public float edgeK = 0.85f;
 
+        [Header("泡沫历史场（P1-2 / 参考 S10 C18–C20）")]
+        [Tooltip("关闭则泡沫历史 RT 不推进（水面看到的残留泡沫随之消失）")]
+        public bool foamOn = true;
+        [Tooltip("衰减 /秒：浪过留痕能撑多久（越大褪得越快）")]
+        [Range(0f, 5f)] public float foamDecay = 0.8f;
+        [Tooltip("生成速率（源 × 速率 × dt 累加进历史场）")]
+        [Range(0f, 10f)] public float foamGen = 0.6f;
+        [Tooltip("平流倍率：泡沫随水流漂移的强度")]
+        [Range(0f, 20f)] public float foamAdvect = 1.0f;
+        [Range(0f, 3f)] public float foamShore = 1.0f;
+        [Tooltip("近岸生成水深（米）：浅于此开始出沫）")]
+        [Range(0.1f, 20f)] public float foamShoreDepth = 2.0f;
+        [Tooltip("浪峰曲率权重（水面拉普拉斯 → 白沫）")]
+        [Range(0f, 5f)] public float foamCrest = 0.8f;
+        [Tooltip("水面坡度权重")]
+        [Range(0f, 5f)] public float foamSlope = 0.6f;
+        [Tooltip("流速生成权重")]
+        [Range(0f, 5f)] public float foamFlow = 0.8f;
+        [Tooltip("流速参考值（超过它开始出沫）")]
+        [Range(0.001f, 1f)] public float foamFlowRef = 0.05f;
+        [Tooltip("噪声分量：把生成源咬成丝缕状（1=全噪声，0=均匀白板）")]
+        [Range(0f, 1f)] public float foamNoise = 0.75f;
+        [Tooltip("噪声尺度（1/米）：越大越碎")]
+        [Range(0.005f, 0.5f)] public float foamNoiseScale = 0.08f;
+
         [Header("可视化")]
-        [Range(1, 3)] public int vizMode = 1;
+        [Range(1, 5)] public int vizMode = 1;
 
         const string ShaderName = "WaterProject/ShallowWaterSim";
         static readonly int P_State   = Shader.PropertyToID("_SWState");
@@ -67,10 +92,25 @@ namespace WaterProject.Logic
         static readonly int P_WaveSpd = Shader.PropertyToID("_SWWaveSpeed");
         static readonly int P_WaveFrc = Shader.PropertyToID("_SWWaveForce");
         static readonly int P_SWTime  = Shader.PropertyToID("_SWTime");
+        static readonly int P_Foam    = Shader.PropertyToID("_SWFoam");
+        static readonly int P_FoamPrev= Shader.PropertyToID("_SWFoamPrev");
+        static readonly int P_FoamDt  = Shader.PropertyToID("_SWFoamDt");
+        static readonly int P_FoamDecay = Shader.PropertyToID("_SWFoamDecay");
+        static readonly int P_FoamGen   = Shader.PropertyToID("_SWFoamGen");
+        static readonly int P_FoamAdvect= Shader.PropertyToID("_SWFoamAdvect");
+        static readonly int P_FoamShore = Shader.PropertyToID("_SWFoamShore");
+        static readonly int P_FoamShoreD= Shader.PropertyToID("_SWFoamShoreD");
+        static readonly int P_FoamCrest = Shader.PropertyToID("_SWFoamCrest");
+        static readonly int P_FoamSlope = Shader.PropertyToID("_SWFoamSlope");
+        static readonly int P_FoamFlow  = Shader.PropertyToID("_SWFoamFlow");
+        static readonly int P_FoamFlowRef = Shader.PropertyToID("_SWFoamFlowRef");
+        static readonly int P_FoamNoise   = Shader.PropertyToID("_SWFoamNoise");
+        static readonly int P_FoamNoiseScale = Shader.PropertyToID("_SWFoamNoiseScale");
 
         Material _mat;
         RenderTexture _stateA, _stateB, _velA, _velB;
         RenderTexture _stateCur, _velCur;
+        RenderTexture _foamA, _foamB, _foamCur;
         float _acc;
         bool _ready;
         float _simTime;
@@ -95,9 +135,11 @@ namespace WaterProject.Logic
 
             _stateA = NewRT("SW_StateA"); _stateB = NewRT("SW_StateB");
             _velA   = NewRT("SW_VelA");   _velB   = NewRT("SW_VelB");
-            _stateCur = _stateA; _velCur = _velA;
+            _foamA  = NewRT("SW_FoamA");  _foamB  = NewRT("SW_FoamB");
+            _stateCur = _stateA; _velCur = _velA; _foamCur = _foamA;
 
             InitState();
+            InitFoam();
             PublishGlobals();
             _ready = true;
             Debug.Log($"[NearshoreFlowSim] built {gridN}x{gridN} domain({minX},{minZ},{sizeX},{sizeZ}) waterLevel={waterLevel}");
@@ -140,11 +182,23 @@ namespace WaterProject.Logic
             Graphics.Blit(_stateCur, _velCur); // 速度清零（用状态图占位，R/G 后续被覆写）
         }
 
+        void InitFoam()
+        {
+            // 泡沫历史清零：blit 一张全黑小图（避免首帧读到未定义内容）
+            var t = new Texture2D(4, 4, TextureFormat.RGBAHalf, false);
+            var st = new Color[16];
+            for (int i = 0; i < 16; i++) st[i] = new Color(0, 0, 0, 1);
+            t.SetPixels(st); t.Apply();
+            Graphics.Blit(t, _foamCur);
+            DestroyImmediate(t);
+        }
+
         void PublishGlobals()
         {
             if (_mat == null) return;
             Shader.SetGlobalTexture(P_State, _stateCur);
             Shader.SetGlobalTexture(P_Vel, _velCur);
+            Shader.SetGlobalTexture(P_Foam, _foamCur);
             if (terrainTex != null) Shader.SetGlobalTexture(P_Terrain, terrainTex);
             Shader.SetGlobalVector(P_Domain, new Vector4(minX, minZ, sizeX, sizeZ));
         }
@@ -181,7 +235,35 @@ namespace WaterProject.Logic
             Graphics.Blit(null, _velCur == _velA ? _velB : _velA, _mat, 1);
             _velCur = (_velCur == _velA) ? _velB : _velA;
 
+            StepFoam(1f / Mathf.Max(simHz, 1));
+
             PublishGlobals();
+        }
+
+        // 泡沫历史场：生成 + 半拉格朗日平流 + 衰减（Pass 3）
+        void StepFoam(float dt)
+        {
+            if (!foamOn) return;
+            _mat.SetTexture(P_State, _stateCur);
+            _mat.SetTexture(P_Vel,   _velCur);
+            _mat.SetTexture(P_FoamPrev, _foamCur);
+            _mat.SetVector(P_Domain, new Vector4(minX, minZ, sizeX, sizeZ));
+            _mat.SetFloat(P_GridN, gridN);
+            _mat.SetFloat(P_FoamDt, dt);
+            _mat.SetFloat(P_FoamDecay, foamDecay);
+            _mat.SetFloat(P_FoamGen, foamGen);
+            _mat.SetFloat(P_FoamAdvect, foamAdvect);
+            _mat.SetFloat(P_FoamShore, foamShore);
+            _mat.SetFloat(P_FoamShoreD, foamShoreDepth);
+            _mat.SetFloat(P_FoamCrest, foamCrest);
+            _mat.SetFloat(P_FoamSlope, foamSlope);
+            _mat.SetFloat(P_FoamFlow, foamFlow);
+            _mat.SetFloat(P_FoamFlowRef, foamFlowRef);
+            _mat.SetFloat(P_FoamNoise, foamNoise);
+            _mat.SetFloat(P_FoamNoiseScale, foamNoiseScale);
+            _mat.SetFloat(P_SWTime, _simTime);
+            Graphics.Blit(null, _foamCur == _foamA ? _foamB : _foamA, _mat, 3);
+            _foamCur = (_foamCur == _foamA) ? _foamB : _foamA;
         }
 
         void Update()
@@ -209,6 +291,7 @@ namespace WaterProject.Logic
             if (_mat == null) return null;
             _mat.SetTexture(P_State, _stateCur);
             _mat.SetTexture(P_Vel, _velCur);
+            _mat.SetTexture(P_Foam, _foamCur);
             if (terrainTex != null) _mat.SetTexture(P_Terrain, terrainTex);
             _mat.SetFloat(P_GridN, gridN);
             _mat.SetFloat(P_VizMode, mode);
@@ -219,9 +302,9 @@ namespace WaterProject.Logic
 
         public void Release()
         {
-            foreach (var rt in new[] { _stateA, _stateB, _velA, _velB })
+            foreach (var rt in new[] { _stateA, _stateB, _velA, _velB, _foamA, _foamB })
                 if (rt) { rt.Release(); DestroyImmediate(rt); }
-            _stateA = _stateB = _velA = _velB = null;
+            _stateA = _stateB = _velA = _velB = _foamA = _foamB = null;
             _ready = false;
         }
 
@@ -229,6 +312,7 @@ namespace WaterProject.Logic
         {
             Shader.SetGlobalTexture(P_State, null);
             Shader.SetGlobalTexture(P_Vel, null);
+            Shader.SetGlobalTexture(P_Foam, null);
         }
         void OnDestroy() { Release(); if (_mat) DestroyImmediate(_mat); }
     }

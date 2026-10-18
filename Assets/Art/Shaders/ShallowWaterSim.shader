@@ -40,6 +40,19 @@ Shader "WaterProject/ShallowWaterSim"
         _SWWaveSpeed("涌浪传播速度倍率", Float) = 1
         _SWWaveForce("边界驱动接管强度", Range(0,1)) = 0.9
         _SWTime     ("模拟时间 (s)", Float) = 0
+
+        // ── 泡沫历史场（P1-2 / 参考 S10 C18–C20）──
+        _SWFoamDecay   ("泡沫衰减 /秒", Float) = 0.6
+        _SWFoamGen     ("泡沫生成速率", Float) = 1.5
+        _SWFoamAdvect  ("泡沫平流倍率", Float) = 1.0
+        _SWFoamShore   ("近岸生成权重", Float) = 1.0
+        _SWFoamShoreD  ("近岸生成水深(m)", Float) = 2.5
+        _SWFoamCrest   ("浪峰曲率权重", Float) = 0.8
+        _SWFoamSlope   ("水面坡度权重", Float) = 0.6
+        _SWFoamFlow    ("流速生成权重", Float) = 0.8
+        _SWFoamFlowRef ("流速参考值", Float) = 0.05
+        _SWFoamNoise   ("泡沫噪声分量", Range(0,1)) = 0.75
+        _SWFoamNoiseScale ("噪声尺度(1/米)", Float) = 0.08
     }
 
     SubShader
@@ -183,6 +196,7 @@ Shader "WaterProject/ShallowWaterSim"
             TEXTURE2D(_SWState);   SAMPLER(sampler_SWState);
             TEXTURE2D(_SWVel);     SAMPLER(sampler_SWVel);
             TEXTURE2D(_SWTerrain); SAMPLER(sampler_SWTerrain);
+            TEXTURE2D(_SWFoam);    SAMPLER(sampler_SWFoam);
             float _SWGridN, _SWVizMode;
 
             struct A { float4 positionOS : POSITION; float2 uv : TEXCOORD0; };
@@ -232,12 +246,112 @@ Shader "WaterProject/ShallowWaterSim"
                     // 模式 3：水深（灰）
                     return float4(s.rrr, 1);
                 }
-                else
+                else if (_SWVizMode < 4.5)
                 {
                     // 模式 4：速度模长（灰：0→黑，≥0.2 m/s→白）——用于边界吸收量化
                     float sp = saturate(length(vel) / 0.2);
                     return float4(sp.xxx, 1);
                 }
+                else
+                {
+                    // 模式 5：泡沫历史密度（P1-2；灰=密度）
+                    float foam = SAMPLE_TEXTURE2D(_SWFoam, sampler_SWFoam, uv).r;
+                    return float4(foam.xxx, 1);
+                }
+            }
+            ENDHLSL
+        }
+
+        // ───────────────────────── Pass 3：泡沫历史场（P1-2 / S10 C18–C20）─────────────────────────
+        //   三元模型：① 多源生成（近岸浅水 + 水面曲率/坡度 + 流速）
+        //             ② 半拉格朗日平流（沿流速回溯上一帧）
+        //             ③ 线性/指数衰减（"浪过留痕、随时间淡去"）
+        //   输出 R = 泡沫密度（世界 XZ 网格，供水面 shader 按世界坐标采样合成）
+        Pass
+        {
+            Name "SWFoam"
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment fragFoam
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            TEXTURE2D(_SWState);    SAMPLER(sampler_SWState);
+            TEXTURE2D(_SWVel);      SAMPLER(sampler_SWVel);
+            TEXTURE2D(_SWFoamPrev); SAMPLER(sampler_SWFoamPrev);
+            float _SWGridN, _SWFlowK, _SWDamping, _SWTime;
+            float4 _SWDomain;
+            float _SWFoamDt, _SWFoamDecay, _SWFoamGen, _SWFoamAdvect;
+            float _SWFoamShore, _SWFoamShoreD, _SWFoamCrest, _SWFoamSlope;
+            float _SWFoamFlow, _SWFoamFlowRef, _SWFoamNoise, _SWFoamNoiseScale;
+
+            struct A { float4 positionOS : POSITION; float2 uv : TEXCOORD0; };
+            struct V { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; };
+            V vert(A v) { V o; o.positionCS = TransformObjectToHClip(v.positionOS.xyz); o.uv = v.uv; return o; }
+
+            // 生成源要有**丝缕状结构**，否则整个冲浪带是一块均匀白板（本轮第二版）
+            float Hash12(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * 0.1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.x + p3.y) * p3.z);
+            }
+            float VNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                return lerp(lerp(Hash12(i), Hash12(i + float2(1,0)), u.x),
+                            lerp(Hash12(i + float2(0,1)), Hash12(i + float2(1,1)), u.x), u.y);
+            }
+
+            // 返回 float2(水面高 = 地形+水深, 水深)
+            float2 SurfD(float2 uv)
+            {
+                float4 s = SAMPLE_TEXTURE2D_LOD(_SWState, sampler_SWState, uv, 0);
+                return float2(s.g + s.r, s.r);
+            }
+
+            float4 fragFoam(V i) : SV_Target
+            {
+                float2 uv = i.uv;
+                float texel = 1.0 / max(_SWGridN, 1.0);
+                float4 sc = SAMPLE_TEXTURE2D_LOD(_SWState, sampler_SWState, uv, 0);
+                float wet = sc.b, depth = sc.r;
+                float2 vel = SAMPLE_TEXTURE2D_LOD(_SWVel, sampler_SWVel, uv, 0).rg;
+
+                // ① 半拉格朗日平流：回溯一步（世界米 → UV）
+                float2 back = vel * _SWFoamAdvect * _SWFoamDt;
+                float2 prevUV = uv - back / max(_SWDomain.zw, 1e-3);
+                prevUV = saturate(prevUV);
+                float foam = SAMPLE_TEXTURE2D_LOD(_SWFoamPrev, sampler_SWFoamPrev, prevUV, 0).r;
+
+                // ② 衰减（浪过留痕、随时间淡去）
+                foam *= exp(-_SWFoamDecay * _SWFoamDt);
+
+                // ③ 生成源
+                float2 sC = SurfD(uv);
+                float2 sL = SurfD(uv - float2(texel, 0));
+                float2 sR = SurfD(uv + float2(texel, 0));
+                float2 sU = SurfD(uv + float2(0, texel));
+                float2 sD = SurfD(uv - float2(0, texel));
+                float lap   = (sL.x + sR.x + sU.x + sD.x) - 4.0 * sC.x;   // 水面拉普拉斯（米）
+                float2 grad = float2(sR.x - sL.x, sU.x - sD.x) * 0.5;      // 水面坡度（米）
+                // ⚠ 生成必须**只发生在破碎区（浅水）**：否则深水区的涌浪曲率/坡度也会一直产沫，
+                //   历史场被填满 → 海面糊成一张白纸（本轮第一版就是这么翻车的：34% 像素饱和）。
+                float shoal    = saturate(1.0 - depth / max(_SWFoamShoreD, 1e-3)) * wet;  // 整个冲浪带
+                float shoreBand= saturate(1.0 - depth / max(_SWFoamShoreD * 0.25, 0.05)); // 最浅的碎浪带
+                float curvGen  = saturate(-lap * _SWFoamCrest);            // 浪峰（上凸）→ 正
+                float slopeGen = saturate(length(grad) * _SWFoamSlope);
+                float flowGen  = saturate(length(vel) / max(_SWFoamFlowRef, 1e-4) - 1.0);
+
+                float gen = saturate(shoreBand * _SWFoamShore
+                                   + shoal * (curvGen + slopeGen + flowGen * _SWFoamFlow));
+                // 丝缕化：世界 XZ 上缓慢漂移的噪声把"生成源"咬成指纹状，随模拟时间缓慢漂移
+                float2 wxz = _SWDomain.xy + uv * _SWDomain.zw;
+                float nz = VNoise(wxz * _SWFoamNoiseScale + _SWTime * 0.12);
+                gen *= lerp(1.0, saturate((nz - 0.30) * 1.8), _SWFoamNoise);
+                foam = saturate(foam + gen * _SWFoamGen * _SWFoamDt) * step(1e-4, wet);
+
+                return float4(foam, 0, 0, 1);
             }
             ENDHLSL
         }

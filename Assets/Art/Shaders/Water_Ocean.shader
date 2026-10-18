@@ -65,6 +65,10 @@ Shader "WaterProject/Water_Ocean"
         _FlowFoamGain     ("流速→泡沫增益", Range(0, 200)) = 60
         _FlowFoamStrength ("流场泡沫强度", Range(0, 1)) = 0.35
 
+        // ── 泡沫历史场（P1-2 / 参考 S10 C18–C20）：残留泡沫从 _SWFoam 采样 ──
+        _FoamHistStrength ("泡沫历史强度", Range(0, 1)) = 0.6
+        _FoamHistBias     ("泡沫历史阈值(低于它不显示)", Range(0, 0.9)) = 0.3
+
         // ── 冲滩沫带的"样子"（"能冲多远"在 OceanShore 里，与沙滩共用）──
         _SwashFoam        ("沫带强度", Range(0, 1)) = 0.75
 
@@ -151,6 +155,7 @@ Shader "WaterProject/Water_Ocean"
                 float  _DetailStrength, _DetailScale, _DetailFlow, _RippleStrength, _RippleScale;
                 float  _FresnelPow, _SkyReflect, _SpecPower, _SpecStrength, _SunGloss, _SunStrength;
                 float  _FlowAdvect, _FlowFoamGain, _FlowFoamStrength;
+                float  _FoamHistStrength, _FoamHistBias;
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
             CBUFFER_END
@@ -164,6 +169,7 @@ Shader "WaterProject/Water_Ocean"
             // ── 近岸流场（P0-1）：NearshoreFlowSim 每帧 SetGlobalTexture/Vector ──
             TEXTURE2D(_SWState); SAMPLER(sampler_SWState);
             TEXTURE2D(_SWVel);   SAMPLER(sampler_SWVel);
+            TEXTURE2D(_SWFoam);  SAMPLER(sampler_SWFoam);   // 泡沫历史密度场（P1-2）
             float4 _SWDomain;    // (minX, minZ, sizeX, sizeZ)
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -299,8 +305,16 @@ Shader "WaterProject/Water_Ocean"
                 // ── 近岸流场采样（P0-1）：泡沫随水流平流 + 流活跃处增沫 ──
                 float2 swUV = (worldPos.xz - _SWDomain.xy) / max(_SWDomain.zw, 1e-4);
                 float2 flow = float2(0, 0);
+                float flowFoamHist = 0.0;
                 if (swUV.x > 0 && swUV.x < 1 && swUV.y > 0 && swUV.y < 1)
+                {
                     flow = SAMPLE_TEXTURE2D_LOD(_SWVel, sampler_SWVel, swUV, 0).rg;
+                    // 泡沫历史场（P1-2 / S10）：世界 XZ 采样"残留泡沫"密度。
+                    // ⚠ 必须**卡一个阈值**再上：历史场里大片低密度泡沫一旦线性叠加，
+                    //   整片海会糊成一张白纸（本轮实测 0.6 强度即如此）。只留丝缕/残留的强密度。
+                    float hRaw = SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV, 0).r;
+                    flowFoamHist = saturate((hRaw - _FoamHistBias) / max(1.0 - _FoamHistBias, 1e-3)) * _FoamHistStrength;
+                }
                 float flowMag = length(flow);
                 float2 adv = flow * _FlowAdvect;               // 泡沫图案随水流位移（米）
 
@@ -393,7 +407,8 @@ Shader "WaterProject/Water_Ocean"
                 float flowFoam = saturate(flowMag * _FlowFoamGain) * _FlowFoamStrength
                                * saturate(1.0 - depth / 8.0);
 
-                float foam = saturate(breakFoam + whitecap + washFoam + flowFoam);
+                // 泡沫历史场（P1-2）：残留泡沫（随流漂移、缓慢褪去）叠进总沫量
+                float foam = saturate(breakFoam + whitecap + washFoam + flowFoam + flowFoamHist);
                 col = lerp(col, _FoamColor.rgb, foam);
 
                 // ── 调试通道：先看通道通不通，再解释数值（《06》附 B）──

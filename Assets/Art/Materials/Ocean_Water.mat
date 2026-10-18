@@ -37,6 +37,8 @@ Material:
     - _FlowAdvect: 30
     - _FlowFoamGain: 60
     - _FlowFoamStrength: 0.35
+    - _FoamHistBias: 0.3
+    - _FoamHistStrength: 0.6
     - _FresnelPow: 5
     - _MaxDepth: 10
     - _Opacity: 0.95
