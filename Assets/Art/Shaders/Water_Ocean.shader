@@ -437,3 +437,5 @@ Shader "WaterProject/Water_Ocean"
 // touch: 强制重编（Unity 不追踪自定义 #include 依赖）
 
 // touch2
+
+// touch3: SSR.hlsl 修正后强制重编

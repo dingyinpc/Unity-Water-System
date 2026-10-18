@@ -122,8 +122,8 @@ namespace WaterProject.EditorTools
             WriteProbe($"SSRAB _SSRStrength -> {m.GetFloat("_SSRStrength")}  _SSRDebug -> {m.GetFloat("_SSRDebug")}\n");
         }
 
-        [MenuItem("Tools/Ocean/97 SSR=0(关)")]               public static void SSROff() => SetSSR(0f, -1f);
-        [MenuItem("Tools/Ocean/98 SSR=1(开)")]               public static void SSROn() => SetSSR(1f, -1f);
+        [MenuItem("Tools/Ocean/97 SSR=0(关)")]               public static void SSROff() => SetSSR(0f, 0f);
+        [MenuItem("Tools/Ocean/98 SSR=1(开)")]               public static void SSROn() => SetSSR(1f, 0f);
         [MenuItem("Tools/Ocean/99 SSR调试:命中可信度")]        public static void SSRConf() => SetSSR(1f, 1f);
         [MenuItem("Tools/Ocean/100 SSR调试:SSR色")]           public static void SSRCol() => SetSSR(1f, 2f);
         [MenuItem("Tools/Ocean/101 SSR还原(0.85/调试关)")]     public static void SSRRestore() => SetSSR(0.85f, 0f);
@@ -135,17 +135,20 @@ namespace WaterProject.EditorTools
         {
             var cam = Camera.main;
             float x = cam ? cam.transform.position.x + 12f : -18f;
-            float z = WaterOceanSetup.ShoreZAt(x) + 6f;          // 岸线外 6m
+            // ⚠ 位置是**算出来的**：镜中像与水面视线的交点 = D·e/(e+h)（D=相机到物距离，e=眼高，h=物高于水面）。
+            //   本机位沿用默认参数时 e≈4.5、相机在岸侧 26m ⇒ 交点要落到水上，物必须够远/够矮。
+            //   放到离岸 ~40m（D≈66）后交点 ≈47m，正好在岸线外 ~21m 的水面上。
+            float z = WaterOceanSetup.ShoreZAt(x) + 40f;
             SSRProbeOff();
             _probe = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _probe.name = "SSRProbePillar";
             _probe.transform.position = new Vector3(x, -0.4f, z);
-            _probe.transform.localScale = new Vector3(1.6f, 6.0f, 1.6f);
+            _probe.transform.localScale = new Vector3(2.2f, 6.0f, 2.2f);
             var mr = _probe.GetComponent<MeshRenderer>();
             var m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            m.color = new Color(0.42f, 0.40f, 0.44f, 1f);
+            m.color = new Color(0.62f, 0.58f, 0.52f, 1f);      // 亮一点，倒影更可读
             mr.sharedMaterial = m;
-            WriteProbe($"SSRPROBE on at ({x:F1},{z:F1})\n");
+            WriteProbe($"SSRPROBE on at ({x:F1},{z:F1}) 离岸40m\n");
         }
         [MenuItem("Tools/Ocean/103 SSR 机制验证柱(临时删)")]
         public static void SSRProbeOff()
@@ -154,6 +157,39 @@ namespace WaterProject.EditorTools
             if (old != null) Object.DestroyImmediate(old);
             WriteProbe("SSRPROBE off\n");
         }
+
+        // ── SSR 参数粗调（P0-2 混叠诊断：步数太少会跳过细目标的屏幕区）──
+        static void SetSSRParam(float steps, float maxDist, float thickness, string tag)
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(OceanMatPath);
+            if (m == null) return;
+            if (steps >= 0) m.SetFloat("_SSRSteps", steps);
+            if (maxDist >= 0) m.SetFloat("_SSRMaxDist", maxDist);
+            if (thickness >= 0) m.SetFloat("_SSRThickness", thickness);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssets();
+            WriteProbe($"SSRPARAM {tag} -> steps={m.GetFloat("_SSRSteps")} dist={m.GetFloat("_SSRMaxDist")} thick={m.GetFloat("_SSRThickness")}\n");
+        }
+        [MenuItem("Tools/Ocean/106 SSR 密采(48步/200m/厚1.5)")] public static void SSRParamFine() => SetSSRParam(48f, 200f, 1.5f, "fine");
+        [MenuItem("Tools/Ocean/107 SSR 还原(24步/90m/厚0.8)")] public static void SSRParamDefault() => SetSSRParam(24f, 90f, 0.8f, "default");
+
+        // ── 决定性 A/B：冻结时间 + 停流场，消除动画相位干扰 ──
+        [MenuItem("Tools/Ocean/108 冻结(暂停波浪+流场)")]
+        public static void FreezeOn()
+        {
+            Time.timeScale = 0f;
+            var sim = Object.FindObjectOfType<NearshoreFlowSim>();
+            if (sim != null) sim.enabled = false;
+            WriteProbe("FREEZE on (timeScale=0, sim disabled)\n");
+        }
+        [MenuItem("Tools/Ocean/109 解冻(恢复波浪+流场)")]
+        public static void FreezeOff()
+        {
+            Time.timeScale = 1f;
+            var sim = Object.FindObjectOfType<NearshoreFlowSim>();
+            if (sim != null) sim.enabled = true;
+            WriteProbe("FREEZE off\n");
+        }
+
         static Vector3 _camSaved;
         static bool _camSavedValid;
         [MenuItem("Tools/Ocean/104 SSR 机位升高(临时,视线向下)")]
@@ -161,9 +197,13 @@ namespace WaterProject.EditorTools
         {
             var cam = Camera.main; if (cam == null) return;
             if (!_camSavedValid) { _camSaved = cam.transform.position; _camSavedValid = true; }
+            // ⚠ 本机实测定标（《05》"先验证观测通道"）：Euler x 取**正**才是向下俯视
+            //   （探针 fwd.y 才会变负）。负值是抬头，上一版因此拍了一整屏天空。
             cam.transform.position = _camSaved + Vector3.up * 9f;
-            cam.transform.rotation = Quaternion.Euler(-26f, cam.transform.eulerAngles.y, 0f);
-            WriteProbe($"SSRCAM up at ({cam.transform.position.x:F1},{cam.transform.position.y:F1},{cam.transform.position.z:F1})\n");
+            cam.transform.rotation = Quaternion.Euler(26f, cam.transform.eulerAngles.y, 0f);
+            WriteProbe($"SSRCAM up pos=({cam.transform.position.x:F2},{cam.transform.position.y:F2},{cam.transform.position.z:F2}) "
+                     + $"euler=({cam.transform.eulerAngles.x:F1},{cam.transform.eulerAngles.y:F1}) "
+                     + $"fwd=({cam.transform.forward.x:F2},{cam.transform.forward.y:F2},{cam.transform.forward.z:F2})\n");
         }
         [MenuItem("Tools/Ocean/105 SSR 机位还原")]
         public static void CamUpOff()

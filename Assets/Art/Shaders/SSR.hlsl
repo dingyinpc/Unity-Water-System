@@ -10,12 +10,16 @@
 // ⚠ 调用方传入的裁剪坐标必须来自另存的 TEXCOORD（不能用片元 SV_POSITION，《05》A-1）
 // ============================================================================
 
-// NDC → 采样 UV（与本管线 ComputeScreenPos 同式；含平台 y 翻转）
+// NDC → 采样 UV。⚠ 必须**逐步照抄** Unity 的 ComputeScreenPos：
+//     o = pos*0.5; o.xy = float2(o.x, o.y*_ProjectionParams.x) + o.w; o.zw = pos.zw;
+//   最后那行 o.zw = pos.zw 是**还原 w**，漏掉它分母就变成 0.5*w ⇒ UV 变成 (ndc+1)，
+//   深度/颜色全采到画面外——本步第一次实现就栽在这，表现为"命中可信度处处为 0"。
 float2 ClipToScreenUV(float4 c)
 {
-    float4 sp = c * 0.5;
-    sp.xy = float2(sp.x, sp.y * _ProjectionParams.x) + sp.w;
-    return sp.xy / sp.w;
+    float4 o = c * 0.5;
+    o.xy = float2(o.x, o.y * _ProjectionParams.x) + o.w;
+    o.zw = c.zw;
+    return o.xy / o.w;
 }
 
 float3 TraceSSR(float3 wp, float3 rd, float maxDist, float stepsF,
