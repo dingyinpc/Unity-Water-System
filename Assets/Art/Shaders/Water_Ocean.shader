@@ -386,9 +386,12 @@ Shader "WaterProject/Water_Ocean"
                 float3 reflDir = reflect(-V, N);
                 reflDir.y = max(reflDir.y, 0.02);
                 float3 skyCol = lerp(_SkyHorizon.rgb, _SkyZenith.rgb, saturate(reflDir.y * 2.2));
-                // 云影也改**反射的天空色**：云下天更灰更亮（不是深蓝）→ 水面倒影随之变化。
-                // ⚠ 本机位太阳低、水面直射≈0、主色由反射主导：只衰减漫反射的话云影测不出（实测 0.00%）。
-                skyCol = lerp(skyCol, skyCol * 0.72 + 0.22, saturate(1.0 - cloudTrans) * _CloudShadowStrength * 0.9);
+                // 云影也改**反射的天空色**：云下天空不是"更亮的灰"，而是**整体变暗 + 去饱和**。
+                // ⚠ 曾经写成 skyCol*0.72+0.22 —— 对亮天空几乎是恒等变换（0.75*0.72+0.22≈0.76），
+                //   于是云影 A/B 只有 0.04%（黄昏）/0.66%（正午），看着像"没接上"。
+                float sh = saturate(1.0 - cloudTrans) * _CloudShadowStrength;
+                float3 greySky = dot(skyCol, float3(0.299, 0.587, 0.114)).xxx;
+                skyCol = lerp(skyCol, greySky * 0.70, sh * 0.65);
 
                 // ── SSR（P0-2 / 参考 C8）：命中处用真实场景色替换天空兜底 ──
                 float ssrConf = 0.0;
@@ -471,16 +474,20 @@ Shader "WaterProject/Water_Ocean"
                 // ── 远景雾（P2-3 / 参考 S15）：沿视线到水面的**解析高度雾**（Beer–Lambert 积分）──
                 //   密度随高度指数衰减：d(y)=exp(-(y-_FogBaseY)*_FogFalloff)；
                 //   取相机/水面两点平均，光程 = density × 距离。参考是全 raymarch+3D噪声，此处为闭式近似。
+                //   ⚠ 公式必须与 URP 的 RenderSettings 雾**同式同密度**（Exp²）：
+                //     否则水面和地形在同一距离衰减到不同程度，岸线会出现"水比陆地更雾"的断层。
+                //     高度折减只保留一个 sqrt(dCam·dSurf) 的温和系数（海面 y≈0 时 ≈0.95）。
                 if (_FogOn > 0.5)
                 {
                     float distV = length(worldPos - _WorldSpaceCameraPos);
                     float dCam  = exp(-max(_WorldSpaceCameraPos.y - _FogBaseY, 0.0) * _FogFalloff);
                     float dSurf = exp(-max(worldPos.y - _FogBaseY, 0.0) * _FogFalloff);
-                    float opt = _FogDensity * distV * (dCam + dSurf) * 0.5;
-                    col = lerp(_FogColor.rgb, col, exp(-opt));
+                    float fd    = _FogDensity * distV * sqrt(dCam * dSurf);
+                    col = lerp(_FogColor.rgb, col, exp(-fd * fd));   // exp(-(d·x)²) == URP Exp²
                 }
 
-                col = MixFog(col, IN.fogCoord);
+                // 开了解析雾就不再叠一次 URP 雾（叠两次 => 水面比地形白，岸线断层）
+                if (_FogOn < 0.5) col = MixFog(col, IN.fogCoord);
                 return half4(col, alpha);
             }
             ENDHLSL

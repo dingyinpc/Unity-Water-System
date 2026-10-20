@@ -43,6 +43,11 @@ namespace WaterProject.Logic
         public float moonMaxIntensity = 0.30f;
         public float sunTilt = 75f;          // 正午最高仰角
 
+        [Header("雾（单一时段旋钮，唯一真源）")]
+        [Tooltip("勾上则雾色=地平色、雾密度=下面的值；水面与地形共用同一套（Exp²）")]
+        public bool driveFog = true;
+        [Range(0f, 0.02f)] public float fogDensity = 0.0022f;
+
         [Header("材质（为空则跳过）")]
         public Material skyMat;              // Sky_OpenCoast（Shader: WaterProject/Sky_Coast）
         public Material waterMat;            // Ocean_Water
@@ -173,8 +178,16 @@ namespace WaterProject.Logic
                     skyMat.SetFloat("_SunGlow", Mathf.Clamp01(1f - Mathf.Abs(elev) / 45f) * 1.1f + 0.15f);
             }
 
-            // ── 雾色 == 地平色（地平线不留硬边的唯一条件）──
-            RenderSettings.fogColor = hor;
+            // ── 雾：颜色 == 地平色（地平线不留硬边的唯一条件），密度只有一个来源 ──
+            //   ⚠ 曾经出过的事故：场景里的 fogColor 是上一轮"黄昏"留下的红色，
+            //   而水面 _FogColor 是写死的灰蓝 —— 正午时远景地形被染红、水面却是灰蓝。
+            if (driveFog)
+            {
+                RenderSettings.fog = true;
+                RenderSettings.fogMode = FogMode.ExponentialSquared;
+                RenderSettings.fogColor = hor;
+                RenderSettings.fogDensity = fogDensity;
+            }
 
             // ── 水色 ──
             if (waterMat != null)
@@ -184,6 +197,9 @@ namespace WaterProject.Logic
                 waterMat.SetColor("_DeepColor", Eval(waterDeep, t));
                 waterMat.SetColor("_ShallowColor", Eval(waterShallow, t));
                 if (waterMat.HasProperty("_SunColor")) waterMat.SetColor("_SunColor", tint);
+                // 水面解析雾与场景雾同源：颜色=地平色、密度=同一个值（否则岸线断层）
+                if (driveFog && waterMat.HasProperty("_FogColor")) waterMat.SetColor("_FogColor", hor);
+                if (driveFog && waterMat.HasProperty("_FogDensity")) waterMat.SetFloat("_FogDensity", fogDensity);
             }
 
             // ── 环境光：Skybox 模式跟着天空走（节流；每帧 UpdateEnvironment 太贵）──

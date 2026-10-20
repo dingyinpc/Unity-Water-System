@@ -94,6 +94,40 @@ namespace WaterProject.EditorTools
             WriteProbe("MENU177 云影还原\n");
         }
 
+        // ═════════════ 178/179 雾统一 / S15 浓雾演示档 ═════════════
+        // 参考 S15：远景被白雾吞掉、水面同时发白。要做到这点，水面与地形必须在**同一距离**
+        // 衰减到**同一程度**，且雾色 = 地平色（否则远山是灰的、天是蓝的，交界出现硬边）。
+        static void ApplyUnifiedFog(float density, string tag)
+        {
+            var m = WaterMat(); if (m == null) return;
+            var dn = Object.FindObjectOfType<DayNightCycle>();
+            if (dn == null) { WriteProbe($"MENU{tag} REFUSED: 场景里没有 DayNightCycle（先跑菜单110）\n"); return; }
+
+            dn.driveFog = true;
+            dn.fogDensity = density;
+
+            // 1) 水面解析雾：开、密度与场景同值、太阳遮挡长度按新密度重算
+            m.SetFloat("_FogOn", 1f);
+            m.SetFloat("_FogDensity", density);
+            m.SetFloat("_FogSunLen", 140f);        // exp(-0.0022*140)=0.73 → 雾里高光剩七成
+
+            // 2) 场景雾：同样密度、颜色由昼夜系统按地平色写入
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogDensity = density;
+
+            dn.Apply(true);                        // 会把 _FogColor / fogColor 统一成当前地平色
+            m.SetColor("_FogColor", RenderSettings.fogColor);
+
+            EditorUtility.SetDirty(dn); EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            WriteProbe($"MENU{tag} 雾统一: 密度={density:F5} | 场景 fogColor={RenderSettings.fogColor} | "
+                     + $"水面 _FogColor={m.GetColor("_FogColor")} _FogDensity={m.GetFloat("_FogDensity"):F5} _FogOn={m.GetFloat("_FogOn")}\n");
+        }
+
+        [MenuItem("Tools/Ocean/178 雾统一(水面=场景, 0.0022)")]  public static void FogUnify() => ApplyUnifiedFog(0.0022f, "178");
+        [MenuItem("Tools/Ocean/179 S15浓雾演示档(0.0035)")]      public static void FogDemo()  => ApplyUnifiedFog(0.0035f, "179");
+
         // ═════════════ 175 导出云影调试图 ═════════════
         [MenuItem("Tools/Ocean/175 导出云影调试图(写 PNG)")]
         public static void ExportCloudViz()
