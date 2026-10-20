@@ -43,6 +43,14 @@ namespace WaterProject.Logic
         public float moonMaxIntensity = 0.30f;
         public float sunTilt = 75f;          // 正午最高仰角
 
+        [Header("夜空（P1-1 / 参考 S12）")]
+        [Range(0f, 1f)] public float moonPhase = 0.62f;              // 0=新月 0.5=满月 1=新月
+        [Tooltip("月面角半径（弧度）。真实月亮≈0.009，这里放大到 0.03 才在 1080p 上看得见")]
+        [Range(0.005f, 0.08f)] public float moonAngularRadius = 0.030f;
+        [Tooltip("月亮仰角 = 太阳仰角取反 × 此系数。1=严格镜像（午夜在正上方、拍不到），0.3≈午夜 22°，低垂入画")]
+        [Range(0.1f, 1f)] public float moonElevationScale = 0.30f;
+        public Color moonColor = new Color(1f, 0.97f, 0.90f);
+
         [Header("雾（单一时段旋钮，唯一真源）")]
         [Tooltip("勾上则雾色=地平色、雾密度=下面的值；水面与地形共用同一套（Exp²）")]
         public bool driveFog = true;
@@ -154,7 +162,10 @@ namespace WaterProject.Logic
             }
             if (moon)
             {
-                moon.transform.rotation = Quaternion.Euler(-elev, sunAzimuth + 180f, 0f);
+                // ⚠ 方向光的方位约定：`Euler(y = a)` 的光源在**天空方位 a+180°**。
+                //   第一版写成 y = sunAzimuth+180 ⇒ 光源落到 236°，正好在相机（朝 58°）背后，
+                //   夜空截图里"有星无月"。月亮应与太阳**同一方位、仰角相反**（相差半圈在高度上）。
+                moon.transform.rotation = Quaternion.Euler(-elev * moonElevationScale, sunAzimuth, 0f);
                 moon.color = new Color(0.62f, 0.72f, 0.95f);
                 moon.intensity = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(-elev / 18f)) * moonMaxIntensity;
             }
@@ -176,6 +187,16 @@ namespace WaterProject.Logic
                     skyMat.SetColor("_CloudShadow", Color.Lerp(zen * 0.25f, Color.Lerp(zen, hor, 0.55f), day));
                 if (skyMat.HasProperty("_SunGlow"))
                     skyMat.SetFloat("_SunGlow", Mathf.Clamp01(1f - Mathf.Abs(elev) / 45f) * 1.1f + 0.15f);
+                // 夜空：星星/银河/月面全部按"夜因子"淡入淡出 ⇒ 白天这些项恒为 0，零回归
+                float night = 1f - day;
+                if (skyMat.HasProperty("_NightAmount")) skyMat.SetFloat("_NightAmount", night);
+                if (skyMat.HasProperty("_MoonAmount"))  skyMat.SetFloat("_MoonAmount", Mathf.Clamp01(night * 1.15f));
+                if (skyMat.HasProperty("_MoonPhase"))   skyMat.SetFloat("_MoonPhase", moonPhase);
+                if (skyMat.HasProperty("_MoonSize"))    skyMat.SetFloat("_MoonSize", moonAngularRadius);
+                if (skyMat.HasProperty("_MoonColor"))   skyMat.SetColor("_MoonColor", moonColor);
+                // 月亮方向 = 方向光 forward 的**反向**（forward 是光传播方向，取反才是指向光源）
+                if (moon != null && skyMat.HasProperty("_MoonDir"))
+                    skyMat.SetVector("_MoonDir", -moon.transform.forward);
             }
 
             // ── 雾：颜色 == 地平色（地平线不留硬边的唯一条件），密度只有一个来源 ──

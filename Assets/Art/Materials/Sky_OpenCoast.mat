@@ -28,11 +28,20 @@ Material:
     - _CloudCover: 0.68
     - _CloudDrift: 0.01
     - _CloudScale: 0.9
+    - _GalaxyAmount: 0.3
+    - _MoonAmount: 0
+    - _MoonPhase: 0.62
+    - _MoonSize: 0.03
+    - _NightAmount: 0
+    - _StarBright: 1.15
+    - _StarGrid: 320
     - _SunGlow: 0.15
     m_Colors:
     - _CloudColor: {r: 0.94, g: 0.96, b: 0.982, a: 1}
     - _CloudShadow: {r: 0.484, g: 0.638, b: 0.8965, a: 1}
     - _GroundColor: {r: 0.24499999, g: 0.28, b: 0.3185, a: 0.35}
     - _HorizonColor: {r: 0.7, g: 0.8, b: 0.91, a: 1}
+    - _MoonColor: {r: 1, g: 0.97, b: 0.9, a: 1}
+    - _MoonDir: {r: 0.7659309, g: -0.3826835, b: 0.5166269, a: 0}
     - _ZenithColor: {r: 0.22, g: 0.44, b: 0.88, a: 1}
   m_BuildTextureStacks: []
