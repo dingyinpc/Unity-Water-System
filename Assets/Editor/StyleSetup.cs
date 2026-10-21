@@ -29,6 +29,79 @@ namespace WaterProject.EditorTools
             return null;
         }
 
+        // ═════════ 195/196 光比（S1：降天光、加主光、开阴影）═════════
+        // 为什么这条最关键：调色只能压整体亮度，**拉不开明暗差**。
+        // 参考画面对比度 std 78~93，我们 45 —— 差在"没有暗部"，而暗部来自光比。
+        [MenuItem("Tools/Style/195 光比=参考(天光↓/主光↑/阴影开)")]
+        public static void ApplyLightRatio()
+        {
+            string key = "WaterProject.LightRatio." + UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+
+            // 首次执行先记下原值（供 196 还原；也写进探针便于复盘）
+            if (!EditorPrefs.HasKey(key + ".saved"))
+            {
+                EditorPrefs.SetFloat(key + ".ambInt", RenderSettings.ambientIntensity);
+                EditorPrefs.SetFloat(key + ".reflInt", RenderSettings.reflectionIntensity);
+                EditorPrefs.SetInt(key + ".ambMode", (int)RenderSettings.ambientMode);
+                var l0 = FirstDirectional();
+                if (l0 != null) { EditorPrefs.SetFloat(key + ".sunInt", l0.intensity); EditorPrefs.SetInt(key + ".sunShadow", (int)l0.shadows); }
+                EditorPrefs.SetBool(key + ".saved", true);
+            }
+
+            // ① 天光：**必须用 Skybox 模式**——Trilight 模式下 ambientIntensity 是无效的
+            //   （只有 Skybox 才吃这个系数；上一版改 Trilight + 0.45，实测反而更亮）
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 0.07f;     // 原 0.22 → 0.07（只压天光，不动主光）
+            RenderSettings.reflectionIntensity = 0.60f;
+
+            // ② 主光：用**保存的原值**做基准（绝对档，重复执行不会越叠越亮）
+            var sun = FirstDirectional();
+            if (sun != null)
+            {
+                sun.intensity = EditorPrefs.GetFloat(key + ".sunInt", sun.intensity) * 1.0f;
+                sun.shadows = LightShadows.Soft;
+                sun.shadowStrength = 0.90f;
+            }
+
+            Probe($"MENU195 光比档({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}): "
+                + $"环境Trilight 强度{RenderSettings.ambientIntensity:F2} 反射{RenderSettings.reflectionIntensity:F2} | "
+                + $"主光{(sun != null ? sun.intensity.ToString("F2") : "null")} 阴影{(sun != null ? sun.shadows.ToString() : "-")}\n");
+        }
+
+        [MenuItem("Tools/Style/196 光比=还原(读回首次执行前)")]
+        public static void RestoreLightRatio()
+        {
+            string key = "WaterProject.LightRatio." + UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (!EditorPrefs.HasKey(key + ".saved")) { Probe("MENU196 REFUSED: 没有保存过原值\n"); return; }
+            RenderSettings.ambientMode = (AmbientMode)EditorPrefs.GetInt(key + ".ambMode");
+            RenderSettings.ambientIntensity = EditorPrefs.GetFloat(key + ".ambInt");
+            RenderSettings.reflectionIntensity = EditorPrefs.GetFloat(key + ".reflInt");
+            var sun = FirstDirectional();
+            if (sun != null)
+            {
+                sun.intensity = EditorPrefs.GetFloat(key + ".sunInt");
+                sun.shadows = (LightShadows)EditorPrefs.GetInt(key + ".sunShadow");
+            }
+            EditorPrefs.DeleteKey(key + ".saved");
+            Probe($"MENU196 光比已还原（{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}）\n");
+        }
+
+        [MenuItem("Tools/Style/197 回读光照(写探针)")]
+        public static void DumpLighting()
+        {
+            var sun = FirstDirectional();
+            Probe($"MENU197 光照: ambientMode={RenderSettings.ambientMode} 强度{RenderSettings.ambientIntensity:F2} "
+                + $"天空色{RenderSettings.ambientSkyColor} 反射{RenderSettings.reflectionIntensity:F2} | "
+                + $"主光{(sun != null ? $"{sun.intensity:F2} 阴影{sun.shadows} 强度{sun.shadowStrength:F2}" : "null")}\n");
+        }
+
+        static Light FirstDirectional()
+        {
+            foreach (var l in Object.FindObjectsOfType<Light>())
+                if (l.type == LightType.Directional) return l;
+            return null;
+        }
+
         // ═════════ 190 参考风格调色档 ═════════
         [MenuItem("Tools/Style/190 调色档=参考风格(ACES+去饱和+加对比+暗角)")]
         public static void ApplyReferenceLook()
