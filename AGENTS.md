@@ -64,7 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tools/check_shader.ps1 -Mode
 python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 ```
 
-## 5 当前进度（2026-10-18）
+## 5 当前进度（2026-10-21）
 
 | 编号 | 内容 | 状态 |
 | --- | --- | --- |
@@ -75,6 +75,10 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 | P2-1 | 水底散射 RayMarch（逐点主光阴影+逐级透射+有界混合） | ✅ Main+Pond（A/B 21.5%/28.7% 像素）；遗留：阴影定量/性能未测 |
 | P2-2 | 多尺度焦散 + RGB 色散 | ✅ Pool（三层+去平铺+色散+乘性打底；关/开 18.6% 像素） |
 | P2-3 | 体积雾 + 云影→水面高光 | ✅ 雾统一（水面/地形同式同密度）+ 云影可见性修复（正午 1.75% 像素）；遗留：掠射机位云影偏弱、雾无 3D 雾团、性能未测 |
+| **风格-1** | **后处理链路（R08 G1）** | ✅ 修复 `WaterURPRenderer.postProcessData={fileID:0}`（全项目后处理一直是死的）；菜单 194 |
+| **风格-2** | **参考调色档（R08 G2）** | ✅ ACES/曝光−0.18/对比+12/饱和−22/暖冷分离/Bloom/暗角；Islet 色 (112,192,211)→(93,137,147)，参考 (96,127,137)；菜单 190/191/192/193 |
+| **风格-3** | **光比实验（R08 S1）** | ❌ 实测无效：同会话 A/B 对比度 44.6→44.2。直方图证明参考 0–40 近黑占 36%，我们仅 4–7% ⇒ **差距在构图不在光照** |
+| **风格-4** | **构图（S2，下一步）** | ⏳ 低机位 + 背光前景剪影 + 2.35:1；验收：直方图 0–40 段 6% → 25%+ |
 
 ## 6 交付纪律
 
@@ -99,3 +103,14 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 8. **动画类效果（焦散/泡沫）的 A/B 必须在"同一个冻结会话"内连续截**：`Time.timeScale=0` 冻的是当时的相位，
    两次会话冻结在不同 `_Time.y` → 会凭空多出 60%+ 的差异（P2-2 实测）。同理，A/B 工具要把"模式"等观测状态**一起写**，
    只改参数不改模式会出现"两张图逐字节相同"的假象（P2-2 的 163 漏写 `_CausticMode`）。
+   **天空/云也吃 `_Time.y`**：跨会话对比会差 0.06%~5%（R08 实测），凡是要下结论的 A/B 一律同会话。
+9. **后处理链路必须先自证**：`WaterURPRenderer.asset` 的 `postProcessData` 曾经是 `{fileID:0}` ⇒ URP **静默跳过**
+   整个后处理栈，Volume 里怎么调都没反应、截图逐位相同。已由菜单 `Tools/Style/194` 修好。
+   新场景/新管线先跑 `193 诊断`，确认 `postProcessing=True` **且** Renderer 挂上了 PostProcessData。
+10. **`RenderSettings.ambientIntensity` 只在 `AmbientMode.Skybox` 下有效**：改成 Trilight 后这个系数被忽略，
+    "降天光"会变成"变亮"（R08 实测 153→164）。要么保持 Skybox 调系数，要么直接给三色定值。
+11. **场景是二进制序列化**（本工程），**不能**靠 grep 场景 YAML 读相机/光照/Volume 参数（读到的是乱码）。
+    要读就写一个**只读菜单**把值打进 `Logs/water_probe.txt`（样板：`StyleSetup.193/197`、`DayNightSetup.116`）。
+12. **风格对标的结论（别走回头路）**：对比度差距**不是**光照/曲线问题。参考画面 0–40 近黑占 **36%**，
+    我们只有 **4–7%** ⇒ 缺的是**画幅里的大面积暗色前景**。调色只能对齐色相与亮度，别再拧曝光/对比/天光。
+    详见 `Docs/学习路径与知识库/检测报告/R08_风格对标差距.md`。
