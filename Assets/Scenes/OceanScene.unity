@@ -15,7 +15,7 @@ RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 9
   m_Fog: 1
-  m_FogColor: {r: 0.05, g: 0.08, b: 0.18, a: 1}
+  m_FogColor: {r: 0.7, g: 0.8, b: 0.91, a: 1}
   m_FogMode: 3
   m_FogDensity: 0.0022
   m_LinearFogStart: 0
@@ -12334,7 +12334,7 @@ Light:
   m_Type: 1
   m_Shape: 0
   m_Color: {r: 0.62, g: 0.72, b: 0.95, a: 1}
-  m_Intensity: 0.3
+  m_Intensity: 0
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -12392,7 +12392,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1374894486}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.09158937, y: 0.865982, z: -0.17225455, w: -0.46045083}
+  m_LocalRotation: {x: 0.09158937, y: 0.865982, z: 0.17225455, w: -0.46045083}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -14608,7 +14608,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b4d50c7b341f854b96bec2cf7b0831f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  timeOfDay: 0
+  timeOfDay: 0.5
   cycleSeconds: 0
   sun: {fileID: 1694626062}
   moon: {fileID: 1374894487}
@@ -14822,8 +14822,8 @@ Light:
   serializedVersion: 10
   m_Type: 1
   m_Shape: 0
-  m_Color: {r: 0.55, g: 0.62, b: 0.85, a: 1}
-  m_Intensity: 0
+  m_Color: {r: 1, g: 0.955, b: 0.885, a: 1}
+  m_Intensity: 2.9
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -14881,7 +14881,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1694626061}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.2857962, y: 0.7004894, z: 0.53750443, w: -0.37245682}
+  m_LocalRotation: {x: -0.2857962, y: 0.7004894, z: -0.53750443, w: -0.37245682}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0

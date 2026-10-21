@@ -17,28 +17,28 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: 2
   neutralHDRRangeReductionMode:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 2
   acesPreset:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 3
   hueShiftAmount:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   detectPaperWhite:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   paperWhite:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 300
   detectBrightnessLimits:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 1
   minNits:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0.005
   maxNits:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 1000
 --- !u!114 &-2780977386151093699
 MonoBehaviour:
@@ -55,19 +55,19 @@ MonoBehaviour:
   active: 1
   postExposure:
     m_OverrideState: 1
-    m_Value: 0.85
+    m_Value: -0.18
   contrast:
     m_OverrideState: 1
     m_Value: 12
   colorFilter:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: {r: 1, g: 1, b: 1, a: 1}
   hueShift:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   saturation:
     m_OverrideState: 1
-    m_Value: 14
+    m_Value: -22
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -84,6 +84,9 @@ MonoBehaviour:
   - {fileID: -4269704343926449312}
   - {fileID: -2780977386151093699}
   - {fileID: 2407528846438580854}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
 --- !u!114 &2407528846438580854
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -98,36 +101,36 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   active: 1
   skipIterations:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 1
   threshold:
     m_OverrideState: 1
-    m_Value: 1.2
+    m_Value: 1
   intensity:
     m_OverrideState: 1
-    m_Value: 0.28
+    m_Value: 0.42
   scatter:
     m_OverrideState: 1
-    m_Value: 0.6
+    m_Value: 0.7
   clamp:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 65472
   tint:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: {r: 1, g: 1, b: 1, a: 1}
   highQualityFiltering:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   downscale:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
   maxIterations:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 6
   dirtTexture:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: {fileID: 0}
     dimension: 1
   dirtIntensity:
-    m_OverrideState: 0
+    m_OverrideState: 1
     m_Value: 0
