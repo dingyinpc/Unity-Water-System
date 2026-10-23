@@ -64,7 +64,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tools/check_shader.ps1 -Mode
 python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 ```
 
-## 5 当前进度（2026-10-21）
+## 5 当前进度（2026-10-23 同步核实）
+
+> ⚠ 上一版头部曾写「风格优化大模块融合完成」，但**仓库里没有对应代码/报告/提交**（只有一行标题被改）。
+> 实际状态以下表为准：P0–P2 全绿；风格只完成 G1（后处理链路）+ G2（调色档），**G3 构图未做**。
+> 另有一个**未接线的草稿** `Assets/Art/Shaders/SSR_AntiFlicker.hlsl`（没有任何 shader include 它，
+> 因此从未参与编译；且写法有疑点，勿直接 include，见 §7 第 13 条）。
 
 | 编号 | 内容 | 状态 |
 | --- | --- | --- |
@@ -114,3 +119,7 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 12. **风格对标的结论（别走回头路）**：对比度差距**不是**光照/曲线问题。参考画面 0–40 近黑占 **36%**，
     我们只有 **4–7%** ⇒ 缺的是**画幅里的大面积暗色前景**。调色只能对齐色相与亮度，别再拧曝光/对比/天光。
     详见 `Docs/学习路径与知识库/检测报告/R08_风格对标差距.md`。
+13. **`Assets/Art/Shaders/SSR_AntiFlicker.hlsl` 是未验证草稿**：没有任何 shader include 它（所以从未参与编译，
+    `check_shader` 报 clean 并不能说明它是对的）。里面 `extern float4 _GradTexMip0;`、`extern float4 _GradTexMip1[8];`
+    这种写法不是 URP 的纹理声明方式（应为 `TEXTURE2D(_GradTexMip0); SAMPLER(sampler_GradTexMip0);`），
+    `uniform` 修饰符在 ShaderLab 里也不规范。**要做 C7 抗闪，重写而不是直接接线**；接线前必须先 `-Mode mark` 再编译验证。
