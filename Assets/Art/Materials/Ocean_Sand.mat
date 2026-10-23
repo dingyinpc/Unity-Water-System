@@ -27,6 +27,8 @@ Material:
     m_Floats:
     - _BeachCurve: 0.0022
     - _BeachRise: 0.055
+    - _GrainAmount: 1
+    - _GrainScale: 55
     - _RippleTint: 0.22
     - _ShoreSlope: 0.055
     - _SpecPower: 90

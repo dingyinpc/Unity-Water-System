@@ -76,6 +76,32 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Style/202 叶面细节=1(开)")]  public static void LeafOn()  => SetLeafDetail(1f, "202");
         [MenuItem("Tools/Style/203 叶面细节=0(关)")]  public static void LeafOff() => SetLeafDetail(0f, "203");
 
+        // ═════════ 207~210 沙滩沙粒 / 岩石微颗粒（G6 免费细节）═════════
+        // 这两个 shader 本来就有程序化斑驳，但**最细只到 0.4 米**，近看还是一片纯色。
+        // 这里补 6 毫米 ~ 11 厘米级的高频颗粒。默认 0 ⇒ 旧画面逐位不变。
+        static int SetMatFloatByShader(string shaderName, string prop, float v, string tag)
+        {
+            var seen = new System.Collections.Generic.HashSet<Material>();
+            int n = 0;
+            foreach (var g in AssetDatabase.FindAssets("t:Material", new[] { "Assets/Art/Materials" }))
+            {
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(g));
+                if (mat == null || mat.shader == null || mat.shader.name != shaderName || !seen.Add(mat)) continue;
+                if (!mat.HasProperty(prop)) continue;
+                mat.SetFloat(prop, v);
+                EditorUtility.SetDirty(mat);
+                AssetDatabase.SaveAssetIfDirty(mat);
+                n++;
+                Probe($"     {tag}: {mat.name}.{prop} = {v:F2}\n");
+            }
+            Probe($"MENU{tag} {shaderName}.{prop} -> {v:F2}（{n} 个材质）\n");
+            return n;
+        }
+        [MenuItem("Tools/Style/207 沙粒细节=1(开)")] public static void SandGrainOn()  => SetMatFloatByShader("WaterProject/Beach_Sand", "_GrainAmount", 1f, "207");
+        [MenuItem("Tools/Style/208 沙粒细节=0(关)")] public static void SandGrainOff() => SetMatFloatByShader("WaterProject/Beach_Sand", "_GrainAmount", 0f, "208");
+        [MenuItem("Tools/Style/209 岩石微颗粒=1(开)")] public static void RockMicroOn()  => SetMatFloatByShader("WaterProject/IsletRockSplat", "_MicroAmount", 1f, "209");
+        [MenuItem("Tools/Style/210 岩石微颗粒=0(关)")] public static void RockMicroOff() => SetMatFloatByShader("WaterProject/IsletRockSplat", "_MicroAmount", 0f, "210");
+
         // ═════════ 198/199 构图：逆光剪影（R08 S2）═════════
         // 依据 R08 §7.3：参考画面近黑像素占 36%，我们只有 6% —— 缺的不是光照强度，是
         // "画幅里有没有大面积背光物体"。把太阳放到**画面前方**，岛与棕榈就会自然变成剪影。

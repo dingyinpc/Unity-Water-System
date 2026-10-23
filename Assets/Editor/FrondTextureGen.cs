@@ -58,17 +58,20 @@ namespace WaterProject.EditorTools
                     float u = (float)x / (W - 1);
 
                     // 主脉：沿 u 的亮带（宽度 3%），让叶片有"中轴"
-                    float rib = Mathf.Exp(-Mathf.Pow((v - 0.5f) / 0.012f, 2f));
+                    float rib = Mathf.Exp(-Mathf.Pow((v - 0.5f) / 0.025f, 2f));
 
-                    // 侧脉：斜向条纹（~34 条），用 sin 的高次幂做出"细线"
-                    float vein = Mathf.Pow(Mathf.Abs(Mathf.Sin((u * 34f + v * 6f) * Mathf.PI)), 26f);
+                    // 侧脉：8 条**宽**条纹（不是 34 条细线）。
+                    // ⚠ 第一版 34 条 / 幂 26 / 幅度 0.10，实际 UV 下变成密密麻麻的"脏点点"；
+                    //   第二版降到 3% 对比又完全看不见。这里取中间：宽条纹 + 14% 总对比。
+                    float vein = Mathf.Pow(Mathf.Abs(Mathf.Sin((u * 8f + v * 2.5f) * Mathf.PI)), 8f);
 
-                    // 斑驳：两级噪声
-                    float mott = Fbm(u * 9f, v * 9f) * 0.12f + Fbm(u * 31f, v * 31f) * 0.06f;
+                    // 斑驳：两级噪声（按 0~1 归一再加权，避免幅度不可控）
+                    float mott = Fbm(u * 4f, v * 4f) * 0.62f + Fbm(u * 13f, v * 13f) * 0.38f;
 
-                    float d = 0.94f + mott + rib * 0.16f + vein * 0.10f;   // 围绕 1.0 波动
-                    d = Mathf.Clamp(d, 0.78f, 1.18f);
-                    byte c = (byte)Mathf.Clamp(Mathf.RoundToInt(d * 255f / 1.18f * 1.18f), 0, 255);
+                    // 只做**乘法变暗**（≤1.0）：超过 1 会被 8 位贴图裁掉，反而制造硬斑
+                    float d = 0.86f + 0.10f * mott + 0.06f * rib + 0.05f * vein;
+                    d = Mathf.Clamp(d, 0.86f, 1.0f);
+                    byte c = (byte)Mathf.Clamp(Mathf.RoundToInt(d * 255f), 0, 255);
                     px[y * W + x] = new Color32(c, c, c, 255);
                 }
             }

@@ -21,6 +21,10 @@ Shader "WaterProject/Beach_Sand"
         _RippleTint ("沙纹深浅", Range(0, 0.4)) = 0.14
         _WetGloss   ("湿沙光滑度", Range(0, 1)) = 0.55
         _SpecPower  ("湿沙反光锐度", Float) = 90
+        // 沙粒（G6 免费细节）：原来的"沙纹"是 20 米级的宽条带，近看是一片纯色；
+        // 这里补的是 1~2 厘米级的颗粒。默认 0 ⇒ 旧画面逐位不变。
+        _GrainAmount("沙粒细节强度(0=旧)", Range(0, 1)) = 0.0
+        _GrainScale ("沙粒密度(1/米)", Float) = 55
 
         // ⚠ 与 Water_Ocean 同一组，默认值必须等于 WaterOceanSetup 的 C# 常量。
         //   必须列进 Properties{} 才会被序列化进 .mat —— 只在 cbuffer 里声明的
@@ -63,6 +67,7 @@ Shader "WaterProject/Beach_Sand"
 
                 float4 _DryColor, _WetColor, _FoamColor;
                 float  _RippleTint, _WetGloss, _SpecPower;
+                float  _GrainAmount, _GrainScale;
             CBUFFER_END
 
             #include "OceanShore.hlsl"
@@ -130,6 +135,16 @@ Shader "WaterProject/Beach_Sand"
                 float rip = ValueNoise(float2(IN.worldPos.x * 0.045, up * 0.85));
                 float3 base = lerp(_DryColor.rgb, _WetColor.rgb, wet);
                 base *= 1.0 + (rip - 0.5) * _RippleTint * saturate(1.0 - up * 0.05);
+
+                // 沙粒（G6 免费细节）：两级高频噪声 ≈ 1.8cm / 6mm。
+                // 湿沙被水膜糊平 ⇒ 按 wet 衰减；_GrainAmount=0 时这一整块等于没写。
+                {
+                    float gs = max(_GrainScale, 1.0);
+                    float g1 = ValueNoise(IN.worldPos.xz * gs);
+                    float g2 = ValueNoise(IN.worldPos.xz * (gs * 3.1) + 17.3);
+                    float grain = (g1 * 0.65 + g2 * 0.35) - 0.5;
+                    base *= 1.0 + grain * 0.42 * _GrainAmount * (1.0 - wet * 0.65);
+                }
 
                 float ndl = saturate(dot(N, L.direction));
                 // 湿沙反照率低但**不是黑**：它靠反射天空发亮，所以 ambient 给足

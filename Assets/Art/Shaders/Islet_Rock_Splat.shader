@@ -28,6 +28,9 @@ Shader "WaterProject/IsletRockSplat"
         _HMin        ("高度下(m, 局部Z)", Float) = -3
         _HMax        ("高度上(m, 局部Z)", Float) = 50
         _MidPoint    ("中档中心(0-1)", Float) = 0.35
+        // 岩石微颗粒（G6 免费细节）：原有斑驳最细只到 ~0.4 米，近看仍是纯色块。
+        // 这里补 5~10 厘米级的麻点。默认 0 ⇒ 旧画面逐位不变。
+        _MicroAmount ("岩面微颗粒强度(0=旧)", Range(0, 1)) = 0.0
         _FillLight   ("天光填充(假GI)", Float) = 0.20
         _AmbStrength ("环境光权重", Float) = 1.0
     }
@@ -54,6 +57,7 @@ Shader "WaterProject/IsletRockSplat"
             CBUFFER_START(UnityPerMaterial)
                 float4 _RockLo, _RockMid, _RockHi, _MossColor;
                 float  _HMin, _HMax, _MidPoint, _FillLight, _AmbStrength;
+                float  _MicroAmount;
             CBUFFER_END
 
             struct Attributes
@@ -123,6 +127,15 @@ Shader "WaterProject/IsletRockSplat"
                 float blot = (VNoise(wxz * 0.55) - 0.5) * 0.13
                            + (VNoise(wxz * 2.30) - 0.5) * 0.07;
                 rock *= clamp(1.0 + strata + blot, 0.78, 1.22);
+
+                // 微颗粒（G6 免费细节）：0.11m / 0.045m 两级麻点。
+                // 必须乘在上一行的 clamp **之后**，否则会被 0.78~1.22 的夹取吃掉。
+                if (_MicroAmount > 0.0001)
+                {
+                    float mc = (VNoise(wxz * 9.0) - 0.5) * 0.13
+                             + (VNoise(wxz * 22.0 + 5.1) - 0.5) * 0.08;
+                    rock *= 1.0 + mc * _MicroAmount;
+                }
 
                 // 离色：每个中尺度条带内"上缘干灰(B↑G↓)/下缘湿暗"，±4% ——
                 // 纯明度条带没有颜色变化时读成塑料刻线

@@ -29,6 +29,7 @@ Material:
     - _FillLight: 0.2
     - _HMax: 50
     - _HMin: -3
+    - _MicroAmount: 1
     - _MidPoint: 0.35
     m_Colors:
     - _MossColor: {r: 0.014, g: 0.116, b: 0.077, a: 1}
