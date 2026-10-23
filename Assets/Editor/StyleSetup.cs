@@ -29,6 +29,53 @@ namespace WaterProject.EditorTools
             return null;
         }
 
+        // ═════════ 200/201 电影遮幅 2.35:1 ═════════
+        [MenuItem("Tools/Style/200 电影遮幅 2.35:1 (开)")]
+        public static void BarsOn()
+        {
+            var go = GameObject.Find("CinematicBars");
+            if (go == null) go = new GameObject("CinematicBars");
+            var c = go.GetComponent<CinematicLetterbox>();
+            if (c == null) c = go.AddComponent<CinematicLetterbox>();
+            c.enabled = true;
+            c.targetAspect = 2.35f;
+            EditorUtility.SetDirty(c);
+            Probe($"MENU200 电影遮幅开: {c.targetAspect:F2}:1（Screen {Screen.width}x{Screen.height}）\n");
+        }
+
+        [MenuItem("Tools/Style/201 电影遮幅 (关)")]
+        public static void BarsOff()
+        {
+            var c = Object.FindObjectOfType<CinematicLetterbox>(true);
+            if (c == null) { Probe("MENU201: 场景里没有 CinematicLetterbox\n"); return; }
+            c.enabled = false;
+            EditorUtility.SetDirty(c);
+            Probe("MENU201 电影遮幅关\n");
+        }
+
+        // ═════════ 202/203 叶面高频细节（G6 资产替代）═════════
+        // 低多边形叶片的图集是平滑渐变，长焦拉近就是"一片纸"。这条给所有用 Tree_Leaf 的材质
+        // 打开 _DetailAmount（反照率高频噪声 + 裁剪边缘毛刺）。默认 0 ⇒ 旧行为不变。
+        static int SetLeafDetail(float v, string tag)
+        {
+            var seen = new System.Collections.Generic.HashSet<Material>();
+            int n = 0;
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            {
+                var m = r.sharedMaterial;
+                if (m == null || !m.HasProperty("_DetailAmount") || !seen.Add(m)) continue;
+                m.SetFloat("_DetailAmount", v);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);   // 只存这一个，不用 SaveAssets()
+                n++;
+                Probe($"      {tag}: 材质 {m.name}  shader={m.shader.name}\n");
+            }
+            Probe($"MENU{tag} 叶面细节 -> {v:F2}（改了 {n} 个材质）\n");
+            return n;
+        }
+        [MenuItem("Tools/Style/202 叶面细节=1(开)")]  public static void LeafOn()  => SetLeafDetail(1f, "202");
+        [MenuItem("Tools/Style/203 叶面细节=0(关)")]  public static void LeafOff() => SetLeafDetail(0f, "203");
+
         // ═════════ 198/199 构图：逆光剪影（R08 S2）═════════
         // 依据 R08 §7.3：参考画面近黑像素占 36%，我们只有 6% —— 缺的不是光照强度，是
         // "画幅里有没有大面积背光物体"。把太阳放到**画面前方**，岛与棕榈就会自然变成剪影。

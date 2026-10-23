@@ -32,6 +32,7 @@ Material:
     - _CrownY: 9
     - _Cutoff: 0.35
     - _Dbg: 0
+    - _DetailAmount: 0
     - _FrondVar: 0
     - _HeightShade: 0
     - _SheetLit: 1

@@ -18,6 +18,7 @@ Shader "WaterProject/TreeLeaf"
         _BaseMap   ("叶簇图集", 2D) = "white" {}
         _BaseColor ("底色", Color) = (1, 1, 1, 1)
         _Cutoff    ("Alpha 裁剪", Range(0, 1)) = 0.5
+        _DetailAmount ("叶面高频细节(0=旧行为)", Range(0, 1)) = 0.0
 
         _TransColor("透光色", Color) = (0.55, 0.85, 0.35, 1)
         _TransStrength ("透光强度", Range(0, 4)) = 1.6
@@ -109,6 +110,7 @@ Shader "WaterProject/TreeLeaf"
                 float  _WindStrength;
                 float  _WindFreq;
                 float4 _WindDir;
+                float  _DetailAmount;
             CBUFFER_END
 
             Varyings vert(Attributes v)
@@ -147,6 +149,18 @@ Shader "WaterProject/TreeLeaf"
             {
                 half4 tex = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
                 clip(tex.a - _Cutoff);
+
+                // ── 叶面高频细节（G6 资产替代 / 参考 S13）：低多边形叶片的图集是**平滑渐变**，
+                //   长焦拉近就是一整片"浅绿纸"。这里在反照率上叠极高频噪声（两级，避免规则网点），
+                //   并让 alpha 裁剪边缘带毛刺，近看才有"叶肉"而不是色块。
+                //   ⚠ _DetailAmount 默认 0 ⇒ 旧路径逐位不变（潭线的森林也复用这个 shader）。
+                {
+                    float2 duv  = IN.uv * 48.0;                       // 粗一级：形成可见的"叶肉斑驳"
+                    float  dn   = frac(sin(dot(floor(duv),              float2(12.9898, 78.233)) * 43758.5453));
+                    float  dn2  = frac(sin(dot(floor(duv * 3.7 + 7.7),  float2(39.3468, 11.135)) * 24634.6345));
+                    tex.rgb *= lerp(1.0, 0.84 + 0.26 * dn + 0.10 * dn2, _DetailAmount);
+                    clip(tex.a - _Cutoff - _DetailAmount * 0.10 * dn);
+                }
 
                 float3 V = normalize(GetWorldSpaceViewDir(IN.positionWS));
                 float3 Nraw = normalize(IN.normalWS);
