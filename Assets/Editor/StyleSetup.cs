@@ -29,6 +29,77 @@ namespace WaterProject.EditorTools
             return null;
         }
 
+        // ═════════ 198/199 构图：逆光剪影（R08 S2）═════════
+        // 依据 R08 §7.3：参考画面近黑像素占 36%，我们只有 6% —— 缺的不是光照强度，是
+        // "画幅里有没有大面积背光物体"。把太阳放到**画面前方**，岛与棕榈就会自然变成剪影。
+        // 方位换算：方向光的**光源方位 = Euler.y + 180°**；相机朝 +Z（yaw 0）⇒ 太阳在画面前方要 yaw = 180°。
+        [MenuItem("Tools/Style/198 构图=参考(逆光剪影)")]
+        public static void ApplyBacklight()
+        {
+            string key = "WaterProject.Backlight." + UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            var sun = FirstDirectional();
+            if (sun == null) { Probe("MENU198 REFUSED: 没有方向光\n"); return; }
+
+            if (!EditorPrefs.HasKey(key + ".saved"))
+            {
+                var e = sun.transform.eulerAngles;
+                EditorPrefs.SetFloat(key + ".x", e.x);
+                EditorPrefs.SetFloat(key + ".y", e.y);
+                EditorPrefs.SetFloat(key + ".i", sun.intensity);
+                EditorPrefs.SetBool(key + ".saved", true);
+            }
+
+            sun.transform.rotation = Quaternion.Euler(24f, 180f, 0f);   // 光源在 +Z（画面前方）
+            sun.intensity = EditorPrefs.GetFloat(key + ".i", sun.intensity) * 1.10f;
+
+            // ③ 收紧构图：参考是"主体占满画面"，我们是"广角明信片"（岛只占 ~15%）。
+            //   长焦 + 略俯角 ⇒ 岛/棕榈/礁石在画幅里变大，暗部占比才可能上去。
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                if (!EditorPrefs.HasKey(key + ".fov"))
+                {
+                    EditorPrefs.SetFloat(key + ".fov", cam.fieldOfView);
+                    var ce = cam.transform.eulerAngles;
+                    EditorPrefs.SetFloat(key + ".cx", ce.x);
+                    EditorPrefs.SetFloat(key + ".cy", ce.y);
+                    EditorPrefs.SetFloat(key + ".amb", RenderSettings.ambientIntensity);
+                }
+                cam.fieldOfView = 26f;
+                cam.transform.rotation = Quaternion.Euler(-6f, EditorPrefs.GetFloat(key + ".cy", 0f), 0f);
+                // 背光构图下天光还太强：植被会被"补"成亮黄绿，剪影立不住。
+                // ⚠ ambientIntensity 只在 Skybox 模式有效（见 AGENTS 第 10 条）
+                RenderSettings.ambientIntensity = 0.11f;
+            }
+
+            Probe($"MENU198 逆光+收紧: 太阳 rot={sun.transform.eulerAngles} 强度{sun.intensity:F2} "
+                + $"| 相机 FOV={(cam != null ? cam.fieldOfView.ToString("F0") : "-")} "
+                + $"（原 FOV {EditorPrefs.GetFloat(key + ".fov"):F0}）\n");
+        }
+
+        [MenuItem("Tools/Style/199 构图=还原(读回原太阳)")]
+        public static void RestoreBacklight()
+        {
+            string key = "WaterProject.Backlight." + UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (!EditorPrefs.HasKey(key + ".saved")) { Probe("MENU199 REFUSED: 没有保存过原值\n"); return; }
+            var sun = FirstDirectional();
+            if (sun != null)
+            {
+                sun.transform.rotation = Quaternion.Euler(
+                    EditorPrefs.GetFloat(key + ".x"), EditorPrefs.GetFloat(key + ".y"), 0f);
+                sun.intensity = EditorPrefs.GetFloat(key + ".i");
+            }
+            var cam = Camera.main;
+            if (cam != null && EditorPrefs.HasKey(key + ".fov"))
+            {
+                cam.fieldOfView = EditorPrefs.GetFloat(key + ".fov");
+                cam.transform.rotation = Quaternion.Euler(EditorPrefs.GetFloat(key + ".cx"), EditorPrefs.GetFloat(key + ".cy"), 0f);
+                RenderSettings.ambientIntensity = EditorPrefs.GetFloat(key + ".amb", RenderSettings.ambientIntensity);
+            }
+            EditorPrefs.DeleteKey(key + ".saved");
+            Probe("MENU199 构图已还原\n");
+        }
+
         // ═════════ 195/196 光比（S1：降天光、加主光、开阴影）═════════
         // 为什么这条最关键：调色只能压整体亮度，**拉不开明暗差**。
         // 参考画面对比度 std 78~93，我们 45 —— 差在"没有暗部"，而暗部来自光比。
