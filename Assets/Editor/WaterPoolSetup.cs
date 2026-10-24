@@ -673,6 +673,46 @@ namespace WaterProject.EditorTools
             rip.SpawnDrop(new Vector3(PoolL * 0.40f, 0f, -PoolW * 0.32f), 1.0f);
             WriteProbe("POOL96 test drops spawned\n");
         }
+        // ═════════════════════════ 580 ═════════════════════════
+        // R25b 参考同款机位实验：验证"Pool S2 斜率差=游戏跟随机位 vs 参考微距的结构性
+        // 频段放置差"(R24 §6)。低角度贴水机位把焦散结构放回低频带——若 S2 入带即证理论。
+        // 存原始 camOffset/lookAhead 于 EditorPrefs，580b 可还原。
+        [MenuItem("Tools/Pool/580 机位=参考微距档(低角度贴水, 可逆)")]
+        public static void CameraRefMacro()
+        {
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch == null) { WriteProbe("POOL580 REFUSED: 无 PoolThirdPerson\n"); return; }
+            const string k = "Pool580";
+            if (!EditorPrefs.HasKey(k + ".saved"))
+            {
+                EditorPrefs.SetFloat(k + ".ox", ch.camOffset.x);
+                EditorPrefs.SetFloat(k + ".oy", ch.camOffset.y);
+                EditorPrefs.SetFloat(k + ".oz", ch.camOffset.z);
+                EditorPrefs.SetFloat(k + ".la", ch.lookAhead);
+                EditorPrefs.SetBool(k + ".saved", true);
+            }
+            // 参考 S8 的语言：镜头贴近水面、掠射角、水面占画幅主体
+            ch.camOffset = new Vector3(1.1f, 0.85f, -3.0f);
+            ch.lookAhead = 0.25f;
+            EditorUtility.SetDirty(ch);
+            WriteProbe("POOL580 camera -> macro (1.1, 0.85, -3.0) la=0.25 (原值在 EditorPrefs)\n");
+        }
+
+        [MenuItem("Tools/Pool/580b 机位=还原跟随机位")]
+        public static void CameraRefMacroRevert()
+        {
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch == null) { WriteProbe("POOL580b REFUSED: 无 PoolThirdPerson\n"); return; }
+            const string k = "Pool580";
+            if (!EditorPrefs.HasKey(k + ".saved")) { WriteProbe("POOL580b 无存档\n"); return; }
+            ch.camOffset = new Vector3(EditorPrefs.GetFloat(k + ".ox"),
+                                       EditorPrefs.GetFloat(k + ".oy"),
+                                       EditorPrefs.GetFloat(k + ".oz"));
+            ch.lookAhead = EditorPrefs.GetFloat(k + ".la");
+            EditorUtility.SetDirty(ch);
+            WriteProbe("POOL580b camera restored\n");
+        }
+
         // ═════════════════════════ 101 ═════════════════════════
         // R21 波速自测：清场→池心单滴→回读高度场追环半径→最小二乘拟合波速。
         // 为什么读场不读画面：场里环半径是逐像素精确的，画面找环隔着折射/微光

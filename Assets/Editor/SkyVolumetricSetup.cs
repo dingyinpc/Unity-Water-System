@@ -53,6 +53,26 @@ namespace WaterProject.EditorTools
             WriteProbe($"SKY90 applied to {n} materials: cover={Preset.Cover} wind={Preset.WindDir}deg/{Preset.WindSpeed}m/s shear={Preset.Shear}\n");
         }
 
+        // ── R25a 性能扫描：RayMarch 步数循环档 20→12→8（每按一次降一档，绕回 20）──
+        static float s_cloudSteps = 20f;
+        [MenuItem("Tools/Sky/95 云步数档(20→12→8循环, 写全部材质)")]
+        public static void CloudStepsCycle()
+        {
+            s_cloudSteps = s_cloudSteps switch { 20f => 12f, 12f => 8f, _ => 20f };
+            int n = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Material"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || m.shader == null || m.shader.name != "WaterProject/Sky_Coast") continue;
+                m.SetFloat("_CloudSteps", s_cloudSteps);
+                EditorUtility.SetDirty(m);
+                n++;
+            }
+            AssetDatabase.SaveAssets();
+            WriteProbe($"SKY95 cloud steps -> {s_cloudSteps} (x{n})\n");
+        }
+
         [MenuItem("Tools/Sky/91 风速调参(对全部材质, 速度从探针读)")]
         public static void SetSpeedFromProbe()
         {
