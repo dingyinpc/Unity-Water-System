@@ -189,6 +189,35 @@ namespace WaterProject.EditorTools
                 + " cam=" + (cam != null ? cam.transform.position.ToString("F1") + " euler=" + cam.transform.eulerAngles.ToString("F0") : "null") + "\n");
         }
 
+        // ── R19 感官级复刻：胶片颗粒校准（S2 频谱斜率 -2.9→-2.1 / S4 高频占比→1×）──
+        [MenuItem("Tools/Fix/589 感官颗粒=校准档(intensity 0.35)")]
+        public static void GrainOn()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null)
+            { WriteProbe("R589 REFUSED: 无 Volume\n"); return; }
+            var pr = vol.sharedProfile;
+            if (!pr.TryGet<FilmGrain>(out var fg))
+            { fg = pr.Add<FilmGrain>(true); AssetDatabase.AddObjectToAsset(fg, pr); }
+            fg.type.overrideState = true; fg.type.value = FilmGrainLookup.Medium4;
+            fg.intensity.overrideState = true; fg.intensity.value = 0.35f;
+            EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
+            WriteProbe($"R589 grain on ({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
+        }
+
+        [MenuItem("Tools/Fix/590 感官颗粒=关")]
+        public static void GrainOff()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null) { WriteProbe("R590 无 Volume\n"); return; }
+            if (vol.sharedProfile.TryGet<FilmGrain>(out var fg))
+            {
+                fg.intensity.value = 0f;
+                EditorUtility.SetDirty(vol.sharedProfile); AssetDatabase.SaveAssetIfDirty(vol.sharedProfile);
+            }
+            WriteProbe("R590 grain off\n");
+        }
+
         static int Set(string path, string prop, float v)
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
