@@ -76,7 +76,9 @@ Shader "WaterProject/InteractionBlit"
                     float ageNorm = age / max(_InteractionLife, 1e-4);
                     float radius = _InteractionCenter.w * 0.35;        // 交互半径（空间归一）
                     half4 b = EncodeBlob(it.xz, dir, ageNorm, radius);
-                    acc += b * (1.0 - ageNorm);                        // 随时间衰减
+                    // R29-P3：出生 0.22s ease-in——autoDemo 交互整幅瞬现是 Main D2 尖峰的
+                    // 实锤元凶（t≈2.4s 单帧 +2.4 灰阶跳变定位到本路径），缓入摊平出生拍
+                    acc += b * (1.0 - ageNorm) * smoothstep(0.0, 0.22, age);
                 }
                 // 中性灰 = 无交互（法线 0.5,0.5, 强度 0）
                 return half4(acc.xy * 0.5 + 0.5, 0.0, saturate(acc.w));

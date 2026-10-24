@@ -102,6 +102,48 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Style/209 岩石微颗粒=1(开)")] public static void RockMicroOn()  => SetMatFloatByShader("WaterProject/IsletRockSplat", "_MicroAmount", 1f, "209");
         [MenuItem("Tools/Style/210 岩石微颗粒=0(关)")] public static void RockMicroOff() => SetMatFloatByShader("WaterProject/IsletRockSplat", "_MicroAmount", 0f, "210");
 
+        // ═════════ 207/207b 片头机位（R29-P4）═════════
+        // 参考 S0(0~5s) 视觉判读：岛居中全景/天空~55%/暗色剪影岛/低角度海面。
+        // Islet 现役机位是 R24 逆光构图（198），S0 对照需要"片头同款"独立预设（可逆）。
+        [MenuItem("Tools/Style/207 Islet 机位=片头档(岛居中全景, 可逆)")]
+        public static void IsletIntroCam()
+        {
+            var cam = Camera.main;
+            if (cam == null) { Probe("S207 REFUSED: 无 Camera.main\n"); return; }
+            const string k = "IsletIntro";
+            if (!EditorPrefs.HasKey(k + ".saved"))
+            {
+                EditorPrefs.SetFloat(k + ".x", cam.transform.position.x);
+                EditorPrefs.SetFloat(k + ".y", cam.transform.position.y);
+                EditorPrefs.SetFloat(k + ".z", cam.transform.position.z);
+                EditorPrefs.SetFloat(k + ".rx", cam.transform.eulerAngles.x);
+                EditorPrefs.SetFloat(k + ".ry", cam.transform.eulerAngles.y);
+                EditorPrefs.SetFloat(k + ".fov", cam.fieldOfView);
+                EditorPrefs.SetBool(k + ".saved", true);
+            }
+            // 岛在原点附近（岩色轮重摆后），南偏东海面低角度全景、天空留 ~55%
+            cam.transform.position = new Vector3(52f, 8.5f, 72f);   // R29 视觉判读:后移拉远让岛变小海面更宽
+            cam.transform.eulerAngles = new Vector3(1.5f, 215f, 0f);
+            cam.fieldOfView = 62f;
+            Probe("S207 intro camera (38,7.5,52) yaw215 pitch2 fov55 (原值 EditorPrefs)\n");
+        }
+
+        [MenuItem("Tools/Style/207b Islet 机位=还原(读 EditorPrefs)")]
+        public static void IsletIntroCamRevert()
+        {
+            var cam = Camera.main;
+            if (cam == null) { Probe("S207b REFUSED: 无 Camera.main\n"); return; }
+            const string k = "IsletIntro";
+            if (!EditorPrefs.HasKey(k + ".saved")) { Probe("S207b 无存档\n"); return; }
+            cam.transform.position = new Vector3(EditorPrefs.GetFloat(k + ".x"),
+                                                 EditorPrefs.GetFloat(k + ".y"),
+                                                 EditorPrefs.GetFloat(k + ".z"));
+            cam.transform.eulerAngles = new Vector3(EditorPrefs.GetFloat(k + ".rx"),
+                                                    EditorPrefs.GetFloat(k + ".ry"), 0f);
+            cam.fieldOfView = EditorPrefs.GetFloat(k + ".fov");
+            Probe("S207b camera restored\n");
+        }
+
         // ═════════ 198/199 构图：逆光剪影（R08 S2）═════════
         // 依据 R08 §7.3：参考画面近黑像素占 36%，我们只有 6% —— 缺的不是光照强度，是
         // "画幅里有没有大面积背光物体"。把太阳放到**画面前方**，岛与棕榈就会自然变成剪影。

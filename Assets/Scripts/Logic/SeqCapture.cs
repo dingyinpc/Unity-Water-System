@@ -28,7 +28,10 @@ namespace WaterProject.Logic
         public int width = 1920;
         public int height = 1080;
         [Range(30, 100)] public int jpgQuality = 75;
-        public float warmup = 0.6f;             // 起播稳定期（水面相位/曝光）不计帧
+        public float warmup = 1.2f;             // 起播稳定期（水面相位/曝光）不计帧
+                                               // R29-P3：0.6→1.2——SSR 时域累积的历史 RT
+                                               // 从黑启动需要 ~8 帧收敛，0.6s 时 D2 会量到
+                                               // 亮度爬坡（7.08 尖峰的实锤元凶，非涟漪出生）
 
         public bool Busy { get; private set; }
         public int Done { get; private set; }

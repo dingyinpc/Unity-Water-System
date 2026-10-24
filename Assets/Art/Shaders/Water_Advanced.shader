@@ -344,6 +344,9 @@ Shader "WaterProject/Water_Advanced"
                     float k = 6.28318 * 3.0;
                     float wSpeed = 2.2;
                     float amp = 0.14 * (1.0 - lifeN);
+                    // R29-P3：出生 0.18s ease-in——涟漪整幅瞬现是 Main D2 尖峰(7.06)的
+                    // 元凶（R17 bisect 定案），缓入把出生拍的帧间跳变摊平
+                    amp *= smoothstep(0.0, 0.18, age);
                     sum += sin(k * r - wSpeed * age) * exp(-r * 1.2) * amp;
                     sum += sin(k * 1.6 * r - wSpeed * 0.7 * age) * exp(-r * 0.8) * amp * 0.5;
                 }
