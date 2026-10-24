@@ -41,10 +41,16 @@ Material:
     - _FlowFoamStrength: 0.35
     - _FoamHistBias: 0.3
     - _FoamHistStrength: 0.6
+    - _FogBankAmount: 1.6
+    - _FogBankDrift: 0.006
+    - _FogBankEnd: 380
+    - _FogBankScale: 0.008
+    - _FogBankStart: 120
     - _FogBaseY: -2
     - _FogDensity: 0.0022
     - _FogFalloff: 0.05
     - _FogOn: 1
+    - _FogSunBank: 1
     - _FogSunLen: 140
     - _FresnelPow: 5
     - _MaxDepth: 10

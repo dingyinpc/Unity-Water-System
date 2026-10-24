@@ -77,6 +77,33 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Ocean/173 远景雾=0(关)")] public static void FogOff() => SetFog(0f, "fogOff");
         [MenuItem("Tools/Ocean/174 远景雾=1(开)")] public static void FogOn()  => SetFog(1f, "fogOn");
 
+        // ═════════════ 180 R4 应用雾团参数（S15：非均匀 3D 雾团 + 雾遮太阳）═════════════
+        [MenuItem("Tools/Ocean/180 应用雾团参数(雾团+雾遮太阳)")]
+        public static void FogBanks()
+        {
+            var m = WaterMat(); if (m == null) return;
+            m.SetFloat("_FogOn", 1f);
+            m.SetFloat("_FogBankAmount", 1.6f);
+            m.SetFloat("_FogBankStart", 120f);
+            m.SetFloat("_FogBankEnd", 380f);
+            m.SetFloat("_FogBankScale", 0.008f);
+            m.SetFloat("_FogBankDrift", 0.006f);
+            m.SetFloat("_FogSunBank", 1f);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            WriteProbe("MENU180 ok: 雾团 amt=1.6 距离120~380 尺度0.008 漂移0.006 雾遮太阳=1\n");
+        }
+
+        // ═════════════ 181/182 雾遮太阳 A/B（R4 验收②的开关）═════════════
+        static void SetSunBank(float v, string tag)
+        {
+            var m = WaterMat(); if (m == null) return;
+            m.SetFloat("_FogSunBank", v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            WriteProbe($"FOGSUN {tag} _FogSunBank -> {m.GetFloat("_FogSunBank")}\n");
+        }
+        [MenuItem("Tools/Ocean/181 雾遮太阳=0(关)")] public static void SunBankOff() => SetSunBank(0f, "off");
+        [MenuItem("Tools/Ocean/182 雾遮太阳=1(开)")] public static void SunBankOn()  => SetSunBank(1f, "on");
+
         // ═════════════ 176 云影诊断：全阴天（排除"覆盖率太低看不出"）═════════════
         [MenuItem("Tools/Ocean/176 云影诊断=全阴天(cover1/optical8)")]
         public static void CloudDiag()

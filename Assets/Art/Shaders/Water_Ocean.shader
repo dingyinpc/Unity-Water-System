@@ -78,6 +78,13 @@ Shader "WaterProject/Water_Ocean"
         _FogBaseY         ("雾基准高度(米)", Float) = -2
         _FogColor         ("雾色", Color) = (0.72, 0.78, 0.82, 1)
         _FogSunLen        ("雾中太阳光程(米)", Float) = 260
+        // ── R4 / 参考 S15：非均匀 3D 雾团 + 雾遮太阳噪声路径 ──
+        _FogBankAmount    ("雾团强度", Range(0, 3)) = 1.6
+        _FogBankStart     ("雾团起始距离(米)", Float) = 120
+        _FogBankEnd       ("雾团满距离(米)", Float) = 380
+        _FogBankScale     ("雾团尺度(1/米)", Float) = 0.008
+        _FogBankDrift     ("雾团漂移(1/秒)", Float) = 0.006
+        _FogSunBank       ("雾遮太阳走噪声路径 0/1", Float) = 0
 
         // ── 冲滩沫带的"样子"（"能冲多远"在 OceanShore 里，与沙滩共用）──
         _SwashFoam        ("沫带强度", Range(0, 1)) = 0.75
@@ -167,7 +174,16 @@ Shader "WaterProject/Water_Ocean"
                 float  _FlowAdvect, _FlowFoamGain, _FlowFoamStrength;
                 float  _FoamHistStrength, _FoamHistBias;
                 float  _CloudShadowOn, _CloudShadowStrength, _FogOn, _FogDensity, _FogFalloff, _FogBaseY, _FogSunLen;
+                float  _FogBankAmount, _FogBankStart, _FogBankEnd, _FogBankScale, _FogBankDrift, _FogSunBank;
                 float4 _FogColor;
+
+                // R4：世界 XZ 低频雾团（2 倍频 + 慢漂移）——远处"一堆堆"的雾，
+                // 近岸为 0 保持与 URP 同式（防岸线断层）
+                float FogBank(float2 xz)
+                {
+                    float2 q = xz * _FogBankScale + _Time.y * _FogBankDrift * float2(0.8, 1.3);
+                    return ValueNoise(q) * 0.65 + ValueNoise(q * 2.31 + 7.7) * 0.35;
+                }
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
             CBUFFER_END
@@ -365,6 +381,17 @@ Shader "WaterProject/Water_Ocean"
                     }
                 }
                 float fogVis = (_FogOn > 0.5) ? exp(-_FogDensity * _FogSunLen) : 1.0;
+                // R4：雾遮太阳从常数光程升级为噪声路径估计（太阳方向两端采样平均），
+                // 雾团挡在太阳光路上时水面高光/天光跟着衰减（参考 S15 末卡）
+                if (_FogOn > 0.5 && _FogSunBank > 0.5)
+                {
+                    float2 sdir = normalize(mainLight.direction.xz + 1e-5);
+                    float b1 = FogBank(worldPos.xz);
+                    float b2 = FogBank(worldPos.xz + sdir * (_FogSunLen * 0.6));
+                    float pathBank = (b1 + b2) * 0.5;                 // 0..1
+                    float densSun = _FogDensity * (1.0 + _FogBankAmount * 0.55 * (pathBank * 2.0 - 0.7));
+                    fogVis = exp(-densSun * _FogSunLen * saturate(1.6 - mainLight.direction.y));
+                }
                 float sunAtt = saturate(cloudTrans * fogVis);
 
                 // ──  水色：Beer–Lambert 按【垂直】水深 ──
@@ -482,7 +509,13 @@ Shader "WaterProject/Water_Ocean"
                     float distV = length(worldPos - _WorldSpaceCameraPos);
                     float dCam  = exp(-max(_WorldSpaceCameraPos.y - _FogBaseY, 0.0) * _FogFalloff);
                     float dSurf = exp(-max(worldPos.y - _FogBaseY, 0.0) * _FogFalloff);
-                    float fd    = _FogDensity * distV * sqrt(dCam * dSurf);
+                    // R4：远处叠噪声雾团（距离加权进场）——近岸 amt→0 保持 URP 同式，
+                    // 岸线无断层；雾团只增强为主、稀处最多减半
+                    float bank = FogBank(worldPos.xz);
+                    float amt = _FogBankAmount * smoothstep(_FogBankStart, _FogBankEnd, distV)
+                              * (bank * 2.0 - 0.55);
+                    float dens = _FogDensity * (1.0 + max(amt, -0.5));
+                    float fd    = dens * distV * sqrt(dCam * dSurf);
                     col = lerp(_FogColor.rgb, col, exp(-fd * fd));   // exp(-(d·x)²) == URP Exp²
                 }
 
