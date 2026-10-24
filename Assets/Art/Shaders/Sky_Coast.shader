@@ -1,18 +1,19 @@
 // ============================================================================
-// Sky_Coast.shader — 开阔海岸的天空：渐变 + 程序云 + 太阳晕
+// Sky_Coast.shader — 开阔海岸的天空：分层渐变 + 体积云 + 太阳晕/LensFlare
 //
-// 为什么不复用 Sky_SimpleBlue（潭线就是这么复用的）：
-//   潭线的画幅里天空只占顶上一条带，而且被远景林线挡掉大半，纯色渐变够用。
-//   海岸线没有东西挡 —— 天空占了画面 55%，纯色渐变就是一块蓝布，
-//   和潭线当时"天空带是全画面最没内容的区域"是同一个病，只是这次面积大五倍。
-//
-// 三个部件：
-//   ① 双色渐变：和 Sky_SimpleBlue 同一条曲线，保证地平色可以继续当雾色用
-//   ② 程序云：把视线投到一张固定高度的平面（dir.xz / dir.y）上做 fbm。
-//      这个投影自带"越靠地平越密"的透视压缩，所以远处会自然堆成一条云带，
-//      不需要任何额外的高度衰减。
-//   ③ 太阳晕：方向直接取 GetMainLight()，不在这里再存一份太阳角 ——
-//      潭线就是靠这条约定躲过"太阳仰角有两个写入点"那个坑的（《05》C-4）。
+// R3 版（2026-10-24，替代 2D 平面投影云）：
+//   ① 分层渐变（参考 S12 C24）：地平/低空/中空/天顶四层——低/中两色由
+//      DayNightCycle 驱动的 _HorizonColor/_ZenithColor 插值派生（不新增写入点），
+//      朝阳/夕阳双色：太阳侧按 dot(view.xz, sun.xz) × 低太阳权重向暖色偏。
+//   ② 体积云（S13 C26）：视线与云底/云顶球壳求交（地球半径 6371km），
+//      RayMarch 20 步，密度 = fbm 阈值化 × 高度剖面 − 细节侵蚀；风带切变
+//      （woff = windDir·(speed·t + h·shear)，上下层差速漂移）；光照 = 一次
+//      320m 朝太阳的阴影采样 + 前向散射银边；昼夜由 _NightAmount 压暗。
+//      ——R1 量测动机：2D 贴图云天空能量只有参考 S13 的 1.4%、云速慢 5.6 倍。
+//   ③ LensFlare（S11 C22）：白天型（小亮核+两枚鬼影）与黄昏型（大红斑）
+//      按太阳高度交叉插值，乘视线云透射率（云遮太阳→耀斑弱）。
+//   ④ 夜空（星星/银河/月面，P1-1）保留：月面透光改吃体积云透射率 T。
+//   太阳方向一律 GetMainLight()（《05》C-4：不存第二份太阳角）。
 // ============================================================================
 Shader "WaterProject/Sky_Coast"
 {
@@ -24,11 +25,17 @@ Shader "WaterProject/Sky_Coast"
         _CloudColor   ("云色", Color) = (1.00, 0.995, 0.985, 1)
         _CloudShadow  ("云底阴影色", Color) = (0.520, 0.570, 0.650, 1)
         _CloudCover   ("云量", Range(0, 1)) = 0.52
-        _CloudScale   ("云尺度", Float) = 0.045
-        _CloudDrift   ("漂移速度", Float) = 0.010
         _SunGlow      ("日晕强度", Range(0, 2)) = 0.55
 
-        // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ⇒ 与旧画幅逐位一致 ──
+        // ── 体积云（R3）：_CloudScale/_CloudDrift 旧参废弃保留兼容，不再参与 ──
+        _CloudWindDir   ("风向(度)", Float) = 200
+        _CloudWindSpeed ("风速(m/s@云层)", Float) = 18
+        _CloudShear     ("风切变(米/米高)", Float) = 0.006
+        _CloudBase      ("云底高度(米)", Float) = 900
+        _CloudTop       ("云顶高度(米)", Float) = 2000
+        _CloudSteps     ("RayMarch 步数", Float) = 20
+
+        // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
         _NightAmount  ("夜色强度(0昼1夜)", Range(0,1)) = 0
         _StarGrid     ("星空格数", Float) = 320
         _StarBright   ("星空亮度", Range(0,3)) = 1.60
@@ -38,6 +45,9 @@ Shader "WaterProject/Sky_Coast"
         _MoonSize     ("月面角半径(弧度)", Float) = 0.030
         _MoonPhase    ("月相(0新月 0.5满月)", Range(0,1)) = 0.62
         _MoonAmount   ("月面强度(0隐1显)", Range(0,1)) = 0
+
+        // ── LensFlare（S11 C22）──
+        _FlareAmount  ("耀斑总强度", Range(0, 2)) = 0.9
     }
     SubShader
     {
@@ -58,9 +68,11 @@ Shader "WaterProject/Sky_Coast"
             CBUFFER_START(UnityPerMaterial)
                 float4 _HorizonColor, _ZenithColor, _GroundColor, _CloudColor, _CloudShadow;
                 float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow;
+                float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
                 float  _MoonSize, _MoonPhase, _MoonAmount;
+                float  _FlareAmount;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -69,12 +81,9 @@ Shader "WaterProject/Sky_Coast"
             Varyings vert(Attributes v)
             {
                 Varyings o;
-                // ⚠ 天空盒的视线方向**只能直接取物体空间顶点**。
-                //   写成 TransformObjectToWorld(v) - _WorldSpaceCameraPos 会得到一片黑：
-                //   URP 的 DrawSkyboxPass 走 context.CreateSkyboxRendererList，
-                //   那颗立方体的物体矩阵并不是"平移到相机"的可依赖形式，
-                //   减完剩下的是一个近似常量的向量，normalize 之后整片天空算成黑。
-                //   工程里已经在跑的 Sky_SimpleBlue 就是取 v.vertex.xyz —— 照它来。
+                // ⚠ 天空盒的视线方向**只能直接取物体空间顶点**（URP 天空盒立方体的
+                //   物体矩阵不是"平移到相机"的可依赖形式，TransformObjectToWorld
+                //   再减相机位置会得到一片黑——Sky_SimpleBlue 的既定做法）。
                 o.dir = v.positionOS.xyz;
                 o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
                 return o;
@@ -94,7 +103,7 @@ Shader "WaterProject/Sky_Coast"
                 float c = Hash21(i + float2(0,1)), e = Hash21(i + float2(1,1));
                 return lerp(lerp(a, b, u.x), lerp(c, e, u.x), u.y);
             }
-            // 4 个倍频、每个倍频各自漂一点：只有主频在动的话云会整体平移、没有内部变化
+            // 4 倍频（AtmosphereField 云影图**必须逐系数同构**，云影才和天上的云同形）
             float Fbm(float2 p)
             {
                 float s = 0.0, amp = 0.5;
@@ -106,10 +115,36 @@ Shader "WaterProject/Sky_Coast"
                 }
                 return s;
             }
+            float2 WindOffset(float hMeters)
+            {
+                float ra = radians(_CloudWindDir);
+                float2 wd = float2(sin(ra), cos(ra));
+                return wd * (_CloudWindSpeed * _Time.y + hMeters * _CloudShear);
+            }
+            #define CLOUD_SCALE 0.00042
+            #define COVER_LO 0.70
+            #define COVER_HI 0.24
+            #define COVER_BAND 0.14
 
-            // ── 星空：把视线折成经纬网格，每格最多一颗星 ──
-            //   为什么不用 3D 体素：球面与立方体格相交的形状随机，星的大小/密度会随方向忽大忽小。
-            //   经纬网格的代价是两极略密、经度接缝略密 —— 夜空里看不出来。
+            float CloudDensity(float3 p, float h)
+            {
+                float covT = lerp(COVER_LO, COVER_HI, _CloudCover);
+                float2 q = (p.xz + WindOffset(h)) * CLOUD_SCALE;
+                // 原地翻腾（domain-warp 慢流动）：参考 S13 的云 3 秒窗内**全局位移为 0**
+                // （同窗互相关峰 0.71 落在原点）——"云速 0.84 %W/s"实为局部形态演化。
+                // 只平移不翻腾的云读起来是"贴图滑动"，正是"云有问题"观感的来源之一。
+                q += (float2(ValueNoise(q * 0.7 + _Time.y * 0.3),
+                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.24)) - 0.5) * 0.5;
+                float d = smoothstep(covT, covT + COVER_BAND, Fbm(q));
+                // 高度剖面：底 120m 软入、顶 40% 起收
+                float H = _CloudTop - _CloudBase;
+                d *= smoothstep(0.0, 120.0, h) * smoothstep(H, H * 0.40, h);
+                if (d > 0.004)
+                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.22);   // 细节侵蚀两级：云边碎化
+                return d;
+            }
+
+            // ── 星空（P1-1 保留原样）──
             float3 StarLayer(float3 d, float night, float timeSec)
             {
                 float2 uv = float2(atan2(d.z, d.x) * 0.15915494, asin(clamp(d.y, -1.0, 1.0)) * 0.31830989);
@@ -120,9 +155,9 @@ Shader "WaterProject/Sky_Coast"
                 if (h > 0.966)
                 {
                     float2 sp = float2(Hash21(id + 17.3), Hash21(id + 41.7));
-                    float2 dd = (f - sp) * float2(1.0, 2.0);      // 纵向格更扁，乘 2 保持星点圆
-                    float b  = (h - 0.966) / 0.034;               // 0..1：星等分级
-                    float tw = 0.65 + 0.35 * sin(timeSec * 2.3 + h * 61.0);   // 闪烁
+                    float2 dd = (f - sp) * float2(1.0, 2.0);
+                    float b  = (h - 0.966) / 0.034;
+                    float tw = 0.65 + 0.35 * sin(timeSec * 2.3 + h * 61.0);
                     float3 tint = lerp(float3(0.78,0.86,1.0), float3(1.0,0.90,0.78), Hash21(id + 7.7));
                     acc = tint * smoothstep(0.18, 0.0, length(dd)) * (0.18 + 1.25 * b * b) * tw;
                 }
@@ -134,56 +169,85 @@ Shader "WaterProject/Sky_Coast"
                 float3 d = normalize(IN.dir);
                 if (d.y < 0.0) return half4(_GroundColor.rgb, 1.0);
 
+                float3 sunDir = GetMainLight().direction;
                 float up = saturate(d.y);
-                // ⚠ 指数方向容易搞反：pow(up, e) 里 e **越小越偏向天顶（深色）**。
-                //   上一轮为了"提亮"把 2.0 改成 1.45，结果画幅里整段天更暗
-                //   （右上实测 124 → 113）。本机位画幅上缘只有约 21° 仰角，
-                //   e = 2 时那里离天顶色还远，正好让可见这一段停在较亮的地平色上。
-                float3 col = lerp(_HorizonColor.rgb, _ZenithColor.rgb, up * up);
 
-                // ── 夜空：星星 + 银河 + 月面（参考 S12）──
-                //   全部乘 _NightAmount / _MoonAmount（白天=0）⇒ 正午画幅与加这段之前**逐位一致**。
+                // ── ① 分层渐变（S12 C24）：低/中色由锚色派生，不新增写入点 ──
+                float3 lowC = lerp(_HorizonColor.rgb, _ZenithColor.rgb, 0.32);
+                float3 midC = lerp(_HorizonColor.rgb, _ZenithColor.rgb, 0.68);
+                float3 col = lerp(_HorizonColor.rgb, lowC, smoothstep(0.00, 0.09, up));
+                col = lerp(col, midC, smoothstep(0.07, 0.32, up));
+                col = lerp(col, _ZenithColor.rgb, smoothstep(0.28, 0.72, up));
+                // 朝/夕双色：太阳侧暖移，只在太阳低时起效（白天正午不变色）
+                float sunSide = saturate(dot(normalize(d.xz + 1e-5), normalize(sunDir.xz + 1e-5)))
+                                * saturate(1.0 - abs(sunDir.y) * 2.6);
+                float3 warm = float3(1.0, 0.58, 0.34);
+                col = lerp(col, lerp(col, warm, 0.38), sunSide * 0.65 * (1.0 - _NightAmount));
+
+                // ── 夜空底（星星+银河）画在云前：云用透射率压它 ──
+                float3 nightCol = 0;
                 if (_NightAmount > 0.001)
                 {
-                    col += StarLayer(d, _NightAmount, _Time.y);
-                    // 银河：一条斜带 × 低频噪声；参考里也只是"能看出有一条带"，别做亮
+                    nightCol = StarLayer(d, _NightAmount, _Time.y);
                     float band = exp(-pow(dot(d, normalize(float3(0.42, 0.50, -0.76))), 2.0) * 16.0);
                     float milky = band * (0.45 + 0.55 * ValueNoise(d.xz * 7.0 + d.y * 4.0));
-                    col += float3(0.28, 0.33, 0.50) * milky * _NightAmount * _GalaxyAmount;
+                    nightCol += float3(0.28, 0.33, 0.50) * milky * _NightAmount * _GalaxyAmount;
                 }
 
-                // （月面移到云合成之后，见下）
+                // ── ② 体积云：RayMarch（S13 C26）──
+                float cloudT = 1.0;             // 视线云透射率（月面/耀斑共用）
+                float3 cloudAcc = 0;
+                if (d.y > 0.015)
+                {
+                    // ⚠ 不能用真球壳求交：Re=6.37e6 下 b²−|ro|²+R² 是 4e13 量级相减，
+                    //   fp32 只有 7 位有效数字 ⇒ 判别式全是垃圾 ⇒ 步进永不进入、
+                    //   天空只剩静态渐变（实测连拍 4.7s 逐位相同）。
+                    //   平流层近似 t=(H−camH)/d.y：所有量 ≤1e5，fp32 安全，
+                    //   地平线处的视觉与球壳无差（旧 2D 云也是平面投影）。
+                    float camH = max(_WorldSpaceCameraPos.y, 2.0);
+                    float t0 = (_CloudBase - camH) / d.y;
+                    float t1 = (_CloudTop - camH) / d.y;
+                    float2 camXZ = _WorldSpaceCameraPos.xz;
+                    int N = (int)clamp(_CloudSteps, 8, 32);
+                    float dt = (t1 - t0) / N;
+                    float t = t0 + dt * Hash21(IN.positionCS.xy);   // 抖动起点去条带
+                    float T = 1.0;
+                    float nightDim = lerp(1.0, 0.24, _NightAmount);
+                    for (int i = 0; i < N; i++)
+                    {
+                        float3 p = float3(camXZ.x, 0, camXZ.y) + d * t;
+                        float h = (camH - _CloudBase) + t * d.y;     // 云层内相对高度 0..H
+                        float dens = CloudDensity(p, h);
+                        if (dens > 0.004)
+                        {
+                            // 一次太阳阴影采样（320m 朝太阳）：云自阴影
+                            float3 sp2 = p + sunDir * 320.0;
+                            float h2 = h + sunDir.y * 320.0;
+                            float dSun = CloudDensity(sp2, h2);
+                            float shadow = exp(-(dens + dSun) * 2.6);
+                            float phase = 0.62 + 0.38 * pow(saturate(dot(d, sunDir)), 3.0);
+                            float3 lit = lerp(_CloudShadow.rgb, _CloudColor.rgb * 1.25,
+                                              saturate(shadow * (0.55 + 0.45 * phase)));
+                            // 太阳低时云缘向环境暖色过渡（S13 续卡"云体边缘向环境色"）
+                            lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
+                                       saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);
+                            lit *= nightDim;
+                            float a = 1.0 - exp(-dens * dt * 0.0016);
+                            cloudAcc += T * a * lit;
+                            T *= 1.0 - a;
+                            if (T < 0.05) break;
+                        }
+                        t += dt;
+                    }
+                    cloudT = T;
+                }
+                col = col * cloudT + cloudAcc;
+                col += nightCol * cloudT;      // 星/银河在云后
 
-                // 视线投到单位高度的平面上。d.y 越小投影越远 ⇒ 地平方向自动堆成一条密云带
-                float2 plane = d.xz / max(d.y, 0.055);
-                // ⚠ 同一个投影在 d.y→0 时半径趋于无穷，噪声频率跟着爆炸，
-                //   地平那圈就碎成横向拉丝、读成一条霾带而不是一团团云。
-                //   按半径压一下，等于把远处的云"放远放大"。
-                float comp = 1.0 / (1.0 + length(plane) * 0.035);
-                float t = _Time.y * _CloudDrift;
-                float f = Fbm(plane * comp * comp * _CloudScale + float2(t, t * 0.35));
-
-                // fbm 四倍频值噪声的取值集中在 0.55~0.72，阈值映射必须落在这个区间里，
-                // 否则 cover=0.55 再加 0.22 的过渡带几乎没人越得过 —— 云就"不存在"了。
-                // 过渡带 0.14：再窄就会在高空压缩下读成一堆剪纸，云需要一点软边
-                float cover = lerp(0.72, 0.28, _CloudCover);
-                float cloud = smoothstep(cover, cover + 0.14, f);
-                // 贴地平那几朵要压，但压到 9.5° 以上才允许有云就把整片天赶光了
-                cloud *= saturate(d.y * 3.2 + 0.12);
-
-                // 云的明暗必须用"超出阈值的厚度"，不能用 f 的绝对值。
-                // 上一版写 saturate(f*1.9-0.32)：_CloudCover 一抬高，f 几乎处处越过
-                // 那个门槛 ⇒ 整片云都取到最白那端，天上就是一层均匀白洗、没有团块。
-                // 刚过阈值 = 薄 = 吃天光偏蓝暗，越厚越白，边和底才立得起来。
-                float thick = saturate((f - cover) / 0.28);
-                float3 ccol = lerp(_CloudShadow.rgb, _CloudColor.rgb, thick);
-                col = lerp(col, ccol, cloud);
-
-                // ── 月面：圆盘 + 相位 + 环形山噪声 + 晕（画在云之后，按云量透光）──
-                //   ⚠ 放云之前时，cover=0.68 的云会把整个月盘盖掉，夜空里根本找不到月亮（实测）。
+                // ── 月面（透光吃体积云透射率）──
                 if (_MoonAmount > 0.001)
                 {
-                    float moonVis = 1.0 - cloud * 0.55;      // 云后透光，不是被云完全吃掉
+                    float moonVis = 1.0 - (1.0 - cloudT) * 0.85;
                     float3 md = normalize(_MoonDir.xyz);
                     float mdDot = dot(d, md);
                     float cosR = cos(_MoonSize);
@@ -193,10 +257,7 @@ Shader "WaterProject/Sky_Coast"
                         float3 right = normalize(cross(float3(0.0, 1.0, 0.0), md));
                         float3 upv   = cross(md, right);
                         float sinR = sqrt(saturate(1.0 - cosR * cosR));
-                        float2 q = float2(dot(d, right), dot(d, upv)) / max(sinR, 1e-4);   // -1..1
-                        // 月相：0=新月 0.5=满月 1=新月。
-                        // ⚠ 第一版用 term = cos(phase·2π)，把"受照 76%"算成"只有边缘一条亮"，
-                        //   月盘整体是黑的。正确关系：受照比例 k=1-|2p-1|，终止线 x=1-2k，亮面在 +x。
+                        float2 q = float2(dot(d, right), dot(d, upv)) / max(sinR, 1e-4);
                         float k = 1.0 - abs(2.0 * _MoonPhase - 1.0);
                         float term = 1.0 - 2.0 * k;
                         float lit = smoothstep(term - 0.05, term + 0.05, q.x);
@@ -207,14 +268,29 @@ Shader "WaterProject/Sky_Coast"
                     col += _MoonColor.rgb * pow(saturate(mdDot), 260.0) * 0.45 * _MoonAmount * moonVis;
                 }
 
-                // 日晕：方向取场景里那盏主光，不在材质里再存一份太阳角。
-                // 宽项原来 pow(sd,9)*0.34 会把半个画幅洗成白，和另一侧的深蓝撞出
-                // 刺眼对比；改成更窄更弱，让"亮"集中在太阳附近而不是铺开。
-                float3 sunDir = GetMainLight().direction;
+                // ── 日晕 + 太阳附近云镶边 ──
                 float sd = saturate(dot(d, sunDir));
-                col += _CloudColor.rgb * (pow(sd, 500.0) * 0.45 + pow(sd, 16.0) * 0.18) * _SunGlow;
-                // 云在太阳那一侧会被打亮一点（逆光镶边），不加这个云会像贴上去的纸片
-                col += _CloudColor.rgb * cloud * pow(sd, 5.0) * 0.30;
+                col += _CloudColor.rgb * (pow(sd, 500.0) * 0.45 + pow(sd, 16.0) * 0.18) * _SunGlow * cloudT;
+                col += _CloudColor.rgb * (1.0 - cloudT) * pow(sd, 5.0) * 0.30 * (1.0 - _NightAmount);
+
+                // ── ③ LensFlare（S11 C22）：白天型/黄昏型按太阳高度交叉插值 ──
+                if (_FlareAmount > 0.01 && _NightAmount < 0.6 && sd > 0.55)
+                {
+                    float dayW = smoothstep(0.06, 0.18, sunDir.y);
+                    float duskW = (1.0 - dayW) * saturate(sunDir.y * 6.0 + 0.4);
+                    // 相机前向（鬼影画在"太阳-画面中心"连线上）
+                    float3 fwd = normalize(-UNITY_MATRIX_V._m02_m12_m22);
+                    float3 g1 = normalize(sunDir + (fwd - sunDir) * 0.85);
+                    float3 g2 = normalize(sunDir + (fwd - sunDir) * 1.35);
+                    float ghosts = pow(saturate(dot(d, g1)), 900.0) * 0.35
+                                 + pow(saturate(dot(d, g2)), 1400.0) * 0.22;
+                    // 白天型：小亮核 + 鬼影
+                    col += float3(1.0, 0.92, 0.78)
+                           * (pow(sd, 3000.0) * 1.6 + ghosts * 0.55) * dayW * cloudT * _FlareAmount;
+                    // 黄昏型：大红斑 + 内亮环
+                    col += float3(1.0, 0.42, 0.20) * pow(sd, 24.0) * 0.55 * duskW * cloudT * _FlareAmount;
+                    col += float3(1.0, 0.55, 0.30) * pow(sd, 150.0) * 0.85 * duskW * cloudT * _FlareAmount;
+                }
 
                 return half4(col, 1.0);
             }

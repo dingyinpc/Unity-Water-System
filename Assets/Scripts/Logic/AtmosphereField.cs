@@ -19,12 +19,14 @@ namespace WaterProject.Logic
         [Tooltip("云影图分辨率")]
         public int res = 256;
 
-        [Header("云（与 Sky_Coast 同源参数）")]
-        public float cloudScale = 0.006f;
+        [Header("云（与 Sky_Coast 体积云同源：R3 起云影=天上的云的中层切片）")]
+        public float cloudScale = 0.00042f;
         [Range(0f, 1f)] public float cloudCover = 0.52f;
-        public float cloudDrift = 0.010f;
+        public float windDeg = 200f;
+        public float windSpeed = 15f;
+        public float shear = 0.006f;
         [Tooltip("云层高度（米）：太阳越低影子拉得越长")]
-        public float cloudHeight = 220f;
+        public float cloudHeight = 900f;
         [Tooltip("云光学厚度：越大云影越暗")]
         public float optical = 1.8f;
 
@@ -36,7 +38,9 @@ namespace WaterProject.Logic
         static readonly int P_SunDir = Shader.PropertyToID("_AFSunDir");
         static readonly int P_Scale  = Shader.PropertyToID("_AFCloudScale");
         static readonly int P_Cover  = Shader.PropertyToID("_AFCloudCover");
-        static readonly int P_Drift  = Shader.PropertyToID("_AFCloudDrift");
+        static readonly int P_WindDir = Shader.PropertyToID("_AFWindDir");
+        static readonly int P_WindSpd = Shader.PropertyToID("_AFWindSpeed");
+        static readonly int P_Shear  = Shader.PropertyToID("_AFShear");
         static readonly int P_Height = Shader.PropertyToID("_AFHeight");
         static readonly int P_Opt    = Shader.PropertyToID("_AFOptical");
         static readonly int P_Tex    = Shader.PropertyToID("_AFCloudTex");
@@ -70,7 +74,9 @@ namespace WaterProject.Logic
             _mat.SetVector(P_SunDir, new Vector4(d.x, d.y, d.z, 0f));
             _mat.SetFloat(P_Scale, cloudScale);
             _mat.SetFloat(P_Cover, cloudCover);
-            _mat.SetFloat(P_Drift, cloudDrift);
+            _mat.SetFloat(P_WindDir, windDeg);
+            _mat.SetFloat(P_WindSpd, windSpeed);
+            _mat.SetFloat(P_Shear, shear);
             _mat.SetFloat(P_Height, cloudHeight);
             _mat.SetFloat(P_Opt, optical);
             Graphics.Blit(null, _rt, _mat, 0);

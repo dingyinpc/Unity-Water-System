@@ -37,9 +37,13 @@ namespace WaterProject.EditorTools
             }
             // 域必须盖住**画面里能看到的整片海**（含远海）——否则水面 cuv 落到域外，云影采样直接跳过。
             field.minX = -1200f; field.minZ = -1600f; field.sizeX = 2400f; field.sizeZ = 2000f;
-            // 云尺度要**按域大小**给：0.006 → 基准格 ~165m，3 倍频最低频 ~40m（≈10 纹素）→ 不糊成椒盐
-            field.cloudScale = 0.006f;
-            field.cloudCover = 0.52f;
+            // R3 起与 Sky_Coast 体积云同源（中层切片投影）：尺度/风向/风速/切变一致
+            field.cloudScale = 0.00042f;
+            field.cloudCover = 0.48f;
+            field.windDeg = 200f;
+            field.windSpeed = 15f;
+            field.shear = 0.006f;
+            field.cloudHeight = 900f;
             field.optical = 1.8f;
             field.Build();
             EditorUtility.SetDirty(field);
@@ -48,7 +52,7 @@ namespace WaterProject.EditorTools
             if (m != null) { m.SetFloat("_CloudShadowOn", 1f); EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m); }
 
             WriteProbe($"MENU170 ok: AtmosphereField res={field.res} 域({field.minX},{field.minZ},{field.sizeX},{field.sizeZ}) "
-                     + $"云 尺度{field.cloudScale} 量{field.cloudCover} 厚{field.optical} | 水面 _CloudShadowOn={m?.GetFloat("_CloudShadowOn")}\n");
+                     + $"云 风{field.windDeg}°/{field.windSpeed}m/s 切变{field.shear} 量{field.cloudCover} 厚{field.optical} | 水面 _CloudShadowOn={m?.GetFloat("_CloudShadowOn")}\n");
         }
 
         // ═════════════ 171/172 云影 A/B ═════════════
@@ -89,7 +93,7 @@ namespace WaterProject.EditorTools
         {
             var field = Object.FindObjectOfType<AtmosphereField>();
             if (field == null) return;
-            field.cloudCover = 0.52f; field.optical = 1.8f; field.Build();
+            field.cloudCover = 0.48f; field.optical = 1.8f; field.Build();
             EditorUtility.SetDirty(field);
             WriteProbe("MENU177 云影还原\n");
         }

@@ -25,9 +25,16 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _CloudCover: 0.52
+    - _CloudBase: 900
+    - _CloudCover: 0.45
     - _CloudDrift: 0.01
     - _CloudScale: 0.045
+    - _CloudShear: 0.006
+    - _CloudSteps: 20
+    - _CloudTop: 2000
+    - _CloudWindDir: 200
+    - _CloudWindSpeed: 15
+    - _FlareAmount: 0.9
     - _GalaxyAmount: 0.3
     - _MoonAmount: 0
     - _MoonPhase: 0.62
