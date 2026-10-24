@@ -673,6 +673,35 @@ namespace WaterProject.EditorTools
             rip.SpawnDrop(new Vector3(PoolL * 0.40f, 0f, -PoolW * 0.32f), 1.0f);
             WriteProbe("POOL96 test drops spawned\n");
         }
+        // ═════════════════════════ 102 ═════════════════════════
+        // R27 静水验收档：S8 参考是"无人静水微距"，我们的对照采集必须关掉一切涟漪源
+        //（autoDemo 滴落/人物待机小涟漪/球漂浮），只留焦散——否则 E 天然爆表（ρ17 实锤）。
+        [MenuItem("Tools/Pool/102 静水验收档(关演示滴/人物/球, Play)")]
+        public static void StillWaterOn()
+        {
+            if (!PlayOnly("POOL102")) return;
+            var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
+            if (rip != null) { rip.autoDemo = false; rip.mouseClick = false; rip.ClearField(); }
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch != null) ch.enabled = false;
+            var ball = Object.FindObjectOfType<WaterProject.Logic.PoolBall>();
+            if (ball != null) ball.enabled = false;
+            WriteProbe("POOL102 still-water tier ON (demo/person/ball off, field cleared)\n");
+        }
+
+        [MenuItem("Tools/Pool/102b 静水验收档=还原(全开)")]
+        public static void StillWaterOff()
+        {
+            if (!PlayOnly("POOL102b")) return;
+            var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
+            if (rip != null) { rip.autoDemo = true; rip.mouseClick = true; }
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch != null) ch.enabled = true;
+            var ball = Object.FindObjectOfType<WaterProject.Logic.PoolBall>();
+            if (ball != null) ball.enabled = true;
+            WriteProbe("POOL102b still-water tier OFF (all restored)\n");
+        }
+
         // ═════════════════════════ 580 ═════════════════════════
         // R25b 参考同款机位实验：验证"Pool S2 斜率差=游戏跟随机位 vs 参考微距的结构性
         // 频段放置差"(R24 §6)。低角度贴水机位把焦散结构放回低频带——若 S2 入带即证理论。
