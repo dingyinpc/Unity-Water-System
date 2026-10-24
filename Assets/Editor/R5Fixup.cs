@@ -252,6 +252,55 @@ namespace WaterProject.EditorTools
 
         // 深青加强档：视觉判词"底黑网亮"+参考水区 p10=1(近黑)/p90=185 vs 我们 154/222
         // ——白亮底压到近黑，焦散网加亮浮上去，动态范围才有参考的形状
+        // ── R22a C7 抗闪：SSRTemporalFeature 的安装/卸载（唯一写入点）──
+        // 装上即生效：特性每帧把 _SSRTemporalOn 置 1（预通道+EMA+查表）；
+        // 卸载后全局归 0，水面回旧内联追踪路径，逐位一致零回归。
+        [MenuItem("Tools/Fix/583 SSR C7 时域累积=安装(注入 RendererFeature)")]
+        public static void SSRTemporalInstall()
+        {
+            const string rendPath = "Assets/Settings/URP/WaterURPRenderer.asset";
+            var rend = AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.Universal.ScriptableRendererData>(rendPath);
+            if (rend == null) { WriteProbe("R583 REFUSED: 找不到 " + rendPath + "\n"); return; }
+
+            // 幂等：已装则只报状态
+            foreach (var f in rend.rendererFeatures)
+                if (f is WaterProject.Render.SSRTemporalFeature)
+                { WriteProbe("R583 already installed\n"); return; }
+
+            var feat = ScriptableObject.CreateInstance<WaterProject.Render.SSRTemporalFeature>();
+            feat.name = "SSRTemporalFeature";
+            AssetDatabase.AddObjectToAsset(feat, rend);
+            rend.rendererFeatures.Add(feat);
+            EditorUtility.SetDirty(rend);
+            AssetDatabase.SaveAssetIfDirty(rend);
+            WriteProbe($"R583 installed: features={rend.rendererFeatures.Count} (saved)\n");
+        }
+
+        [MenuItem("Tools/Fix/583b SSR C7 时域累积=卸载(回旧内联路径)")]
+        public static void SSRTemporalRemove()
+        {
+            const string rendPath = "Assets/Settings/URP/WaterURPRenderer.asset";
+            var rend = AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.Universal.ScriptableRendererData>(rendPath);
+            if (rend == null) { WriteProbe("R583b REFUSED: 找不到 " + rendPath + "\n"); return; }
+            int removed = 0;
+            for (int i = rend.rendererFeatures.Count - 1; i >= 0; i--)
+                if (rend.rendererFeatures[i] is WaterProject.Render.SSRTemporalFeature)
+                {
+                    var f = rend.rendererFeatures[i];
+                    rend.rendererFeatures.RemoveAt(i);
+                    AssetDatabase.RemoveObjectFromAsset(f);
+                    Object.DestroyImmediate(f);
+                    removed++;
+                }
+            if (removed > 0)
+            {
+                Shader.SetGlobalFloat("_SSRTemporalOn", 0f);
+                EditorUtility.SetDirty(rend);
+                AssetDatabase.SaveAssetIfDirty(rend);
+            }
+            WriteProbe($"R583b removed={removed} features={rend.rendererFeatures.Count}\n");
+        }
+
         // 底黑网亮·终档：三个漏光源全堵——① alpha 透白瓷砖(0.62→0.88)；
         // ② 乘性焦散在吸收 0.039 后太弱(0.85→4.5×)；③ _WaterColor G=0.30 是线性值
         // ≈sRGB 150 根本不"深"，压到线性 0.075（水柱散射项带着焦散网浮在暗底上）

@@ -113,6 +113,9 @@ Shader "WaterProject/Water_Advanced"
             // 体散射 RayMarch 要在路径采样点上取主光阴影（参考 C11「结合主光阴影」）
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile_fragment _ _SHADOWS_SOFT
+            // R22 C7：SSRTemporalFeature 预通道用全局关键字让本 pass 早退输出 (SSR色,conf)；
+            // 正常渲染路径不受影响（关键字只在特性里短暂打开）
+            #pragma multi_compile _ _SSR_WRITE
 
             #define MAX_WAVES 8
             #define MAX_RIPPLES 8
@@ -145,6 +148,10 @@ Shader "WaterProject/Water_Advanced"
 
             // 全局（交互系统每帧提供）
             TEXTURE2D(_InteractionTex); SAMPLER(sampler_InteractionTex);
+            // R22 C7 时域累积：特性每帧写入的半分辨率累积结果(色,conf)；
+            // _SSRTemporalOn=0(默认) ⇒ 完全走旧内联追踪，逐位一致零回归
+            TEXTURE2D(_SSRAccumTex); SAMPLER(sampler_SSRAccumTex);
+            float _SSRTemporalOn;
             float4 _InteractionRect;        // (centerX, centerZ, halfW, 0)
             float4 _RippleSources[MAX_RIPPLES];
             float  _RippleCount, _RippleLife;
@@ -520,9 +527,24 @@ Shader "WaterProject/Water_Advanced"
                 float3 reflDir = reflect(-V, N);
                 // reflDir.y≈0 是掠射反射，应当取"地平线色"（亮）；旧映射 *0.5+0.5 会把它推到天顶暗色 → 低机位水面发黑发闷
                 float3 skyCol = lerp(_SkyHorizon, _SkyZenith, saturate(reflDir.y));
-                // ── SSR（P0-2 / 参考 C8）：conf=0 时 reflCol==skyCol ⇒ 与旧路径逐位一致，零回归 ──
+                // ── SSR（P0-2 / 参考 C8）── R22 C7：_SSR_WRITE=预通道早退；_SSRTemporalOn=查累积表
                 float ssrConf = 0.0;
-                float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
+                float3 ssrCol = float3(0, 0, 0);
+#if defined(_SSR_WRITE)
+                ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
+                return half4(ssrCol, ssrConf);          // 预通道：只写 (色, conf)，其余全跳过
+#else
+                if (_SSRTemporalOn > 0.5)
+                {
+                    // 时域路径：半分辨率累积表（EMA 后），逐像素追踪已挪到预通道
+                    float4 acc = SAMPLE_TEXTURE2D(_SSRAccumTex, sampler_SSRAccumTex, screenUV);
+                    ssrCol = acc.rgb; ssrConf = acc.a;
+                }
+                else
+                {
+                    ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
+                }
+#endif
                 // _SSRStrength 是 SSR 的**总开关**（0=纯天空兜底，1=命中处全用场景色）：
                 // 不乘它的话 A/B 菜单改了强度但画面不变（P0-2 收尾时抓到的真 bug）。
                 float3 reflBase = lerp(skyCol, ssrCol, smoothstep(0.0, 0.45, ssrConf) * _SSRStrength);   // C7-lite：conf 软化，消中等置信度爆点
