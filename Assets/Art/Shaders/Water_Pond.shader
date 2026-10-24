@@ -241,11 +241,11 @@ Shader "WaterProject/Water_Pond"
             // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
             float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
             {
-                float2 q = xz * 6.5 + float2(t * 0.35, -t * 0.28);
+                float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
                 float glint = smoothstep(0.800, 0.930, s);
                 float3 rv = reflect(-V, N);
-                return glint * pow(saturate(dot(rv, sunDir)), 6.0);
+                return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5))));
             }
 
             float3 ShimmerN(float2 xz, float t, float scale)
@@ -435,7 +435,7 @@ Shader "WaterProject/Water_Pond"
                     return half4(planar, 1.0);
 
                 float alpha = saturate(_Opacity + fres * 0.12 - foam * 0.2);
-                col += mainLight.color * Sparkle(worldPos.xz, t, N, V, mainLight.direction) * 2.2;
+                col += mainLight.color * Sparkle(worldPos.xz, t, N, V, mainLight.direction) * 3.2;
                 return half4(col, alpha);
             }
             ENDHLSL

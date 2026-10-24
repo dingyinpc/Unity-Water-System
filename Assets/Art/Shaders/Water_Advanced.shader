@@ -261,7 +261,7 @@ Shader "WaterProject/Water_Advanced"
             // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
             float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
             {
-                float2 q = xz * 6.5 + float2(t * 0.35, -t * 0.28);
+                float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
                 float glint = smoothstep(0.960, 0.995, s);
                 float3 rv = reflect(-V, N);
