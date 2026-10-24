@@ -295,7 +295,7 @@ Shader "WaterProject/Sky_Coast"
                                  + pow(saturate(dot(d, g2)), 1400.0) * 0.22;
                     // 白天型：小亮核 + 鬼影
                     col += float3(1.0, 0.92, 0.78)
-                           * (pow(sd, 3000.0) * 1.6 + ghosts * 0.55) * dayW * cloudT * _FlareAmount;
+                           * (pow(sd, 3000.0) * 1.6 + ghosts * 1.1) * dayW * cloudT * _FlareAmount;
                     // 黄昏型：大红斑 + 内亮环（R5#10 强度 ×2——max 138 偏柔实锤）
                     col += float3(1.0, 0.42, 0.20) * pow(sd, 24.0) * 1.1 * duskW * cloudT * _FlareAmount;
                     col += float3(1.0, 0.55, 0.30) * pow(sd, 150.0) * 1.7 * duskW * cloudT * _FlareAmount;

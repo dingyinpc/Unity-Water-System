@@ -87,6 +87,30 @@ namespace WaterProject.EditorTools
             sb.Append(" sun=" + (sun == null ? "null" : sun.transform.eulerAngles.ToString("F0")) + "\n");
             WriteProbe(sb.ToString());
         }
+        // ── 太阳方位演示（AGENTS 遗留：太阳 322° vs 视线 142°，碎闪带画外）──
+        // 只做可逆演示供拍板，不改默认。画内=把太阳转到视线反方向（耀光带入画）。
+        [MenuItem("Tools/Sky/93 太阳方位=画内演示(耀光带入画, 可逆)")]
+        public static void SunInFrame()
+        {
+            var s = RenderSettings.sun;
+            if (s == null) { WriteProbe("SKY93 REFUSED: 无 sun\n"); return; }
+            EditorPrefs.SetFloat("SkySunOriX", s.transform.eulerAngles.x);
+            EditorPrefs.SetFloat("SkySunOriY", s.transform.eulerAngles.y);
+            var cam = Camera.main;
+            float yaw = cam != null ? cam.transform.eulerAngles.y + 180f : 322f;
+            s.transform.eulerAngles = new Vector3(35f, yaw, 0f);
+            WriteProbe($"SKY93 sun -> (35,{yaw}) 原(存EditorPrefs) 耀光带应入画\n");
+        }
+
+        [MenuItem("Tools/Sky/94 太阳方位=还原")]
+        public static void SunRestore()
+        {
+            var s = RenderSettings.sun;
+            if (s == null || !EditorPrefs.HasKey("SkySunOriX")) { WriteProbe("SKY94 无存档\n"); return; }
+            s.transform.eulerAngles = new Vector3(
+                EditorPrefs.GetFloat("SkySunOriX"), EditorPrefs.GetFloat("SkySunOriY"), 0f);
+            WriteProbe("SKY94 sun 已还原\n");
+        }
     }
 }
 #endif

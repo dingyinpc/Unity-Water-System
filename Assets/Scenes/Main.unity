@@ -24970,6 +24970,10 @@ PrefabInstance:
       propertyPath: halfExtent
       value: 20
       objectReference: {fileID: 0}
+    - target: {fileID: 4607957995249587578, guid: 8ced04f25f027464bbeb101362c42915, type: 3}
+      propertyPath: demoInterval
+      value: 12
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

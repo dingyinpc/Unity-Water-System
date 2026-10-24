@@ -130,6 +130,51 @@ namespace WaterProject.EditorTools
             WriteProbe($"R594 stepsPerFrame -> {rip.stepsPerFrame}\n");
         }
 
+        [MenuItem("Tools/Fix/597 Main SSR强度切换(0↔0.85, 写材质)")]
+        public static void MainSSRToggle()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m == null) { WriteProbe("R597 REFUSED\n"); return; }
+            float v = m.GetFloat("_SSRStrength") > 0.1f ? 0f : 0.85f;
+            m.SetFloat("_SSRStrength", v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            WriteProbe($"R597 _SSRStrength -> {v}\n");
+        }
+
+        [MenuItem("Tools/Fix/598 Main 波幅切换(0↔常值, 写材质)")]
+        public static void MainWaveToggle()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m == null) { WriteProbe("R598 REFUSED\n"); return; }
+            float v = m.GetFloat("_WaveAmpScale") > 0.1f ? 0f : 1.0f;
+            m.SetFloat("_WaveAmpScale", v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            WriteProbe($"R598 _WaveAmpScale -> {v}\n");
+        }
+
+        [MenuItem("Tools/Fix/599 Main 交互演示 autoDemo 切换(Play)")]
+        public static void MainDemoToggle()
+        {
+            if (!Application.isPlaying) { WriteProbe("R599 REFUSED: 仅 Play\n"); return; }
+            var w = Object.FindObjectOfType<WaterProject.Logic.WaterInteractionManager>();
+            if (w == null) { WriteProbe("R599 REFUSED: 无 WaterInteractionManager\n"); return; }
+            w.autoDemo = !w.autoDemo;
+            WriteProbe($"R599 autoDemo -> {w.autoDemo} (interval={w.demoInterval})\n");
+        }
+
+        [MenuItem("Tools/Fix/596 Main demoInterval 写 12 并存场景")]
+        public static void MainDemoInterval()
+        {
+            var w = Object.FindObjectOfType<WaterProject.Logic.WaterInteractionManager>();
+            if (w == null) { WriteProbe("R596 REFUSED: 场景无组件（先开 Main）\n"); return; }
+            w.demoInterval = 12f; w.autoDemo = true;
+            EditorUtility.SetDirty(w);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
+            WriteProbe("R596 demoInterval=12 已存场景\n");
+        }
+
         static int Set(string path, string prop, float v)
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);

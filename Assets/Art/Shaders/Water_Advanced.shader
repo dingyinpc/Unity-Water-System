@@ -515,7 +515,7 @@ Shader "WaterProject/Water_Advanced"
                 float3 ssrCol = TraceSSR(worldPos, reflDir, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, ssrConf);
                 // _SSRStrength 是 SSR 的**总开关**（0=纯天空兜底，1=命中处全用场景色）：
                 // 不乘它的话 A/B 菜单改了强度但画面不变（P0-2 收尾时抓到的真 bug）。
-                float3 reflBase = lerp(skyCol, ssrCol, ssrConf * _SSRStrength);
+                float3 reflBase = lerp(skyCol, ssrCol, smoothstep(0.0, 0.45, ssrConf) * _SSRStrength);   // C7-lite：conf 软化，消中等置信度爆点
                 // 太阳碎闪不跟 SSR 走（《05》原文：碎闪要拆出来单独，否则会被"场景色"整条抹掉）
                 float3 reflCol = reflBase + _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += reflCol * fres * _SkyReflect * (1.0 - interA * 0.4);
