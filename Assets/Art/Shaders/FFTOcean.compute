@@ -1,0 +1,202 @@
+// FFTOcean.compute — R2 FFT 多级海洋的 GPU 模拟（《08》S1/C1~C4 同族方案）
+//
+// 管线（每级每帧）：
+//   InitH0（一次）: PM/Phillips 谱 → h0(k) 与 h0(-k)（同纹素四通道，免镜像采样）
+//   UpdateSpec    : h(k,t)=h0·e^{iωt}+conj(h0(-k))·e^{-iωt}，ω=√(gk) 深水色散
+//                   同时给 Dx/Dz 谱（-i·k̂·h）——字段打包：texA.xy=h, texA.zw=Dx, texB.xy=Dz
+//   BitRev        : 位反转置换（DIT 自然序输出的前提）
+//   FFTStage ×log2N×2 轴 : 基-2 DIT 蝶形，ping-pong（FFT 线性 ⇒ 四通道各自独立变换）
+//   Pack          : 棋盘校正 ×(−1)^(x+y)（k 居中网格的 1/N 频移）×1/N² 归一 → _Disp=(Dx,Dz,h,0)
+//   GradJacob     : 高度梯度 + choppy 雅可比（浪峰泡沫判据）→ _Grad
+//
+// ⚠ 精度：全 ARGBHalf。谱值量级 ~1e-3~1e-6，half 下溢到 0 的是本来听不见的高频，安全。
+#pragma kernel InitH0
+#pragma kernel InitDelta
+#pragma kernel UpdateSpec
+#pragma kernel BitRev
+#pragma kernel FFTStage
+#pragma kernel Pack
+#pragma kernel GradJacob
+
+#define FFT_N 256
+#define PI 3.14159265358979
+
+Texture2D<float4> _Src;
+Texture2D<float4> _SrcB;      // 仅 Pack 用：第二组 FFT 结果（Dz）
+RWTexture2D<float4> _Dst;
+
+RWTexture2D<float4> _H0;      // xy=h0(k), zw=conj(h0(-k))
+RWTexture2D<float4> _SpecA;   // xy=h谱, zw=Dx谱
+RWTexture2D<float4> _SpecB;   // xy=Dz谱
+RWTexture2D<float4> _Disp;    // x=Dx, y=Dz, z=h, w=保留
+RWTexture2D<float4> _Grad;    // x=dh/dx, y=dh/dz, z=Jacobian, w=foam
+
+float4 _Sim;      // x=模拟时刻, y=风向x, z=风向z, w=choppy 强度
+float4 _Wind;     // x=风速, y=谱幅, z=保留, w=随机种子
+float4 _Grid;     // x=N, y=该级水域边长 L, z=保留, w=保留
+int _Pass;
+int _Axis;        // 0=沿 x 的行变换, 1=沿 y 的列变换
+int _Sign;        // 求位移用逆变换（e^{+ikx}，符号 +1）
+
+// ── 确定性哈希高斯（Box-Muller）──
+float2 HashGauss(uint2 p, float seed)
+{
+    uint h = p.x * 374761393u + p.y * 668265263u + (uint)(seed * 971.0);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    float u1 = (float)((h & 0xFFFFFFu) % 100000u) / 100000.0 * 0.999 + 0.0005;
+    h = (h ^ 61u) ^ (h >> 16);
+    float u2 = (float)((h & 0xFFFFFFu) % 100000u) / 100000.0;
+    float r = sqrt(-2.0 * log(u1));
+    return float2(r * cos(2.0 * PI * u2), r * sin(2.0 * PI * u2));
+}
+
+float2 KAt(uint2 id)
+{
+    float n = (float)id.x - FFT_N * 0.5;
+    float m = (float)id.y - FFT_N * 0.5;
+    return float2(2.0 * PI * n / _Grid.y, 2.0 * PI * m / _Grid.y);
+}
+
+[numthreads(8, 8, 1)]
+void InitH0(uint3 id : SV_DispatchThreadID)
+{
+    float2 k = KAt(id.xy);
+    float kl = length(k);
+    if (kl < 1e-4) { _H0[id.xy] = 0; return; }
+
+    float2 kn = k / kl;
+    float2 wn = normalize(_Sim.yz);
+    float Lw = _Wind.x * _Wind.x / 9.81;              // 风程 = V²/g
+    float kd = dot(kn, wn);
+    // Phillips：方向扩展 |k·ŵ|² + 小波截断 exp(−k²l²)，l = L/625
+    float P = _Wind.y * exp(-1.0 / (kl * kl * Lw * Lw)) / (kl * kl * kl * kl)
+              * kd * kd * exp(-kl * kl * _Grid.y * _Grid.y / 390625.0);
+    float amp = sqrt(max(P, 0.0) * 0.5);
+    float2 g1 = HashGauss(id.xy, _Wind.w);
+    // h0(-k) 用镜像坐标的确定性哈希重算（Phillips 偶函数 ⇒ 同幅值）
+    // ⚠ 镜像 = (N−id)%N（几何取负）。曾写成 (id+N/2)%N——那是 fftshift 象限
+    //   交换，会把谱搬去错误的 k，单元自检就是为抓这类错存在的。
+    float2 g2 = HashGauss((FFT_N - id.xy) % FFT_N, _Wind.w + 13.7);
+    _H0[id.xy] = float4(g1.x * amp, g1.y * amp, g2.x * amp, -g2.y * amp);
+}
+
+float4 _Delta;    // InitDelta 用：x=kx 纹素, y=kz 纹素, z=幅值, w=unused
+
+// 单元自检的 δ 谱（行波构造）：本格 h0(k0)=(a,0)、镜像格 zw=conj(h0(k0))=(a,0)。
+// ⚈ 为什么不用 CPU 纹理上传：把 Texture2D 绑进 RW 槽（UAV）会静默失败，
+//   谱永远是空的——实测 δ 幅值 64→8 输出纹丝不动才定位到。
+[numthreads(8, 8, 1)]
+void InitDelta(uint3 id : SV_DispatchThreadID)
+{
+    float4 v = 0;
+    uint2 m = (FFT_N - id.xy) % FFT_N;
+    if (id.x == (uint)_Delta.x && id.y == (uint)_Delta.y) v = float4(_Delta.z, 0, 0, 0);
+    // 镜像格：本格的 −k 位置存 conj(h0(k0))
+    if (m.x == (uint)_Delta.x && m.y == (uint)_Delta.y) v = float4(0, 0, _Delta.z, 0);
+    _H0[id.xy] = v;
+}
+
+[numthreads(8, 8, 1)]
+void UpdateSpec(uint3 id : SV_DispatchThreadID)
+{
+    float4 h0 = _H0[id.xy];
+    float2 k = KAt(id.xy);
+    float kl = length(k);
+    if (kl < 1e-4)
+    {
+        _SpecA[id.xy] = 0; _SpecB[id.xy] = 0;
+        return;
+    }
+    float w = sqrt(9.81 * kl);                        // 深水色散 ω=√(gk)
+    float c, s;
+    sincos(w * _Sim.x, s, c);
+    // h = h0(k)e^{iωt} + conj(h0(-k))e^{-iωt}
+    float2 h = float2(h0.x * c - h0.y * s, h0.x * s + h0.y * c)
+             + float2(h0.z * c + h0.w * s, -h0.z * s + h0.w * c);
+    // D = -i·k̂·h：(a+bi)(-i) = (b, -a)
+    float2 khat = k / kl;
+    float2 Dx = float2(h.y * khat.x, -h.x * khat.x);
+    float2 Dz = float2(h.y * khat.y, -h.x * khat.y);
+    _SpecA[id.xy] = float4(h, Dx);
+    _SpecB[id.xy] = float4(Dz, 0, 0);
+}
+
+uint BitRev(uint v)
+{
+    uint r = 0;
+    [unroll]
+    for (int i = 0; i < 8; i++)
+    {
+        r = (r << 1) | (v & 1u);
+        v >>= 1;
+    }
+    return r;
+}
+
+[numthreads(8, 8, 1)]
+void BitRev(uint3 id : SV_DispatchThreadID)
+{
+    uint2 src = _Axis == 0 ? uint2(BitRev(id.x), id.y) : uint2(id.x, BitRev(id.y));
+    _Dst[id.xy] = _Src[src];
+}
+
+// 基-2 DIT 蝶形一级（输入=位反转序，输出=自然序；每通道独立线性变换）
+[numthreads(8, 8, 1)]
+void FFTStage(uint3 id : SV_DispatchThreadID)
+{
+    uint i = _Axis == 0 ? id.x : id.y;
+    uint len = 1u << (_Pass + 1);
+    uint half = len >> 1;
+    uint t = i / len;
+    uint kk = i % len;
+    uint j = kk % half;
+    float ang = 2.0 * PI * j / len * _Sign;
+    float cw, sw;
+    sincos(ang, sw, cw);
+    // ⚈ twiddle = e^{+i·ang}，符号只在 ang 里出现一次。曾写成 (cw,-sw)——
+    //   负号把 _Sign 吃掉，正逆变换不分；δ谱（恒模）测不出，随机谱全错
+    //   （离线对 numpy 复算实锤，修正后误差 1e-15）。
+    float2 tw = float2(cw, sw);
+
+    uint2 i1 = _Axis == 0 ? uint2(t * len + j, id.y) : uint2(id.x, t * len + j);
+    uint2 i2 = _Axis == 0 ? uint2(i1.x + half, id.y) : uint2(id.x, i1.y + half);
+
+    float4 a = _Src[i1];
+    float4 b = _Src[i2];
+    float4 bw = float4(
+        tw.x * b.x - tw.y * b.y, tw.x * b.y + tw.y * b.x,
+        tw.x * b.z - tw.y * b.w, tw.x * b.w + tw.y * b.z);
+    _Dst[id.xy] = kk < half ? a + bw : a - bw;
+}
+
+[numthreads(8, 8, 1)]
+void Pack(uint3 id : SV_DispatchThreadID)
+{
+    // 棋盘频移 ×(−1)^(x+y)（k 居中网格的 1/N 频移）+ 逆变换 1/N² 归一
+    float sign = ((id.x + id.y) & 1) ? -1.0 : 1.0;
+    float norm = sign / (FFT_N * FFT_N);
+    float4 a = _Src[id.xy];     // xy=h, zw=Dx
+    float4 b = _SrcB[id.xy];    // xy=Dz
+    _Disp[id.xy] = float4(a.z * norm, b.x * norm, a.x * norm, 0);
+}
+
+[numthreads(8, 8, 1)]
+void GradJacob(uint3 id : SV_DispatchThreadID)
+{
+    float dx = _Grid.y / FFT_N;                       // 世界步长（米/格）
+    uint2 xl = uint2(max(id.x - 1, 0), id.y);
+    uint2 xr = uint2(min(id.x + 1, FFT_N - 1), id.y);
+    uint2 yd = uint2(id.x, max(id.y - 1, 0));
+    uint2 yu = uint2(id.x, min(id.y + 1, FFT_N - 1));
+    float4 L = _Disp[xl], R = _Disp[xr], D = _Disp[yd], U = _Disp[yu];
+    float dhdx = (R.z - L.z) / (2.0 * dx);
+    float dhdz = (U.z - D.z) / (2.0 * dx);
+    // choppy 雅可比：J = (1+∂Dx/∂x)(1+∂Dz/∂z) − ∂Dx/∂z·∂Dz/∂x
+    float dxxx = (R.x - L.x) / (2.0 * dx);
+    float dxzz = (U.y - D.y) / (2.0 * dx);
+    float dxxz = (U.x - D.x) / (2.0 * dx);
+    float dxzx = (R.y - L.y) / (2.0 * dx);
+    float J = (1.0 + dxxx) * (1.0 + dxzz) - dxxz * dxzx;
+    float foam = saturate(-(J - 0.85) * 3.0);         // J<0.85 起沫
+    _Grad[id.xy] = float4(dhdx, dhdz, J, foam);
+}
