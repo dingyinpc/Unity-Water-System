@@ -149,6 +149,10 @@ namespace WaterProject.EditorTools
                 rings.foamColor = new Color(0.92f, 0.98f, 1.0f, 0.9f);
             }
 
+            // R24 尾迹加强档：步频 0.21s（场景序列化值由这里刷新）
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            if (ch != null) ch.moveRippleInterval = 0.21f;
+
             // 水面材质：细纹理尾波 + 微光动态退场（新属性缺省即此值，写一遍防漂移）
             var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Pool.mat");
             if (m != null)
@@ -287,6 +291,52 @@ namespace WaterProject.EditorTools
             WriteProbe($"R582 {scene,-10}: n={arr.Length} avg={avg:F1}ms p50={arr[arr.Length / 2]:F1}ms "
                      + $"p95={arr[(int)(arr.Length * 0.95f)]:F1}ms max={arr[arr.Length - 1]:F1}ms "
                      + $"({1000f / avg:F0} fps 上界)\n");
+        }
+
+        // ── R24 构图轮：暗角档（最低成本的低频杠杆——只压画幅边缘，不动全局曝光）──
+        // 诊断：全线中低频超额 9~13×、近黑占比 1~17% vs 参考 35~40%；暗角把四角
+        // 大尺度功率压下去 ⇒ S2 斜率变平（低频降=曲线更平），同时贡献近黑面积。
+        [MenuItem("Tools/Fix/581 构图暗角=0.55(当前场景)")]
+        public static void VignetteStrong()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null) { WriteProbe("R581 REFUSED: 无 Volume\n"); return; }
+            var pr = vol.sharedProfile;
+            if (!pr.TryGet<UnityEngine.Rendering.Universal.Vignette>(out var vg))
+            { var g = pr.Add<UnityEngine.Rendering.Universal.Vignette>(true); AssetDatabase.AddObjectToAsset(g, pr); vg = g; }
+            vg.intensity.Override(0.55f);
+            vg.smoothness.Override(0.55f);
+            EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
+            WriteProbe($"R581 vignette 0.55 ({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
+        }
+
+        [MenuItem("Tools/Fix/581b 构图暗角=还原0.30(当前场景)")]
+        public static void VignetteRevert()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null) { WriteProbe("R581b REFUSED: 无 Volume\n"); return; }
+            if (vol.sharedProfile.TryGet<UnityEngine.Rendering.Universal.Vignette>(out var vg))
+            {
+                vg.intensity.Override(0.30f);
+                vg.smoothness.Override(0.45f);
+                EditorUtility.SetDirty(vol.sharedProfile); AssetDatabase.SaveAssetIfDirty(vol.sharedProfile);
+            }
+            WriteProbe("R581b vignette 0.30\n");
+        }
+
+        // R24 插值档：Main 实测 0.30→近黑13.5% / 0.55→61.9%，目标 35.6% ⇒ ≈0.42
+        [MenuItem("Tools/Fix/581c 构图暗角=0.42(当前场景)")]
+        public static void VignetteMid()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null) { WriteProbe("R581c REFUSED: 无 Volume\n"); return; }
+            var pr = vol.sharedProfile;
+            if (!pr.TryGet<UnityEngine.Rendering.Universal.Vignette>(out var vg))
+            { var g = pr.Add<UnityEngine.Rendering.Universal.Vignette>(true); AssetDatabase.AddObjectToAsset(g, pr); vg = g; }
+            vg.intensity.Override(0.42f);
+            vg.smoothness.Override(0.50f);
+            EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
+            WriteProbe($"R581c vignette 0.42 ({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
         }
 
         // ── R22a C7 抗闪：SSRTemporalFeature 的安装/卸载（唯一写入点）──
@@ -508,11 +558,13 @@ namespace WaterProject.EditorTools
                     for (int x = 0; x < N; x++)
                     {
                         float u = x / (float)N, v = y / (float)N;
-                        // 4px 主噪(64 格) + 2px 细节(128 格,弱) + 8px 团块(32 格,强——
-                        // 频谱斜率对中频最敏感，团块抬的是拟合腰部的噪底)
+                        // 4px 主噪(64格) + 2px 细节(128格,弱) + 8px 团块(32格) + 16px 宏块(16格)
+                        // —— R24：S2 斜率差的形状在中频段(r20-80)，16px 八度=压缩宏块噪，
+                        //    参考视频(重度压缩手机录屏)频谱的签名层；格点数都是 256 整除因子
                         float n = PeriodicValueNoise(u, v, 64, 0x9e37u) * 1.00f
                                 + PeriodicValueNoise(u, v, 128, 0x51edu) * 0.35f
-                                + PeriodicValueNoise(u, v, 32, 0x7f4au) * 0.75f;
+                                + PeriodicValueNoise(u, v, 32, 0x7f4au) * 0.75f
+                                + PeriodicValueNoise(u, v, 16, 0x2b99u) * 0.60f;
                         vals[y * N + x] = n;
                     }
                 float mean = 0f; foreach (var f in vals) mean += f; mean /= vals.Length;

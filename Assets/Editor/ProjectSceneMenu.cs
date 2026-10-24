@@ -34,6 +34,8 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/Project/122 打开 PondScene")]           public static void OpenPond() => Open("PondScene.unity", "122");
         [MenuItem("Tools/Project/123 打开 PoolScene")]           public static void OpenPool() => Open("PoolScene.unity", "123");
         [MenuItem("Tools/Project/124 打开 IsletScene")]          public static void OpenIslet() => Open("IsletScene.unity", "124");
+        // R24 补缺：FFTScene 一直没有开场景菜单（R22 性能表缺席项）
+        [MenuItem("Tools/Project/126 打开 FFTScene")]            public static void OpenFFT() => Open("FFTScene.unity", "126");
 
         [MenuItem("Tools/Project/125 当前场景(写探针)")]
         public static void ShowCurrent()

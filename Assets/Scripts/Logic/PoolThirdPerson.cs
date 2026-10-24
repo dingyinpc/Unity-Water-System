@@ -20,7 +20,7 @@ namespace WaterProject.Logic
         public float floorY = -1.35f;                       // 池底
 
         [Header("涟漪联动")]
-        public float moveRippleInterval = 0.24f;
+        public float moveRippleInterval = 0.21f;
         public float idleRippleInterval = 1.9f;
 
         [Header("跳跃/跳水")]
@@ -145,8 +145,8 @@ namespace WaterProject.Logic
                         rp.x += Random.Range(-0.22f, 0.22f);
                         rp.z += Random.Range(-0.22f, 0.22f);
                         rp.y = 0f;
-                        // R21 v2：系数 0.22→0.30（波速降 3.5 倍后旧系数的尾迹读不出，视觉判"偏淡"）
-                        PoolRipples.Instance.SpawnDrop(rp, 0.35f + speed * 0.30f);
+                        // R24：0.35+0.36·speed + 步频 0.21s（594 里同步 stamp 场景实例）——尾迹"中等"→"强"
+                        PoolRipples.Instance.SpawnDrop(rp, 0.35f + speed * 0.36f);
                     }
                 }
                 else if (Time.time >= _nextIdleRipple)

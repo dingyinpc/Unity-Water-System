@@ -987,7 +987,7 @@ MonoBehaviour:
   turnLerp: 10
   poolHalf: {x: 5.3, y: 2.3}
   floorY: -1.35
-  moveRippleInterval: 0.24
+  moveRippleInterval: 0.21
   idleRippleInterval: 1.9
   jumpVel: 6.5
   gravity: 12
