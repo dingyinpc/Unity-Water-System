@@ -28,7 +28,7 @@ Material:
     - _AmbStrength: 0.55
     - _FillLight: 0.18
     - _GroutWidth: 0.012
-    - _MicroAmt: 1
+    - _MicroAmt: 0
     - _TileSize: 0.2
     - _TintJitter: 0.1
     m_Colors:

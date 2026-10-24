@@ -245,7 +245,7 @@ namespace WaterProject.EditorTools
             WriteProbe($"R584 water deep x{n}\n");
         }
 
-        [MenuItem("Tools/Fix/584b Pool 水色=还原(0.55/0.30/0.55)")]
+        [MenuItem("Tools/Fix/584b Pool 水色=还原(干净亮水完整档)")]
         public static void PoolWaterRevert()
         {
             int n = 0;
@@ -253,7 +253,10 @@ namespace WaterProject.EditorTools
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.30f);
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.55f);
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_WaterColor", new Color(0.10f, 0.55f, 0.62f, 1f));
-            WriteProbe($"R584b water revert x{n}\n");
+            // R24 用户拍板 A(干净档)补全：网锐度/漂移速度也回 R20 前的值
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticSharp", 3.0f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsSpeed", 0.5f);
+            WriteProbe($"R584b water revert(clean) x{n}\n");
         }
 
         // 深青加强档：视觉判词"底黑网亮"+参考水区 p10=1(近黑)/p90=185 vs 我们 154/222
