@@ -145,6 +145,16 @@ Shader "WaterProject/Water_Pool"
                 float d = frac(sin(dot(i + float2(1, 1), float2(127.1, 311.7))) * 43758.5453);
                 return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
             }
+            // R18-G1 亮闪场：噪声离散化的太阳耀斑点（随微光场时间演化）
+            float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
+            {
+                float2 q = xz * 6.5 + float2(t * 0.35, -t * 0.28);
+                float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
+                float glint = smoothstep(0.960, 0.995, s);
+                float3 rv = reflect(-V, N);
+                return glint * pow(saturate(dot(rv, sunDir)), 24.0);
+            }
+
             float3 ShimmerN(float2 xz, float t, float scale)
             {
                 float2 q1 = xz * scale + float2(t * 0.13, t * 0.08);
@@ -304,6 +314,7 @@ Shader "WaterProject/Water_Pool"
                 float edgeFade = saturate(min(eDist.x, eDist.y) / 0.03);
                 edgeFade = edgeFade * edgeFade * (3.0 - 2.0 * edgeFade);
                 float alpha = saturate(_Opacity + fres * 0.55) * lerp(0.25, 1.0, edgeFade);
+                body += L.color * Sparkle(wp.xz, t, N, V, L.direction) * 2.5;
                 return half4(body, alpha);
             }
             ENDHLSL

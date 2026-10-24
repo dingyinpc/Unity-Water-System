@@ -180,6 +180,7 @@ Shader "WaterProject/Water_Ocean"
                 float  _FogBankAmount, _FogBankStart, _FogBankEnd, _FogBankScale, _FogBankDrift, _FogSunBank;
                 float4 _FogColor;
 
+                float ValueNoise(float2 p);   // 前置声明：FogBank 在噪声定义之前使用（R16 重排后暴露）
                 // R4：世界 XZ 低频雾团（2 倍频 + 慢漂移）——远处"一堆堆"的雾，
                 // 近岸为 0 保持与 URP 同式（防岸线断层）
                 float FogBank(float2 xz)
@@ -306,6 +307,17 @@ Shader "WaterProject/Water_Ocean"
 
             // R16-G1 水面微光：双对向滚动干涉纹 + 时间域弯曲 = **原地演化**的细结构。
             // 参考的水面能量来自频谱演化，静态图滚动给不出（R13 归因、R15 副产物证实）。
+            // R18-G1 亮闪场：噪声离散化的太阳耀斑点（随微光场时间演化）——
+            // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
+            float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
+            {
+                float2 q = xz * 6.5 + float2(t * 0.35, -t * 0.28);
+                float s = ValueNoise(q) * 0.7 + ValueNoise(q * 1.9 + 4.7) * 0.3;
+                float glint = smoothstep(0.960, 0.995, s);
+                float3 rv = reflect(-V, N);
+                return glint * pow(saturate(dot(rv, sunDir)), 24.0);
+            }
+
             float3 ShimmerN(float2 xz, float t)
             {
                 float2 q1 = xz * _ShimmerScale + float2(t * 0.11, t * 0.07);
@@ -540,6 +552,7 @@ Shader "WaterProject/Water_Ocean"
 
                 // 开了解析雾就不再叠一次 URP 雾（叠两次 => 水面比地形白，岸线断层）
                 if (_FogOn < 0.5) col = MixFog(col, IN.fogCoord);
+                col += mainLight.color * Sparkle(worldPos.xz, t, N, V, mainLight.direction) * 2.2;
                 return half4(col, alpha);
             }
             ENDHLSL

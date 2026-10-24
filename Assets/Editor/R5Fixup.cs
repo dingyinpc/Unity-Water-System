@@ -175,6 +175,20 @@ namespace WaterProject.EditorTools
             WriteProbe("R596 demoInterval=12 已存场景\n");
         }
 
+        [MenuItem("Tools/Fix/595b Main 水体探针(只读)")]
+        public static void MainWaterProbe()
+        {
+            var go = GameObject.Find("Water");
+            if (go == null) { WriteProbe("MWProbe: 无 Water 对象\n"); return; }
+            var r = go.GetComponent<MeshRenderer>();
+            var m = r != null ? r.sharedMaterial : null;
+            var cam = Camera.main;
+            WriteProbe("MWProbe: renderer=" + (r != null && r.enabled)
+                + " mat=" + (m != null ? m.name + "/" + m.shader.name : "null")
+                + " pos=" + go.transform.position.ToString("F1")
+                + " cam=" + (cam != null ? cam.transform.position.ToString("F1") + " euler=" + cam.transform.eulerAngles.ToString("F0") : "null") + "\n");
+        }
+
         static int Set(string path, string prop, float v)
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);

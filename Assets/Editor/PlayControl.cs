@@ -44,6 +44,9 @@ namespace WaterProject.EditorTools
             Write("PLAY STATE isPlaying=" + EditorApplication.isPlaying
                   + " isCompiling=" + EditorApplication.isCompiling
                   + " runInBackground=" + Application.runInBackground
+                  + " timeScale=" + Time.timeScale.ToString("F2")
+                  + " frame=" + Time.frameCount
+                  + " t=" + Time.time.ToString("F2")
                   + " scene=" + (string.IsNullOrEmpty(sc.path) ? "(未保存)" : sc.path)
                   + " dirty=" + sc.isDirty + "\n");
         }
