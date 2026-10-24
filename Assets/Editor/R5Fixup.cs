@@ -57,6 +57,77 @@ namespace WaterProject.EditorTools
             WriteProbe($"R592 FFT 调色({prof.name}): exp=+1.3 sat=-45 contrast=+22\n");
         }
 
+        [MenuItem("Tools/Fix/593 应用场景调色对表(读 Docs/Temp/grade.json)")]
+        public static void GradeApply()
+        {
+            // 行格式：场景名 exp sat con（python 调参器写，菜单只管应用）
+            string path = System.IO.Path.Combine(
+                Application.dataPath, "../Docs/Temp/grade.json");
+            if (!System.IO.File.Exists(path))
+            { WriteProbe("R593 REFUSED: Docs/Temp/grade.json 不存在\n"); return; }
+            string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            float exp = 0, sat = 0, con = 0; bool hit = false;
+            foreach (var ln in System.IO.File.ReadAllLines(path))
+            {
+                var p = ln.Split(' ');
+                if (p.Length >= 4 && p[0] == scene)
+                { hit = true; float.TryParse(p[1], out exp); float.TryParse(p[2], out sat); float.TryParse(p[3], out con); break; }
+            }
+            if (!hit) { WriteProbe($"R593 REFUSED: json 无 {scene} 行\n"); return; }
+
+            var vol = Object.FindObjectOfType<Volume>();
+            bool created = false;
+            if (vol == null)
+            {
+                var go = new GameObject("GradeVolume");
+                vol = go.AddComponent<Volume>();
+                vol.isGlobal = true;
+                created = true;
+            }
+            if (vol.sharedProfile == null)
+            {
+                var prof = ScriptableObject.CreateInstance<VolumeProfile>();
+                string pp = $"Assets/Art/Materials/{scene}_Grade.profile";
+                AssetDatabase.CreateAsset(prof, pp);
+                vol.sharedProfile = prof;
+            }
+            var pr = vol.sharedProfile;
+            if (!pr.TryGet<Tonemapping>(out var tm))
+            { tm = pr.Add<Tonemapping>(true); AssetDatabase.AddObjectToAsset(tm, pr); }
+            tm.mode.overrideState = true; tm.mode.value = TonemappingMode.ACES;
+            if (!pr.TryGet<ColorAdjustments>(out var ca))
+            { ca = pr.Add<ColorAdjustments>(true); AssetDatabase.AddObjectToAsset(ca, pr); }
+            ca.postExposure.overrideState = true; ca.postExposure.value = exp;
+            ca.saturation.overrideState = true; ca.saturation.value = sat;
+            ca.contrast.overrideState = true; ca.contrast.value = con;
+            EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
+            if (created) UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            WriteProbe($"R593 {scene}: exp={exp} sat={sat} con={con}{(created ? " (新建Volume已标脏)" : "")}\n");
+        }
+
+        [MenuItem("Tools/Fix/595 回读当前调色(写探针)")]
+        public static void GradeDump()
+        {
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol == null || vol.sharedProfile == null)
+            { WriteProbe("R595 无 Volume/profile\n"); return; }
+            string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (vol.sharedProfile.TryGet<ColorAdjustments>(out var ca))
+                WriteProbe($"GRADE cur {scene} {ca.postExposure.value} {ca.saturation.value} {ca.contrast.value}\n");
+            else WriteProbe($"GRADE cur {scene} 无ColorAdjustments\n");
+        }
+
+        [MenuItem("Tools/Fix/594 Pool 波速档(stepsPerFrame 2↔1, Play)")]
+        public static void PoolStep()
+        {
+            if (!Application.isPlaying) { WriteProbe("R594 REFUSED: 仅 Play\n"); return; }
+            var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
+            if (rip == null) { WriteProbe("R594 REFUSED: 无 PoolRipples\n"); return; }
+            rip.stepsPerFrame = rip.stepsPerFrame >= 2 ? 1 : 2;
+            WriteProbe($"R594 stepsPerFrame -> {rip.stepsPerFrame}\n");
+        }
+
         static int Set(string path, string prop, float v)
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);

@@ -1,0 +1,76 @@
+{
+ "label": "S1G2_pool_step1",
+ "ours_dir": "Docs/screenshots/seq_PoolScene_134522",
+ "ref": [
+  1381,
+  1471
+ ],
+ "ours_frames": 96,
+ "ref_frames": 91,
+ "compare_sec": 3.0,
+ "rois": {
+  "sky": {
+   "D1_ours": 72.7,
+   "D1_ref": 54.7,
+   "rho_E": 1.33,
+   "pass_E": true,
+   "D2_spike_ours": 2.1,
+   "D2_spike_ref": 4.17,
+   "pass_D2": true,
+   "D3_v_ours": 0.0,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    10,
+    0
+   ],
+   "D4_f_ours": 1.33,
+   "D4_f_ref": 0.67,
+   "rho_f": 2.0,
+   "pass_D4": false
+  },
+  "water": {
+   "D1_ours": 585.1,
+   "D1_ref": 72.7,
+   "rho_E": 8.045,
+   "pass_E": false,
+   "D2_spike_ours": 2.15,
+   "D2_spike_ref": 3.63,
+   "pass_D2": true,
+   "D3_v_ours": 0.0,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    14,
+    3
+   ],
+   "D4_f_ours": 2.67,
+   "D4_f_ref": 0.67,
+   "rho_f": 4.0,
+   "pass_D4": false
+  },
+  "full": {
+   "D1_ours": 369.3,
+   "D1_ref": 62.7,
+   "rho_E": 5.892,
+   "pass_E": false,
+   "D2_spike_ours": 2.1,
+   "D2_spike_ref": 4.12,
+   "pass_D2": true,
+   "D3_v_ours": 0.0,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    14,
+    1
+   ],
+   "D4_f_ours": 1.33,
+   "D4_f_ref": 0.67,
+   "rho_f": 2.0,
+   "pass_D4": false
+  }
+ }
+}
