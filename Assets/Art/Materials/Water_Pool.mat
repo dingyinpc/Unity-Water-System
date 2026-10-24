@@ -31,7 +31,7 @@ Material:
     - _CausticDisperse: 0.5
     - _CausticMode: 2
     - _CausticsScale: 0.55
-    - _CausticsSpeed: 1
+    - _CausticsSpeed: 0.5
     - _CausticsStrength: 0.55
     - _CrestFoam: 0.22
     - _DebugMode: 0

@@ -78,7 +78,7 @@ Material:
     - _SwashSpeed: 0.13
     - _SwellAmp: 1
     - _SwellScale: 1
-    - _SwellSpeed: 1
+    - _SwellSpeed: 0.45
     - _Whitecap: 0.2
     - _WindAlign: 0.8
     m_Colors:

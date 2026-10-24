@@ -71,7 +71,7 @@ Material:
     - _TransGloss: 48
     - _WaveAmpScale: 0.5
     - _WaveCount: 4
-    - _WaveTimeScale: 1.8
+    - _WaveTimeScale: 0.45
     m_Colors:
     - _DeepColor: {r: 0.078, g: 0.34, b: 0.43, a: 1}
     - _FoamColor: {r: 0.88, g: 0.96, b: 0.96, a: 1}

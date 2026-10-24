@@ -1015,7 +1015,7 @@ namespace WaterProject.EditorTools
             // 几何波：fetch 正确的短波细浪
             m.SetFloat("_WaveAmp", 0.010f);
             m.SetFloat("_WaveScale", 1.0f);
-            m.SetFloat("_WaveSpeed", 0.55f);
+            m.SetFloat("_WaveSpeed", 0.22f);   // R5#2: S6 节奏 1.67→≈0.67Hz
 
             // 表面皮肤才是潭水的主信号 —— 但强度必须克制，否则倒影会被打碎成噪点
             m.SetFloat("_DetailStrength", 0.28f);

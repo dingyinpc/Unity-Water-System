@@ -65,7 +65,7 @@ Material:
     - _SunStrength: 0.5
     - _WaveAmp: 0.01
     - _WaveScale: 1
-    - _WaveSpeed: 0.55
+    - _WaveSpeed: 0.22
     m_Colors:
     - _DeepColor: {r: 0.016, g: 0.06, b: 0.108, a: 1}
     - _FoamColor: {r: 0.62, g: 0.68, b: 0.56, a: 1}

@@ -220,14 +220,22 @@ Shader "WaterProject/Sky_Coast"
                         float dens = CloudDensity(p, h);
                         if (dens > 0.004)
                         {
-                            // 一次太阳阴影采样（320m 朝太阳）：云自阴影
-                            float3 sp2 = p + sunDir * 320.0;
-                            float h2 = h + sunDir.y * 320.0;
-                            float dSun = CloudDensity(sp2, h2);
-                            float shadow = exp(-(dens + dSun) * 2.6);
+                            // R5#9 三 tap 太阳行进（180/420/900m 加权）——单 tap 给不出
+                            // "云底暗、云顶亮"的立体明暗，是对比度 ×3 缺口的主因之一
+                            float dS1 = CloudDensity(p + sunDir * 180.0, h + sunDir.y * 180.0);
+                            float dS2 = CloudDensity(p + sunDir * 420.0, h + sunDir.y * 420.0);
+                            float dS3 = CloudDensity(p + sunDir * 900.0, h + sunDir.y * 900.0);
+                            float dSun = dS1 * 0.5 + dS2 * 0.35 + dS3 * 0.25;
+                            float shadow = exp(-(dens * 1.2 + dSun) * 2.6);
                             float phase = 0.62 + 0.38 * pow(saturate(dot(d, sunDir)), 3.0);
-                            float3 lit = lerp(_CloudShadow.rgb, _CloudColor.rgb * 1.25,
-                                              saturate(shadow * (0.55 + 0.45 * phase)));
+                            // 粉末效应：薄处（迎光边）提亮，厚处压住——云边的银线由此来
+                            float powder = 1.0 - exp(-dens * 8.0);
+                            float Hc = _CloudTop - _CloudBase;
+                            // 云顶环境光：高处泛天光蓝白，与云底阴影拉开层次
+                            float topAmb = smoothstep(0.25, 1.0, h / Hc) * (1.0 - _NightAmount);
+                            float3 lit = lerp(_CloudShadow.rgb, _CloudColor.rgb * 1.45,
+                                              saturate(shadow * (0.45 + 0.40 * phase) + powder * 0.30 * shadow));
+                            lit += _CloudColor.rgb * 0.20 * topAmb * shadow;
                             // 太阳低时云缘向环境暖色过渡（S13 续卡"云体边缘向环境色"）
                             lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
                                        saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);
@@ -287,9 +295,9 @@ Shader "WaterProject/Sky_Coast"
                     // 白天型：小亮核 + 鬼影
                     col += float3(1.0, 0.92, 0.78)
                            * (pow(sd, 3000.0) * 1.6 + ghosts * 0.55) * dayW * cloudT * _FlareAmount;
-                    // 黄昏型：大红斑 + 内亮环
-                    col += float3(1.0, 0.42, 0.20) * pow(sd, 24.0) * 0.55 * duskW * cloudT * _FlareAmount;
-                    col += float3(1.0, 0.55, 0.30) * pow(sd, 150.0) * 0.85 * duskW * cloudT * _FlareAmount;
+                    // 黄昏型：大红斑 + 内亮环（R5#10 强度 ×2——max 138 偏柔实锤）
+                    col += float3(1.0, 0.42, 0.20) * pow(sd, 24.0) * 1.1 * duskW * cloudT * _FlareAmount;
+                    col += float3(1.0, 0.55, 0.30) * pow(sd, 150.0) * 1.7 * duskW * cloudT * _FlareAmount;
                 }
 
                 return half4(col, 1.0);

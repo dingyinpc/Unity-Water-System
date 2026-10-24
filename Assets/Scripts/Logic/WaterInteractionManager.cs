@@ -22,7 +22,7 @@ namespace WaterProject.Logic
 
         [Header("演示")]
         public bool autoDemo = true;
-        public float demoInterval = 4.0f;      // 演示涟漪间隔：0.45s 太频繁（白圈突兀），放宽到 4s 偶发点缀
+        public float demoInterval = 12.0f;   // R5#5: 降低 D2 尖峰      // 演示涟漪间隔：0.45s 太频繁（白圈突兀），放宽到 4s 偶发点缀
 
         [Header("程序化 Ripple")]
         public int maxRipples = 8;

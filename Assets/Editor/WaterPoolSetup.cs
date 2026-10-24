@@ -387,6 +387,8 @@ namespace WaterProject.EditorTools
             var sh = Shader.Find("WaterProject/Water_Pool");
             if (m == null) { m = new Material(sh); AssetDatabase.CreateAsset(m, p); }
             else m.shader = sh;
+            // R5#1：焦散节奏 ρ_f 2.0 → 带内（1.33→≈0.67Hz，参考 S8 同节奏）
+            m.SetFloat("_CausticsSpeed", 0.5f);
             return m;
         }
 

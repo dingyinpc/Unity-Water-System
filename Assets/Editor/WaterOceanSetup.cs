@@ -612,7 +612,7 @@ namespace WaterProject.EditorTools
             // 退到滩肩（眼高 4.5m+）之后 1.0 才安全（crest 2.2m）。
             m.SetFloat("_SwellAmp", 1.0f);
             m.SetFloat("_SwellScale", 1.0f);
-            m.SetFloat("_SwellSpeed", 1.0f);
+            m.SetFloat("_SwellSpeed", 0.45f);   // R5#3: 滚图 4.2→≈0.4 %W/s
             m.SetFloat("_WindAlign", 0.80f);
             m.SetFloat("_Steep", 0.62f);
 

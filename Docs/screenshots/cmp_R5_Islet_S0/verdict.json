@@ -1,0 +1,76 @@
+{
+ "label": "R5_Islet_S0",
+ "ours_dir": "Docs/screenshots/seq_IsletScene_130120",
+ "ref": [
+  0,
+  96
+ ],
+ "ours_frames": 85,
+ "ref_frames": 97,
+ "compare_sec": 3.2,
+ "rois": {
+  "sky": {
+   "D1_ours": 72.2,
+   "D1_ref": 69.3,
+   "rho_E": 1.042,
+   "pass_E": true,
+   "D2_spike_ours": 1.88,
+   "D2_spike_ref": 8.06,
+   "pass_D2": true,
+   "D3_v_ours": 0.37,
+   "D3_v_ref": 1.2,
+   "rho_v": 0.309,
+   "pass_D3": false,
+   "D3_hits": [
+    16,
+    1
+   ],
+   "D4_f_ours": 0.94,
+   "D4_f_ref": 0.62,
+   "rho_f": 1.5,
+   "pass_D4": true
+  },
+  "water": {
+   "D1_ours": 23.9,
+   "D1_ref": 90.6,
+   "rho_E": 0.263,
+   "pass_E": false,
+   "D2_spike_ours": 2.7,
+   "D2_spike_ref": 9.38,
+   "pass_D2": true,
+   "D3_v_ours": 0.0,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    26,
+    0
+   ],
+   "D4_f_ours": 1.25,
+   "D4_f_ref": 0.62,
+   "rho_f": 2.0,
+   "pass_D4": false
+  },
+  "full": {
+   "D1_ours": 49.0,
+   "D1_ref": 76.2,
+   "rho_E": 0.644,
+   "pass_E": true,
+   "D2_spike_ours": 2.98,
+   "D2_spike_ref": 9.62,
+   "pass_D2": true,
+   "D3_v_ours": 1.4,
+   "D3_v_ref": 3.13,
+   "rho_v": 0.447,
+   "pass_D3": false,
+   "D3_hits": [
+    10,
+    2
+   ],
+   "D4_f_ours": 0.94,
+   "D4_f_ref": 0.62,
+   "rho_f": 1.5,
+   "pass_D4": true
+  }
+ }
+}

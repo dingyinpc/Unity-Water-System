@@ -295,7 +295,7 @@ namespace WaterProject.EditorTools
             // 波浪已内置 shader 固定四波（不依赖数组序列化），此处只落盘标量旋钮
             mat.SetFloat("_WaveCount", 4);
             mat.SetFloat("_WaveAmpScale", 0.5f);
-            mat.SetFloat("_WaveTimeScale", 1.8f);
+            mat.SetFloat("_WaveTimeScale", 0.45f);   // R5#4: 平移 2.49→≈0.6 %W/s
             mat.SetFloat("_InteractionAmp", 0.22f);
             mat.SetFloat("_InteractionFoam", 0.45f);
 
@@ -980,7 +980,7 @@ namespace WaterProject.EditorTools
                 mat.SetFloat("_ScatterStrength", 0.38f);
                 mat.SetFloat("_SunTransmission", 0.7f);
                 mat.SetFloat("_TransGloss", 48f);
-                mat.SetFloat("_WaveTimeScale", 1.8f);
+                mat.SetFloat("_WaveTimeScale", 0.45f);   // R5#4: 平移 2.49→≈0.6 %W/s
                 mat.SetFloat("_WaveAmpScale", 0.5f);
                 // 交互项收敛：低强度涟漪 → 白色大圈减弱（配合演示低频 + shader 泡沫权重）
                 mat.SetFloat("_InteractionAmp", 0.22f);

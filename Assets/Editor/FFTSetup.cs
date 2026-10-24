@@ -12,6 +12,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace WaterProject.EditorTools
 {
@@ -132,6 +133,15 @@ namespace WaterProject.EditorTools
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 2000f;
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
+            // ⚠ 相机级后处理开关：不打开它 Volume 里写什么截图都逐位不变
+            //（泳池线当年的坑；离屏 cam.Render() 同样吃这个开关）
+            var cd = camGo.GetComponent<UniversalAdditionalCameraData>();
+            if (cd == null) cd = camGo.AddComponent<UniversalAdditionalCameraData>();
+            cd.renderPostProcessing = true;   // URP14 属性名（postProcessing 是无效旧名）
+            var cdCheck = camGo.GetComponent<UniversalAdditionalCameraData>();
+            WriteProbe("FFT90 camData 自检: cams=" + Object.FindObjectsOfType<Camera>(true).Length
+                       + " hasData=" + (cdCheck != null)
+                       + " rpp=" + (cdCheck != null && cdCheck.renderPostProcessing) + "\n");
 
             // ── 水面网格：600×600m，256 段 ──
             var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(MeshPath);
@@ -166,6 +176,24 @@ namespace WaterProject.EditorTools
             // 探针定标每次重写（场景序列化的旧值不追新代码默认；与泳池涟漪环同惯例）
             sim.ampScale = 985f;
             sim.timeMultiplier = 1.1f;
+
+            // ── 后处理体积（R5#7：挂 R08 调色档的前提——190 只写已存在的 Volume）──
+            var volGo = FindAny("FFTVolume");
+            if (volGo == null) volGo = new GameObject("FFTVolume");
+            var vol = volGo.GetComponent<Volume>();
+            if (vol == null) vol = volGo.AddComponent<Volume>();
+            vol.isGlobal = true;
+            var profPath = MatFolder + "/FFTVolume.profile";
+            var prof = AssetDatabase.LoadAssetAtPath<VolumeProfile>(profPath);
+            if (prof == null)
+            {
+                prof = ScriptableObject.CreateInstance<VolumeProfile>();
+                AssetDatabase.CreateAsset(prof, profPath);
+            }
+            if (!prof.TryGet<Tonemapping>(out var tm))
+            { tm = prof.Add<Tonemapping>(); AssetDatabase.AddObjectToAsset(tm, prof); }
+            tm.mode.overrideState = true; tm.mode.value = TonemappingMode.ACES;
+            vol.sharedProfile = prof;
 
             // ── S7 焦散池底（默认隐藏，menu 94 开）──
             var floor = FindAny("FFTCausticsFloor");
