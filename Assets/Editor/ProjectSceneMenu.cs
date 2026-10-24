@@ -37,6 +37,18 @@ namespace WaterProject.EditorTools
         // R24 补缺：FFTScene 一直没有开场景菜单（R22 性能表缺席项）
         [MenuItem("Tools/Project/126 打开 FFTScene")]            public static void OpenFFT() => Open("FFTScene.unity", "126");
 
+        // R24 补缺：198 构图档只改内存不落盘（原值存 EditorPrefs 可 199 还原），
+        // 需要一个显式存场景的入口把构图固化进场景
+        [MenuItem("Tools/Project/128 保存当前场景(显式)")]
+        public static void SaveCurrent()
+        {
+            var s = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            if (string.IsNullOrEmpty(s.path)) { Probe("MENU128 REFUSED: 场景未保存过(无路径)\n"); return; }
+            EditorSceneManager.MarkSceneDirty(s);
+            EditorSceneManager.SaveScene(s);
+            Probe($"MENU128 saved {s.path}\n");
+        }
+
         [MenuItem("Tools/Project/125 当前场景(写探针)")]
         public static void ShowCurrent()
         {
