@@ -44,6 +44,44 @@ namespace WaterProject.EditorTools
                 : "SEQ92 busy=" + sc.Busy + " done=" + sc.Done + "/" + sc.frames
                   + " dir=" + sc.LastDir + "\n");
         }
+
+        // ═══════════════ 95 ═══════════════
+        // 阻塞式离屏静帧：R20 颗粒/焦散定标用 —— 显式 cam.Render() 当场出图，
+        // 不等 renderedFrameCount（失焦时那个永远不会前进）。与验收静帧同通路：
+        // URP 完整后处理（含 FilmGrain/ACES）、ARGBHalf、MSAA=1、1920×1080 钉死。
+        [MenuItem("Tools/Seq/95 静帧(离屏阻塞1920x1080, 写Docs/Temp)")]
+        public static void StillFrame()
+        {
+            var cam = Camera.main;
+            if (cam == null) { WriteProbe("SEQ95 REFUSED: 无 Camera.main\n"); return; }
+            const int W = 1920, H = 1080;
+            var rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGBHalf,
+                                       RenderTextureReadWrite.Default) { antiAliasing = 1 };
+            rt.Create();
+            var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+            var prevTarget = cam.targetTexture; var prevActive = RenderTexture.active; float prevAspect = cam.aspect;
+            try
+            {
+                cam.aspect = W / (float)H;
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+                tex.Apply();
+                string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+                string dir = System.IO.Path.Combine(Application.dataPath, "../Docs/Temp");
+                System.IO.Directory.CreateDirectory(dir);
+                string p = System.IO.Path.Combine(dir,
+                    "still_" + scene + "_" + System.DateTime.Now.ToString("HHmmss") + ".png");
+                System.IO.File.WriteAllBytes(p, tex.EncodeToPNG());
+                WriteProbe("SEQ95 still " + p + " playing=" + Application.isPlaying + "\n");
+            }
+            finally
+            {
+                cam.targetTexture = prevTarget; cam.aspect = prevAspect; RenderTexture.active = prevActive;
+                Object.DestroyImmediate(tex); rt.Release(); Object.DestroyImmediate(rt);
+            }
+        }
     }
 }
 #endif

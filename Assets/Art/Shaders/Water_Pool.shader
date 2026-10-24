@@ -50,6 +50,7 @@ Shader "WaterProject/Water_Pool"
         _CausticDepthMix ("焦散深度混合 0细网/1大斑", Range(0,1)) = 0.35
         _CausticDisperse ("焦散色散强度", Range(0,1)) = 0.6
         _CausticDetile   ("三角去平铺强度", Range(0,1)) = 1.0
+        _CausticSharp    ("焦散网锐度(指数)", Float) = 3.0
 
         // ── 反射/高光 ──
         _SkyColor        ("天空反射色", Color) = (0.55, 0.75, 0.92, 1)
@@ -58,6 +59,8 @@ Shader "WaterProject/Water_Pool"
         _SunColor        ("太阳高光色", Color) = (1.0, 0.96, 0.85, 1)
         _SunGloss        ("高光锐度", Float) = 240.0
         _SunStrength     ("高光强度", Float) = 0.9
+        _SparkleGate     ("亮闪门限(大=更稀更亮)", Float) = 0.960
+        _SparkleGain     ("亮闪增益", Float) = 2.5
 
         _DebugMode       ("调试 0关 1波高 2梯度模长", Range(0,2)) = 0
     }
@@ -93,7 +96,9 @@ Shader "WaterProject/Water_Pool"
                 float  _PoolFineAmp, _ShimmerMix;
                 float  _CausticsStrength, _CausticsScale, _CausticsSpeed;
                 float  _CausticMode, _CausticDepthMix, _CausticDisperse, _CausticDetile;
+                float  _CausticSharp;
                 float  _FresnelPow, _SkyReflect, _SunGloss, _SunStrength;
+                float  _SparkleGate, _SparkleGain;
                 float  _DebugMode;
             CBUFFER_END
 
@@ -153,7 +158,8 @@ Shader "WaterProject/Water_Pool"
             {
                 float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
-                float glint = smoothstep(0.960, 0.995, s);
+                // R20 热点档：门限/增益参数化（默认=旧值零回归）——p90 缺口=稀疏炽亮高光
+                float glint = smoothstep(_SparkleGate, _SparkleGate + 0.018, s);
                 float3 rv = reflect(-V, N);
                 return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5))));
             }
@@ -183,7 +189,8 @@ Shader "WaterProject/Water_Pool"
             {
                 float a = sin(p.x * 5.3 + t * 1.05 * speed + sin(p.y * 3.9 - t * 0.75 * speed));
                 float b = sin(p.y * 4.7 - t * 0.85 * speed + sin(p.x * 4.1 + t * 0.63 * speed));
-                return pow(saturate(1.0 - abs(a * b)), 3.0);
+                // _CausticSharp 默认 3=旧行为；底黑网亮档抬到 7+（谷底压 0，网线保持亮）
+                return pow(saturate(1.0 - abs(a * b)), _CausticSharp);
             }
 
             // 三角随机平移 + 重心权重混合（C12）：把平面划成三角格，三顶点各取固定随机偏移采样，
@@ -323,7 +330,7 @@ Shader "WaterProject/Water_Pool"
                 float edgeFade = saturate(min(eDist.x, eDist.y) / 0.03);
                 edgeFade = edgeFade * edgeFade * (3.0 - 2.0 * edgeFade);
                 float alpha = saturate(_Opacity + fres * 0.55) * lerp(0.25, 1.0, edgeFade);
-                body += L.color * Sparkle(wp.xz, t, N, V, L.direction) * 2.5;
+                body += L.color * Sparkle(wp.xz, t, N, V, L.direction) * _SparkleGain;
                 return half4(body, alpha);
             }
             ENDHLSL

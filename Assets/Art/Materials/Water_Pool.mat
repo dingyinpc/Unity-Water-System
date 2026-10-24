@@ -25,14 +25,15 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.55
-    - _CausticDepthMix: 0.15
+    - _Absorb: 2.4
+    - _CausticDepthMix: 0.22
     - _CausticDetile: 0.6
     - _CausticDisperse: 0.5
     - _CausticMode: 2
-    - _CausticsScale: 0.55
+    - _CausticSharp: 7
+    - _CausticsScale: 0.85
     - _CausticsSpeed: 0.5
-    - _CausticsStrength: 0.55
+    - _CausticsStrength: 4.5
     - _CrestFoam: 0.22
     - _DebugMode: 0
     - _FloorDepth: 1.35
@@ -40,16 +41,18 @@ Material:
     - _IdleStrength: 1
     - _MaxUVOffset: 0.02
     - _NormalStrength: 1.6
-    - _Opacity: 0.3
+    - _Opacity: 0.88
     - _PoolFineAmp: 0.55
     - _RefractStrength: 0.12
     - _ShimmerMix: 0.55
     - _SkyReflect: 0.55
+    - _SparkleGain: 4
+    - _SparkleGate: 0.978
     - _SunGloss: 240
     - _SunStrength: 0.9
     - _WaveAmp: 0.055
     m_Colors:
     - _SkyColor: {r: 0.55, g: 0.75, b: 0.92, a: 1}
     - _SunColor: {r: 1, g: 0.96, b: 0.85, a: 1}
-    - _WaterColor: {r: 0.1, g: 0.55, b: 0.62, a: 1}
+    - _WaterColor: {r: 0.01, g: 0.075, b: 0.1, a: 1}
   m_BuildTextureStacks: []

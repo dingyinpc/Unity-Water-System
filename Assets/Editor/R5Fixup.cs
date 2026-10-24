@@ -226,20 +226,294 @@ namespace WaterProject.EditorTools
                 + " cam=" + (cam != null ? cam.transform.position.ToString("F1") + " euler=" + cam.transform.eulerAngles.ToString("F0") : "null") + "\n");
         }
 
-        // ── R19 感官级复刻：胶片颗粒校准（S2 频谱斜率 -2.9→-2.1 / S4 高频占比→1×）──
-        [MenuItem("Tools/Fix/589 感官颗粒=校准档(intensity 0.35)")]
-        public static void GrainOn()
+        // ── R20 高频密度：Pool 焦散参考档（S3 纹理密度向参考 S8 收）+ 瓷砖微细节 ──
+        // 实测反转：S8 参考水区仅 0.6% 近白像素，我们 15%——不是缺高光，是水太亮太清。
+        // 深青档：吸收↑/不透明度↑把白瓷砖底压下去，焦散回到中档（亮线要暗底才成立）。
+        [MenuItem("Tools/Fix/584 Pool 水色=参考深青档(Absorb1.2/Opacity0.45/焦散0.65)")]
+        public static void PoolWaterDeep()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Absorb", 1.2f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.45f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.65f);
+            WriteProbe($"R584 water deep x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/584b Pool 水色=还原(0.55/0.30/0.55)")]
+        public static void PoolWaterRevert()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Absorb", 0.55f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.30f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.55f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_WaterColor", new Color(0.10f, 0.55f, 0.62f, 1f));
+            WriteProbe($"R584b water revert x{n}\n");
+        }
+
+        // 深青加强档：视觉判词"底黑网亮"+参考水区 p10=1(近黑)/p90=185 vs 我们 154/222
+        // ——白亮底压到近黑，焦散网加亮浮上去，动态范围才有参考的形状
+        // 底黑网亮·终档：三个漏光源全堵——① alpha 透白瓷砖(0.62→0.88)；
+        // ② 乘性焦散在吸收 0.039 后太弱(0.85→4.5×)；③ _WaterColor G=0.30 是线性值
+        // ≈sRGB 150 根本不"深"，压到线性 0.075（水柱散射项带着焦散网浮在暗底上）
+        [MenuItem("Tools/Fix/584d Pool 水色=底黑网亮终档(Opacity0.88/焦散4.5/真深青)")]
+        public static void PoolWaterDeep3()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Absorb", 2.4f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.88f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 4.5f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_WaterColor", new Color(0.010f, 0.075f, 0.100f, 1f));
+            WriteProbe($"R584d water deep3 x{n}\n");
+        }
+
+        // 网锐度档：焦散图案 pow3 的谷底还有 ~0.4，强度 4.5 时把水柱散射项整体抬 +60 灰
+        //（p10 卡 124 的最后一层）；指数 7 谷底压 0、网线保持——"底黑网亮"的形状
+        [MenuItem("Tools/Fix/584e Pool 焦散网=锐利档(指数7)")]
+        public static void PoolCausticSharp()
+        {
+            int n = Set("Assets/Art/Materials/Water_Pool.mat", "_CausticSharp", 7.0f);
+            WriteProbe($"R584e caustic sharp x{n}\n");
+        }
+
+        // 深青加强档：视觉判词"底黑网亮"+参考水区 p10=1(近黑)/p90=185 vs 我们 154/222
+        // ——白亮底压到近黑，焦散网加亮浮上去，动态范围才有参考的形状
+        [MenuItem("Tools/Fix/584c Pool 水色=底黑网亮档(Absorb2.4/Opacity0.62/深青/焦散0.85)")]
+        public static void PoolWaterDeep2()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Absorb", 2.4f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.62f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.85f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_WaterColor", new Color(0.045f, 0.30f, 0.36f, 1f));
+            WriteProbe($"R584c water deep2 x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/585 Pool 亮闪=热点档(S3 p90 14→参考带, 稀而炽亮)")]
+        public static void PoolSparkleHot()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_SparkleGate", 0.978f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_SparkleGain", 4.0f);
+            WriteProbe($"R585 sparkle hot x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/585b Pool 亮闪=还原(0.960/2.5)")]
+        public static void PoolSparkleRevert()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_SparkleGate", 0.960f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_SparkleGain", 2.5f);
+            WriteProbe($"R585b sparkle revert x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/587 Pool 焦散密度=参考S8档(强0.85/密0.85/偏细网0.22)")]
+        public static void PoolCausticDense()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.85f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsScale", 0.85f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticDepthMix", 0.22f);
+            WriteProbe($"R587 caustics dense x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/587b Pool 焦散密度=还原(0.55/0.55/0.35)")]
+        public static void PoolCausticRevert()
+        {
+            int n = 0;
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 0.55f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsScale", 0.55f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticDepthMix", 0.35f);
+            WriteProbe($"R587b caustics revert x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/586 Pool 瓷砖微细节=1(3cm斑驳+砖缝AO)")]
+        public static void PoolTileMicroOn()
+        {
+            int n = Set("Assets/Art/Materials/Pool_Tile.mat", "_MicroAmt", 1f);
+            WriteProbe($"R586 tile micro on x{n}\n");
+        }
+
+        [MenuItem("Tools/Fix/586b Pool 瓷砖微细节=0(关)")]
+        public static void PoolTileMicroOff()
+        {
+            int n = Set("Assets/Art/Materials/Pool_Tile.mat", "_MicroAmt", 0f);
+            WriteProbe($"R586b tile micro off x{n}\n");
+        }
+
+        // ── R20 实锤修复：全场景相机 renderPostProcessing——Pool 主相机一直是 False，
+        //    后处理整条链(ACES/调色/颗粒)在这台相机上从未生效过（离屏/GameView 都不生效；
+        //    S2 颗粒 A/B 三档天空 std 一模一样 + 调色开/关 mean-abs-diff 仅 2.83 两条证据）。
+        //    R13 只在个别场景修过属性名，没有全场景扫过一遍。
+        [MenuItem("Tools/Fix/588 全场景相机后处理=开(renderPostProcessing, 存场景)")]
+        public static void EnableCameraPostAllScenes()
+        {
+            if (Application.isPlaying) { WriteProbe("R588 REFUSED: Play 中不开场景\n"); return; }
+            string[] scenes = { "Main", "OceanScene", "PondScene", "PoolScene", "IsletScene", "FFTScene" };
+            var sb = new System.Text.StringBuilder("R588 camera post-processing sweep:\n");
+            foreach (var s in scenes)
+            {
+                string path = "Assets/Scenes/" + s + ".unity";
+                if (!System.IO.File.Exists(path)) { sb.Append("  " + s + ": 文件不存在，跳过\n"); continue; }
+                var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(path);
+                int fixedN = 0, camN = 0;
+                foreach (var cam in Object.FindObjectsOfType<Camera>(true))
+                {
+                    camN++;
+                    var data = cam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                    if (data == null)
+                        data = cam.gameObject.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+                    if (!data.renderPostProcessing) { data.renderPostProcessing = true; fixedN++; }
+                }
+                if (fixedN > 0)
+                {
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+                    UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene);
+                }
+                sb.Append("  " + s + ": cameras=" + camN + " enabledNow=" + fixedN
+                        + (fixedN > 0 ? " (saved)" : " (already on)") + "\n");
+            }
+            WriteProbe(sb.ToString());
+        }
+
+        // ── R20 感官复刻：观看尺度颗粒（2~4px blob lookup，Custom 档）──
+        // R19 教训：URP 预设颗粒纹素=1 屏幕像素，对比降采样(1080p→432p)后平均掉了(仅+6%)。
+        // 本档自造 lookup：alpha=周期值噪声(4px 主 + 2px 细节 + 8px 团块，格点数都是 256
+        // 的整除因子 → 无缝平铺)，blob 上屏 2~4px，降采样后仍存活，S2 斜率才有得救。
+        // URP 侧逐帧随机偏移(时序沸腾白送)；幅度=alpha 偏离 0.5(乘性，ApplyGrain)。
+        static float LatticeNoise(int xi, int yi, int cells, uint seed)
+        {
+            int wx = ((xi % cells) + cells) % cells, wy = ((yi % cells) + cells) % cells;
+            uint h = (uint)(wx * 73856093) ^ (uint)(wy * 19349663) ^ seed;
+            h = (h ^ (h >> 13)) * 0x5bd1e995u; h ^= h >> 15;
+            return (h & 0xFFFFFF) / 16777215f;
+        }
+
+        static float PeriodicValueNoise(float x, float y, int cells, uint seed)
+        {
+            float gx = x * cells, gy = y * cells;
+            int x0 = Mathf.FloorToInt(gx), y0 = Mathf.FloorToInt(gy);
+            float fx = gx - x0, fy = gy - y0;
+            float ux = fx * fx * (3f - 2f * fx), uy = fy * fy * (3f - 2f * fy);
+            float a = LatticeNoise(x0, y0, cells, seed),     b = LatticeNoise(x0 + 1, y0, cells, seed);
+            float c = LatticeNoise(x0, y0 + 1, cells, seed), d = LatticeNoise(x0 + 1, y0 + 1, cells, seed);
+            return Mathf.Lerp(Mathf.Lerp(a, b, ux), Mathf.Lerp(c, d, ux), uy);
+        }
+
+        const string GrainTexPath = "Assets/Art/Textures/GrainViewScale.png";
+        static float s_grainIntensity = 0.5f;   // R20 定标：skyGrain≈11.7(4.6%调制)/S3 6×；0.7 过强
+
+        [MenuItem("Tools/Fix/589 感官颗粒=观看尺度档(2~4px blob, Custom)")]
+        public static void GrainViewScaleOn()
         {
             var vol = Object.FindObjectOfType<Volume>();
             if (vol == null || vol.sharedProfile == null)
             { WriteProbe("R589 REFUSED: 无 Volume\n"); return; }
+
+            // ── 生成/复用 lookup 资产 ──
+            const int N = 256;
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(GrainTexPath);
+            if (tex == null)
+            {
+                var px = new Color32[N * N];
+                // 归一化前先攒 float，再整体拉到 mean=0.5 / 目标 σ
+                var vals = new float[N * N];
+                for (int y = 0; y < N; y++)
+                    for (int x = 0; x < N; x++)
+                    {
+                        float u = x / (float)N, v = y / (float)N;
+                        // 4px 主噪(64 格) + 2px 细节(128 格,弱) + 8px 团块(32 格,强——
+                        // 频谱斜率对中频最敏感，团块抬的是拟合腰部的噪底)
+                        float n = PeriodicValueNoise(u, v, 64, 0x9e37u) * 1.00f
+                                + PeriodicValueNoise(u, v, 128, 0x51edu) * 0.35f
+                                + PeriodicValueNoise(u, v, 32, 0x7f4au) * 0.75f;
+                        vals[y * N + x] = n;
+                    }
+                float mean = 0f; foreach (var f in vals) mean += f; mean /= vals.Length;
+                float ss = 0f; foreach (var f in vals) ss += (f - mean) * (f - mean);
+                float sd = Mathf.Sqrt(ss / vals.Length);
+                const float targetSd = 0.090f;             // alpha σ：R20 定标(0.055 只到 S2 -2.74)
+                for (int i = 0; i < vals.Length; i++)
+                {
+                    float a = 0.5f + (vals[i] - mean) / Mathf.Max(sd, 1e-5f) * targetSd;
+                    byte ab = (byte)Mathf.Clamp(Mathf.RoundToInt(a * 255f), 0, 255);
+                    px[i] = new Color32(255, 255, 255, ab);
+                }
+                var t2 = new Texture2D(N, N, TextureFormat.RGBA32, false, true) { name = "GrainViewScale" };
+                t2.SetPixels32(px); t2.Apply();
+                System.IO.Directory.CreateDirectory("Assets/Art/Textures");
+                System.IO.File.WriteAllBytes(GrainTexPath, t2.EncodeToPNG());
+                Object.DestroyImmediate(t2);
+                AssetDatabase.ImportAsset(GrainTexPath);
+                var ti = (TextureImporter)AssetImporter.GetAtPath(GrainTexPath);
+                if (ti != null)
+                {
+                    ti.wrapMode = TextureWrapMode.Repeat;
+                    ti.filterMode = FilterMode.Bilinear;
+                    ti.sRGBTexture = false;
+                    ti.alphaIsTransparency = false;
+                    ti.SaveAndReimport();
+                }
+                tex = AssetDatabase.LoadAssetAtPath<Texture2D>(GrainTexPath);
+            }
+            if (tex == null) { WriteProbe("R589 REFUSED: lookup 生成失败\n"); return; }
+
             var pr = vol.sharedProfile;
             if (!pr.TryGet<FilmGrain>(out var fg))
             { fg = pr.Add<FilmGrain>(true); AssetDatabase.AddObjectToAsset(fg, pr); }
-            fg.type.overrideState = true; fg.type.value = FilmGrainLookup.Medium4;
-            fg.intensity.overrideState = true; fg.intensity.value = 0.35f;
+            fg.type.overrideState = true; fg.type.value = FilmGrainLookup.Custom;
+            fg.texture.overrideState = true; fg.texture.value = tex;
+            fg.intensity.overrideState = true; fg.intensity.value = s_grainIntensity;
+            fg.response.overrideState = true; fg.response.value = 0.8f;
             EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
-            WriteProbe($"R589 grain on ({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
+            WriteProbe($"R589 view-scale grain on intensity={s_grainIntensity} "
+                     + $"({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
+        }
+
+        [MenuItem("Tools/Fix/589b 感官颗粒强度档(0.2/0.35/0.5/0.7循环)")]
+        public static void GrainIntensityCycle()
+        {
+            float next = s_grainIntensity switch
+            { 0.20f => 0.35f, 0.35f => 0.50f, 0.50f => 0.70f, _ => 0.20f };
+            s_grainIntensity = next;
+            var vol = Object.FindObjectOfType<Volume>();
+            if (vol != null && vol.sharedProfile != null &&
+                vol.sharedProfile.TryGet<FilmGrain>(out var fg) && fg.intensity.value > 0f)
+            {
+                fg.intensity.value = next;
+                EditorUtility.SetDirty(vol.sharedProfile); AssetDatabase.SaveAssetIfDirty(vol.sharedProfile);
+            }
+            WriteProbe($"R589b grain intensity -> {next}\n");
+        }
+
+        // 全场景应用：每个场景的 Volume profile 是独立资产，逐场景开门(需退 Play)。
+        // lookup 资产由 589 生成过一次即可，这里只做赋值+定档 0.5。
+        [MenuItem("Tools/Fix/589c 观看颗粒=全场景应用(intensity 0.5, 存 profile)")]
+        public static void GrainAllScenes()
+        {
+            if (Application.isPlaying) { WriteProbe("R589c REFUSED: Play 中不开场景\n"); return; }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(GrainTexPath);
+            if (tex == null) { WriteProbe("R589c REFUSED: 先跑一次 589 生成 lookup\n"); return; }
+            string[] scenes = { "Main", "OceanScene", "PondScene", "PoolScene", "IsletScene", "FFTScene" };
+            var sb = new System.Text.StringBuilder("R589c grain sweep (intensity 0.5):\n");
+            foreach (var s in scenes)
+            {
+                string path = "Assets/Scenes/" + s + ".unity";
+                if (!System.IO.File.Exists(path)) continue;
+                UnityEditor.SceneManagement.EditorSceneManager.OpenScene(path);
+                var vol = Object.FindObjectOfType<Volume>();
+                if (vol == null || vol.sharedProfile == null)
+                { sb.Append("  " + s + ": 无 Volume/profile，跳过\n"); continue; }
+                var pr = vol.sharedProfile;
+                if (!pr.TryGet<FilmGrain>(out var fg))
+                { fg = pr.Add<FilmGrain>(true); AssetDatabase.AddObjectToAsset(fg, pr); }
+                fg.type.overrideState = true; fg.type.value = FilmGrainLookup.Custom;
+                fg.texture.overrideState = true; fg.texture.value = tex;
+                fg.intensity.overrideState = true; fg.intensity.value = 0.5f;
+                fg.response.overrideState = true; fg.response.value = 0.8f;
+                EditorUtility.SetDirty(pr); AssetDatabase.SaveAssetIfDirty(pr);
+                sb.Append("  " + s + ": grain on (profile saved)\n");
+            }
+            WriteProbe(sb.ToString());
         }
 
         [MenuItem("Tools/Fix/590 感官颗粒=关")]
@@ -264,6 +538,20 @@ namespace WaterProject.EditorTools
                 return 0;
             }
             m.SetFloat(prop, v);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            return 1;
+        }
+
+        static int Set(string path, string prop, Color v)
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null || !m.HasProperty(prop))
+            {
+                WriteProbe($"R591 SKIP {path}::{prop}（不存在）\n");
+                return 0;
+            }
+            m.SetColor(prop, v);
             EditorUtility.SetDirty(m);
             AssetDatabase.SaveAssetIfDirty(m);
             return 1;

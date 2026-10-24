@@ -18,6 +18,7 @@ Shader "WaterProject/Pool_Tile"
         _TintJitter("逐砖明度扰动", Range(0,1)) = 0.10
         _AmbStrength("环境光强度", Float) = 0.55
         _FillLight ("补光", Float) = 0.18
+        _MicroAmt  ("微细节(3cm斑驳+砖缝AO)", Range(0,1)) = 0
     }
     SubShader
     {
@@ -35,6 +36,7 @@ Shader "WaterProject/Pool_Tile"
             CBUFFER_START(UnityPerMaterial)
                 float4 _TileDry, _TileWet, _GroutColor;
                 float _TileSize, _GroutWidth, _TintJitter, _AmbStrength, _FillLight;
+                float _MicroAmt;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
@@ -61,6 +63,16 @@ Shader "WaterProject/Pool_Tile"
                 return frac((p3.x + p3.y) * p3.z);
             }
 
+            // R20 瓷砖微细节用的值噪声（Hash21 双线性插值）
+            float VNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                float a = Hash21(i), b = Hash21(i + float2(1, 0));
+                float c = Hash21(i + float2(0, 1)), d = Hash21(i + float2(1, 1));
+                return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
                 float3 n = normalize(IN.normalWS);
@@ -75,13 +87,20 @@ Shader "WaterProject/Pool_Tile"
                 float2 f    = frac(tuv / _TileSize);
                 float  gw   = saturate(_GroutWidth / _TileSize);
                 float2 edge = min(f, 1.0 - f);
-                float  grout = step(min(edge.x, edge.y), gw * 0.5);
+                float  eMin = min(edge.x, edge.y);
+                float  grout = step(eMin, gw * 0.5);
 
                 // 逐砖明度扰动（含灰缝对齐）
                 float h = Hash21(cell + 0.5);
                 float3 tile = lerp(_TileDry.rgb, _TileWet.rgb, step(IN.worldPos.y, 0.0));
                 tile *= 1.0 + (h - 0.5) * 2.0 * _TintJitter;
                 float3 col = lerp(tile, _GroutColor.rgb, grout);
+
+                // R20 瓷砖微细节（_MicroAmt 默认 0 零回归；菜单 586 是唯一写入点）：
+                // ① 陶砖烧制不匀的 ~3cm 斑驳；② 砖缝边缘一圈浅 AO（缝隙吃光）
+                float mot = VNoise(tuv * 34.0 + h * 17.0);
+                col *= 1.0 - _MicroAmt * 0.10 * (mot - 0.5);
+                col *= 1.0 - _MicroAmt * 0.22 * smoothstep(gw * 0.5 + 0.07, gw * 0.5, eMin);
 
                 Light L = GetMainLight();
                 float ndl = saturate(dot(n, L.direction));
