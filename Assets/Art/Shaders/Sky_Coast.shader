@@ -48,6 +48,7 @@ Shader "WaterProject/Sky_Coast"
 
         // ── LensFlare（S11 C22）──
         _FlareAmount  ("耀斑总强度", Range(0, 2)) = 0.9
+        _SkyDeep      ("云隙天空压深(R18-G3,1=关)", Range(0.3, 1)) = 1.0
     }
     SubShader
     {
@@ -72,7 +73,7 @@ Shader "WaterProject/Sky_Coast"
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
                 float  _MoonSize, _MoonPhase, _MoonAmount;
-                float  _FlareAmount;
+                float  _FlareAmount, _SkyDeep;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -133,8 +134,8 @@ Shader "WaterProject/Sky_Coast"
                 // 原地翻腾（domain-warp 慢流动）：参考 S13 的云 3 秒窗内**全局位移为 0**
                 // （同窗互相关峰 0.71 落在原点）——"云速 0.84 %W/s"实为局部形态演化。
                 // 只平移不翻腾的云读起来是"贴图滑动"，正是"云有问题"观感的来源之一。
-                q += (float2(ValueNoise(q * 0.7 + _Time.y * 1.0),
-                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.8)) - 0.5) * 0.5;
+                q += (float2(ValueNoise(q * 0.7 + _Time.y * 1.3),
+                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 1.05)) - 0.5) * 0.5;
                 float d = smoothstep(covT, covT + COVER_BAND, Fbm(q));
                 // 高度剖面：底 120m 软入、顶 40% 起收
                 float H = _CloudTop - _CloudBase;
@@ -183,6 +184,9 @@ Shader "WaterProject/Sky_Coast"
                                 * saturate(1.0 - abs(sunDir.y) * 2.6);
                 float3 warm = float3(1.0, 0.58, 0.34);
                 col = lerp(col, lerp(col, warm, 0.38), sunSide * 0.65 * (1.0 - _NightAmount));
+                // R18-G3 云隙天空压深：只压云隙间的基底（夜空/云/耀斑在其后合成不受影响），
+                // 拉开"深蓝天 vs 纯白云"对比——参考 S13 std 31-43 的内容级来源
+                col = lerp(col, col * _SkyDeep, saturate(up * 1.6) * (1.0 - _NightAmount));
 
                 // ── 夜空底（星星+银河）画在云前：云用透射率压它 ──
                 float3 nightCol = 0;

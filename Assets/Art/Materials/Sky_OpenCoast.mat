@@ -40,6 +40,7 @@ Material:
     - _MoonPhase: 0.62
     - _MoonSize: 0.03
     - _NightAmount: 0
+    - _SkyDeep: 0.52
     - _StarBright: 1.15
     - _StarGrid: 320
     - _SunGlow: 0.15

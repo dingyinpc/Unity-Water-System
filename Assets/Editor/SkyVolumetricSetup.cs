@@ -45,6 +45,7 @@ namespace WaterProject.EditorTools
                 m.SetFloat("_CloudBase", Preset.Base);
                 m.SetFloat("_CloudTop", Preset.Top);
                 m.SetFloat("_CloudSteps", Preset.Steps);
+                m.SetFloat("_SkyDeep", 0.52f);   // R18-G3 云隙压深
                 EditorUtility.SetDirty(m);
                 n++;
             }
