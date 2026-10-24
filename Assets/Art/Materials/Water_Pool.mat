@@ -30,10 +30,10 @@ Material:
     - _CausticDetile: 0.6
     - _CausticDisperse: 0.5
     - _CausticMode: 2
-    - _CausticSharp: 7
+    - _CausticSharp: 5.5
     - _CausticsScale: 0.85
-    - _CausticsSpeed: 0.5
-    - _CausticsStrength: 4.5
+    - _CausticsSpeed: 0.35
+    - _CausticsStrength: 2.8
     - _CrestFoam: 0.22
     - _DebugMode: 0
     - _FloorDepth: 1.35

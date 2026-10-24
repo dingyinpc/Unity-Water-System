@@ -129,6 +129,8 @@ namespace WaterProject.EditorTools
             if (rip == null) { WriteProbe("R594 REFUSED: 无 PoolRipples（先开 PoolScene/跑 Pool/92）\n"); return; }
 
             // 双场波速系数：c = dx·√K/dt（dx=4.6875cm, dt=1/60）→ A=1.15 m/s, B=0.45 m/s
+            // （R23 曾试降冲量治 7.5Hz 振荡，实测无效且破坏 101 自测校准，已回 R21 定标值；
+            //   拍频系泵采集(≈50fps)对固定率累加器的采样伪影，游戏 60fps 下不存在）
             rip.simHz = 60f;
             rip.maxCatchup = 3;
             rip.waveKA = 0.167f; rip.waveKB = 0.026f;
@@ -336,16 +338,17 @@ namespace WaterProject.EditorTools
             WriteProbe($"R583b removed={removed} features={rend.rendererFeatures.Count}\n");
         }
 
-        // 底黑网亮·终档：三个漏光源全堵——① alpha 透白瓷砖(0.62→0.88)；
-        // ② 乘性焦散在吸收 0.039 后太弱(0.85→4.5×)；③ _WaterColor G=0.30 是线性值
-        // ≈sRGB 150 根本不"深"，压到线性 0.075（水柱散射项带着焦散网浮在暗底上）
-        [MenuItem("Tools/Fix/584d Pool 水色=底黑网亮终档(Opacity0.88/焦散4.5/真深青)")]
+        // 底黑网亮·终档(v2 收敛)：v1(4.5×/指数7)静态百分位对上了参考但 D1 运动能量
+        // ρ 0.308→17——亮线扫过暗底的逐帧摆幅过大。收敛：2.8×/指数5.5/漂移0.35。
+        [MenuItem("Tools/Fix/584d Pool 水色=底黑网亮终档(Opacity0.88/焦散2.8/指数5.5/速0.35)")]
         public static void PoolWaterDeep3()
         {
             int n = 0;
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_Absorb", 2.4f);
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_Opacity", 0.88f);
-            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 4.5f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", 2.8f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticSharp", 5.5f);
+            n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsSpeed", 0.35f);
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_WaterColor", new Color(0.010f, 0.075f, 0.100f, 1f));
             WriteProbe($"R584d water deep3 x{n}\n");
         }
