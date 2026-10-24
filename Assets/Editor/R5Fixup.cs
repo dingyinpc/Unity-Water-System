@@ -26,6 +26,8 @@ namespace WaterProject.EditorTools
             n += Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsSpeed", 0.5f);   // #1 S8 节奏 0.5×
             n += Set("Assets/Art/Materials/Water_Pond.mat", "_WaveSpeed", 0.22f);      // #2 S6 节奏 0.4×
             n += Set("Assets/Art/Materials/Ocean_Water.mat", "_SwellSpeed", 0.45f);    // #3 滚图 ÷4
+            n += Set("Assets/Art/Materials/Ocean_Water.mat", "_ShimmerAmt", 1.0f);   // R16-G1 微光满档
+            n += Set("Assets/Art/Materials/Ocean_Water.mat", "_ShimmerScale", 1.4f); // 远距离可分辨的特征尺度
             n += Set("Assets/Art/Materials/Water_Advanced.mat", "_WaveTimeScale", 0.45f); // #4 平移 ÷4
             WriteProbe($"R591 applied x{n}: Pool焦散0.5 Pond波0.22 Ocean涌0.45 Main波0.45\n");
         }

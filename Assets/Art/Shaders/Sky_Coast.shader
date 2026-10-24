@@ -124,7 +124,7 @@ Shader "WaterProject/Sky_Coast"
             #define CLOUD_SCALE 0.00042
             #define COVER_LO 0.70
             #define COVER_HI 0.24
-            #define COVER_BAND 0.14
+            #define COVER_BAND 0.08
 
             float CloudDensity(float3 p, float h)
             {
@@ -133,8 +133,8 @@ Shader "WaterProject/Sky_Coast"
                 // 原地翻腾（domain-warp 慢流动）：参考 S13 的云 3 秒窗内**全局位移为 0**
                 // （同窗互相关峰 0.71 落在原点）——"云速 0.84 %W/s"实为局部形态演化。
                 // 只平移不翻腾的云读起来是"贴图滑动"，正是"云有问题"观感的来源之一。
-                q += (float2(ValueNoise(q * 0.7 + _Time.y * 0.3),
-                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.24)) - 0.5) * 0.5;
+                q += (float2(ValueNoise(q * 0.7 + _Time.y * 1.0),
+                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.8)) - 0.5) * 0.5;
                 float d = smoothstep(covT, covT + COVER_BAND, Fbm(q));
                 // 高度剖面：底 120m 软入、顶 40% 起收
                 float H = _CloudTop - _CloudBase;
@@ -233,9 +233,10 @@ Shader "WaterProject/Sky_Coast"
                             float Hc = _CloudTop - _CloudBase;
                             // 云顶环境光：高处泛天光蓝白，与云底阴影拉开层次
                             float topAmb = smoothstep(0.25, 1.0, h / Hc) * (1.0 - _NightAmount);
-                            float3 lit = lerp(_CloudShadow.rgb, _CloudColor.rgb * 1.45,
+                            float3 lit = lerp(_CloudShadow.rgb * 0.80, _CloudColor.rgb * 1.6,
                                               saturate(shadow * (0.45 + 0.40 * phase) + powder * 0.30 * shadow));
                             lit += _CloudColor.rgb * 0.20 * topAmb * shadow;
+                            lit += _CloudColor.rgb * 0.18 * (1.0 - shadow);   // 多散射下限：密核不坠入死黑
                             // 太阳低时云缘向环境暖色过渡（S13 续卡"云体边缘向环境色"）
                             lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
                                        saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);

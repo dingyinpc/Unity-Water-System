@@ -225,7 +225,32 @@ Shader "WaterProject/Water_Pond"
             }
 
             // 梯度用前向差分，不用解析导数 —— 解析导数在格边界归零会画成棋盘格（《05》D-9）
+            // R16-G1 水面微光：双对向滚动干涉纹 + 时间域弯曲 = 原地演化的细结构
+            //（参考水面能量来自频谱演化，静态滚动给不出——R13 归因 R15 证实）
+            float ShimmerNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                float a = frac(sin(dot(i, float2(127.1, 311.7))) * 43758.5453);
+                float b = frac(sin(dot(i + float2(1, 0), float2(127.1, 311.7))) * 43758.5453);
+                float c = frac(sin(dot(i + float2(0, 1), float2(127.1, 311.7))) * 43758.5453);
+                float d = frac(sin(dot(i + float2(1, 1), float2(127.1, 311.7))) * 43758.5453);
+                return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+            }
+            float3 ShimmerN(float2 xz, float t, float scale)
+            {
+                float2 q1 = xz * scale + float2(t * 0.13, t * 0.08);
+                float2 q2 = xz * scale * 1.73 - float2(t * 0.10, t * 0.14);
+                q1 += 0.30 * sin(q2.yx * 2.3 + t * 0.27);
+                q2 += 0.30 * sin(q1.yx * 1.9 - t * 0.21);
+                float2 e = float2(0.30, 0.0);
+                float f0 = ShimmerNoise(q1) * 0.62 + ShimmerNoise(q2) * 0.38;
+                float fx = ShimmerNoise(q1 + e) * 0.62 + ShimmerNoise(q2 + e) * 0.38;
+                float fy = ShimmerNoise(q1 + e.yx) * 0.62 + ShimmerNoise(q2 + e.yx) * 0.38;
+                return normalize(float3((f0 - fx) * 22.0, 1.0, (f0 - fy) * 22.0));
+            }
             float ValueNoise(float2 p)
+
             {
                 float2 i = floor(p), f = frac(p);
                 float2 u = f * f * (3.0 - 2.0 * f);
@@ -289,6 +314,7 @@ Shader "WaterProject/Water_Pond"
                 float3 skin = SkinNormal(worldPos, t, fineW);
 
                 float3 N = normalize(lerp(normalize(IN.normalWS), skin, 0.6));
+                N = normalize(lerp(N, ShimmerN(worldPos.xz, t, 2.4), 0.55));
 
                 // ★ 屏幕空间 UV 用 clipPos，不用 SV_Position
                 float4 sp = IN.clipPos * 0.5;

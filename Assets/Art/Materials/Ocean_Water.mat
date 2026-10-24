@@ -63,6 +63,8 @@ Material:
     - _SSRSteps: 24
     - _SSRStrength: 0.85
     - _SSRThickness: 0.8
+    - _ShimmerAmt: 1
+    - _ShimmerScale: 1.4
     - _ShoalGain: 1.7
     - _ShoalRange: 7
     - _ShoreSlope: 0.055

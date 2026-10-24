@@ -132,6 +132,32 @@ Shader "WaterProject/Water_Pool"
             }
 
             // ==================== 多尺度焦散（P2-2 / 参考 S8 C12–C13）====================
+
+            // R16-G1 水面微光：双对向滚动干涉纹 + 时间域弯曲 = 原地演化的细结构
+            //（参考水面能量来自频谱演化，静态滚动给不出——R13 归因 R15 证实）
+            float ShimmerNoise(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                float a = frac(sin(dot(i, float2(127.1, 311.7))) * 43758.5453);
+                float b = frac(sin(dot(i + float2(1, 0), float2(127.1, 311.7))) * 43758.5453);
+                float c = frac(sin(dot(i + float2(0, 1), float2(127.1, 311.7))) * 43758.5453);
+                float d = frac(sin(dot(i + float2(1, 1), float2(127.1, 311.7))) * 43758.5453);
+                return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+            }
+            float3 ShimmerN(float2 xz, float t, float scale)
+            {
+                float2 q1 = xz * scale + float2(t * 0.13, t * 0.08);
+                float2 q2 = xz * scale * 1.73 - float2(t * 0.10, t * 0.14);
+                q1 += 0.30 * sin(q2.yx * 2.3 + t * 0.27);
+                q2 += 0.30 * sin(q1.yx * 1.9 - t * 0.21);
+                float2 e = float2(0.30, 0.0);
+                float f0 = ShimmerNoise(q1) * 0.62 + ShimmerNoise(q2) * 0.38;
+                float fx = ShimmerNoise(q1 + e) * 0.62 + ShimmerNoise(q2 + e) * 0.38;
+                float fy = ShimmerNoise(q1 + e.yx) * 0.62 + ShimmerNoise(q2 + e.yx) * 0.38;
+                return normalize(float3((f0 - fx) * 22.0, 1.0, (f0 - fy) * 22.0));
+            }
+
             float2 Hash22(float2 p)
             {
                 float3 p3 = frac(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
@@ -203,6 +229,7 @@ Shader "WaterProject/Water_Pool"
                 // ── 法线：波场坡度（主）+ 静水微坡 ──
                 float2 slope = grad * _NormalStrength + IdleSlope(wp.xz, t);
                 float3 N = normalize(float3(-slope.x, 1.0, -slope.y));
+                N = normalize(lerp(N, ShimmerN(wp.xz, t, 1.8), 0.55));
 
                 // ── 屏幕空间 UV（clipPos，《05》A-1）──
                 float4 sp = IN.clipPos * 0.5;

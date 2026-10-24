@@ -14,7 +14,7 @@ namespace WaterProject.EditorTools
         // 定标值来源：R1 实测参考 S13 云速 0.84 %画宽/秒 ↔ 云层高度风速 ≈18 m/s
         public static class Preset
         {
-            public const float Cover = 0.45f;
+            public const float Cover = 0.52f;
             public const float WindDir = 200f;
             public const float WindSpeed = 15f;
             public const float Shear = 0.006f;

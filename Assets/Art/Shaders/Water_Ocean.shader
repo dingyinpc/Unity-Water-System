@@ -52,6 +52,8 @@ Shader "WaterProject/Water_Ocean"
         _SwellSpeed       ("传播速度倍率", Float) = 1.0
         _WindAlign        ("浪向对齐岸线的程度", Range(0, 1)) = 0.80
         _Steep            ("浪头尖度", Range(0, 1)) = 0.62
+        _ShimmerAmt       ("水面微光强度(R16-G1)", Range(0, 1)) = 1.0
+        _ShimmerScale     ("水面微光尺度(1/米)", Float) = 2.2
 
         // ── 浅水变形与碎浪 ──
         _ShoalGain        ("浅水放大增益", Range(1, 4)) = 2.1
@@ -167,6 +169,7 @@ Shader "WaterProject/Water_Ocean"
                 float4 _DeepColor, _ShallowColor, _FoamColor, _SkyZenith, _SkyHorizon, _SunColor;
                 float  _Absorb, _Opacity, _MaxDepth;
                 float  _SwellAmp, _SwellScale, _SwellSpeed, _WindAlign, _Steep;
+                float  _ShimmerAmt, _ShimmerScale;
                 float  _ShoalGain, _ShoalRange, _BreakerIndex, _BreakFoam, _Whitecap;
                 float  _SwashFoam;
                 float  _DetailStrength, _DetailScale, _DetailFlow, _RippleStrength, _RippleScale;
@@ -301,6 +304,21 @@ Shader "WaterProject/Water_Ocean"
                 return normalize(float3(-tot.x, 1.0, -tot.y));
             }
 
+            // R16-G1 水面微光：双对向滚动干涉纹 + 时间域弯曲 = **原地演化**的细结构。
+            // 参考的水面能量来自频谱演化，静态图滚动给不出（R13 归因、R15 副产物证实）。
+            float3 ShimmerN(float2 xz, float t)
+            {
+                float2 q1 = xz * _ShimmerScale + float2(t * 0.11, t * 0.07);
+                float2 q2 = xz * _ShimmerScale * 1.73 - float2(t * 0.09, t * 0.12);
+                q1 += 0.30 * sin(q2.yx * 2.3 + t * 0.23);
+                q2 += 0.30 * sin(q1.yx * 1.9 - t * 0.19);
+                float2 e = float2(0.30, 0.0);
+                float f0 = ValueNoise(q1) * 0.62 + ValueNoise(q2) * 0.38;
+                float fx = ValueNoise(q1 + e) * 0.62 + ValueNoise(q2 + e) * 0.38;
+                float fy = ValueNoise(q1 + e.yx) * 0.62 + ValueNoise(q2 + e.yx) * 0.38;
+                return normalize(float3((f0 - fx) * 16.0, 1.0, (f0 - fy) * 16.0));
+            }
+
 
             Varyings vert(Attributes v)
             {
@@ -363,6 +381,7 @@ Shader "WaterProject/Water_Ocean"
                 WaveOut w = Swell(worldPos, t, gain);
                 float3 skin = SkinNormal(worldPos, t, fineW);
                 float3 N = normalize(lerp(w.normal, skin, 0.5));
+                N = normalize(lerp(N, ShimmerN(worldPos.xz, t), _ShimmerAmt * 0.85));
 
                 Light mainLight = GetMainLight();
 
