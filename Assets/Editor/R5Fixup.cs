@@ -342,6 +342,39 @@ namespace WaterProject.EditorTools
             WriteProbe($"R581c vignette 0.42 ({UnityEngine.SceneManagement.SceneManager.GetActiveScene().name})\n");
         }
 
+        // R28-P1a：S8 静水对标扫描档——静水模式(102)下焦散动能 9 vs 参考 72（差8×），
+        // 速度是最干净的杠杆（不改静态观感只改时间频率），循环 0.5→0.8→1.1→1.5→0.5
+        static float s_cauSpeed = 0.5f;
+        [MenuItem("Tools/Fix/584f Pool 焦散速度循环档(0.5→0.8→1.1→1.5)")]
+        public static void PoolCausticSpeedCycle()
+        {
+            s_cauSpeed = s_cauSpeed switch { 0.5f => 0.8f, 0.8f => 1.1f, 1.1f => 1.5f, _ => 0.5f };
+            int n = Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsSpeed", s_cauSpeed);
+            WriteProbe($"R584f caustics speed -> {s_cauSpeed} (x{n})\n");
+        }
+
+        // R28-P1a 补充：速度不是能量杠杆(0.8/1.1/1.5 → E 仅 9.0→10.4)——能量来自网的
+        // 对比度(参考=高对比亮网慢移)。强度循环 0.55→1.2→2.0→3.0→0.55
+        static float s_cauStr = 0.55f;
+        [MenuItem("Tools/Fix/584g Pool 焦散强度循环档(0.55→1.2→2.0→3.0)")]
+        public static void PoolCausticStrCycle()
+        {
+            s_cauStr = s_cauStr switch { 0.55f => 1.2f, 1.2f => 2.0f, 2.0f => 3.0f, _ => 0.55f };
+            int n = Set("Assets/Art/Materials/Water_Pool.mat", "_CausticsStrength", s_cauStr);
+            WriteProbe($"R584g caustics strength -> {s_cauStr} (x{n})\n");
+        }
+
+        // R28-P1a 终杠杆：静水模式波场清空 ⇒ 焦散网只剩刚体平移(E 顶死 14.9)。参考 S8
+        // 的网是被活水法线扭动的——抬待机微波(_IdleStrength)让折射把网扭活。1→2.5→4→1
+        static float s_idle = 1.0f;
+        [MenuItem("Tools/Fix/584h Pool 静水活度循环档(_IdleStrength 1→2.5→4)")]
+        public static void PoolIdleCycle()
+        {
+            s_idle = s_idle switch { 1.0f => 2.5f, 2.5f => 4.0f, _ => 1.0f };
+            int n = Set("Assets/Art/Materials/Water_Pool.mat", "_IdleStrength", s_idle);
+            WriteProbe($"R584h idle strength -> {s_idle} (x{n})\n");
+        }
+
         // ── R22a C7 抗闪：SSRTemporalFeature 的安装/卸载（唯一写入点）──
         // 装上即生效：特性每帧把 _SSRTemporalOn 置 1（预通道+EMA+查表）；
         // 卸载后全局归 0，水面回旧内联追踪路径，逐位一致零回归。
