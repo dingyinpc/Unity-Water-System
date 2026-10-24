@@ -252,6 +252,41 @@ namespace WaterProject.EditorTools
 
         // 深青加强档：视觉判词"底黑网亮"+参考水区 p10=1(近黑)/p90=185 vs 我们 154/222
         // ——白亮底压到近黑，焦散网加亮浮上去，动态范围才有参考的形状
+        // ── R22b 性能体检：当前场景 Play 中阻塞采样 150 帧（Step 泵墙钟）──
+        // ⚠ 不能在菜单里等 Play 转换（阻塞主线程=自死锁，R582 首版全灭的教训）。
+        //   编排：bash 逐场景 [开场景→Play/90→582→Play/91]。绝对值含编辑器开销=上界，
+        //   场景间相对比较与历史数值对照使用。
+        [MenuItem("Tools/Fix/582 性能采样(当前场景Play中,阻塞150帧,写探针)")]
+        public static void PerfSample()
+        {
+            if (!Application.isPlaying) { WriteProbe("R582 REFUSED: 仅 Play（先 Tools/Play/90）\n"); return; }
+            var times = new System.Collections.Generic.List<float>(160);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool wasPaused = EditorApplication.isPaused;
+            EditorApplication.isPaused = true;
+            try
+            {
+                for (int i = 0; i < 150; i++)
+                {
+                    if (!Application.isPlaying) break;
+                    sw.Restart();
+                    EditorApplication.Step();
+                    System.Threading.Thread.Sleep(1);      // 让出编辑器消息泵
+                    if (i >= 30) times.Add(sw.ElapsedMilliseconds);   // 前 30 帧当热身
+                }
+            }
+            finally { if (!wasPaused) EditorApplication.isPaused = false; }
+
+            string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (times.Count < 60) { WriteProbe($"R582 {scene}: 样本不足 n={times.Count}\n"); return; }
+            var arr = times.ToArray();
+            System.Array.Sort(arr);
+            float avg = 0f; foreach (var t in arr) avg += t; avg /= arr.Length;
+            WriteProbe($"R582 {scene,-10}: n={arr.Length} avg={avg:F1}ms p50={arr[arr.Length / 2]:F1}ms "
+                     + $"p95={arr[(int)(arr.Length * 0.95f)]:F1}ms max={arr[arr.Length - 1]:F1}ms "
+                     + $"({1000f / avg:F0} fps 上界)\n");
+        }
+
         // ── R22a C7 抗闪：SSRTemporalFeature 的安装/卸载（唯一写入点）──
         // 装上即生效：特性每帧把 _SSRTemporalOn 置 1（预通道+EMA+查表）；
         // 卸载后全局归 0，水面回旧内联追踪路径，逐位一致零回归。
