@@ -23,15 +23,17 @@ namespace WaterProject.Logic
         [Tooltip("整环段数（软边环带 = 每段 4 圈顶点）")]
         public int segments = 64;
         [Tooltip("单环从出生到消失的扩散时长（秒）")]
-        public float life = 1.45f;
+        public float life = 1.9f;
         [Tooltip("相邻环的错拍（秒）：第 2/3 环晚这一点再出生")]
-        public float stagger = 0.26f;
-        [Tooltip("满强度时最外环的最大半径（米）")]
-        public float maxRadius = 2.3f;
+        public float stagger = 0.34f;
+        [Tooltip("扩散初速(m/s)：入水冠沿前冲的真实速度量级")]
+        public float expandV0 = 1.9f;
+        [Tooltip("减速度(m/s²)：环减速汇入波场重力波速(~1.15m/s)后渐停")]
+        public float decel = 0.45f;
         [Tooltip("环带世界宽度（米，随扩散收到约 45%）")]
-        public float bandWidth = 0.44f;
+        public float bandWidth = 0.50f;
         [Tooltip("泡沫色（alpha 是满强度的峰值不透明度）")]
-        public Color foamColor = new Color(0.92f, 0.98f, 1.0f, 0.85f);
+        public Color foamColor = new Color(0.92f, 0.98f, 1.0f, 0.9f);
 
         Material _mat;
         readonly List<Ring> _live = new List<Ring>(8);
@@ -184,8 +186,12 @@ namespace WaterProject.Logic
                 }
                 // 半径先快后慢（easeOutQuad）；环带收到 ~45%；alpha 指数 1.6 淡出
                 //（平方淡出实测偏快：环龄过半就几乎读不到，白 foam 存在感不足）
-                float ease = 1f - (1f - k) * (1f - k);
-                float radius = Mathf.Lerp(0.10f, maxRadius * Mathf.Clamp(r.str, 0.35f, 1.4f), ease);
+                // R21 v2：物理减速扩散 r(t)=v0·t − a·t²。
+                // v1 的 easeOut 初速≈4m/s（与旧波场 3.98 同病）；波场降速到 1.15 后
+                // 必须同步降环速，否则泡沫环跑到折射环前面 = "贴上去的"假感。
+                // v0=1.9 起步、t≈0.8s 时斜率穿过 1.15 与波场汇合、末段近乎停住。
+                float radius = Mathf.Max(expandV0 * r.t - decel * r.t * r.t, 0.05f)
+                             * Mathf.Clamp(r.str, 0.35f, 1.4f);
                 float band = bandWidth * Mathf.Lerp(1f, 0.45f, k) * Mathf.Clamp(r.str, 0.4f, 1.2f);
                 float alpha = foamColor.a * Mathf.Pow(1f - k, 1.6f);
                 Rebuild(r.mesh, radius, Mathf.Max(band, 0.02f), alpha);

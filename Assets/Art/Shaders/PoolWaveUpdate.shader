@@ -1,25 +1,35 @@
 // ============================================================================
-// PoolWaveUpdate.shader — 泳池波动方程的一步更新（B 档交互，见《07》§1）
+// PoolWaveUpdate.shader — 泳池波动方程的一步更新（R21 手感 v2：双场 + 物理波速）
 //
-//   next = (curr 四邻之和) × 0.5 − prev，再乘阻尼，再叠本帧交互冲量（高斯）
+// v1 的手感三宗罪（R21 诊断）：
+//   ① 波速 3.98 m/s（CFL 上限 × 120 步/秒）——真实泳池涟漪 0.8~1.3 m/s，
+//     环像鼓面一样"啪"地弹出去；R13 测到的 1.33Hz 闪烁主频正是 3.98/3m
+//     的池域驻波（本版降到 ~0.38Hz，出闪烁带）。
+//   ② 无色散——所有波长同速，环串永远等距，不像真水大小环会分离。
+//   ③ 冲量是纯高斯（只会"鼓包"），没有"水被压下去、沿口隆起"的入水读感。
 //
-// 双缓冲：curr=上一步、prev=上上步，**写回目标就是 prev 那张**
-//（prev 在被读走一个中心点后就不再需要），写完交换角色——两张 RT 轮转，
-// 不需要第三张。采样用 Clamp：池壁 = Neumann 边界 = **波到墙自动反弹**，
-// 这是泳池线白送的物理。
+// v2 方案：
+//   · 同一张 RGhalf：R=长波场（可见的主涟漪环，c≈1.15 m/s）、
+//     G=细纹理场（c≈0.45 m/s，跟在主环后面的毛细样碎波）——两场不同速
+//     = 天然色散，成本零增加（还是一次 Blit）。
+//   · 递推里加"轴向均值耦合"项：压掉棋盘/奇偶驻波（v1 高频闪烁的数值根源），
+//     顺带当高频粘性用，场更"水"更少"格"。
+//   · 冲量改成环形剖面：负核 + 正沿（脚/人把水压下去，四周隆起一圈）。
 //
-// 离散稳定性：系数 0.5 恰好是 2D 波动方程显式格式的 CFL 边界（无条件稳定于
-// 此系数），只可能"太平"不可能"爆炸"；要更快传播就每帧多跑一步（PoolRipples）。
+// 递推（每通道同构，K/ε/阻尼不同）：
+//   next = 2·curr − prev + K·(四邻和−4·curr) + ε·(四邻均值−curr)，再乘阻尼
+//   波速 c = dx·√K/dt（dx=4.6875cm，dt=1/60 ⇒ K=0.167 → c≈1.15，K=0.026 → c≈0.45）
+//   稳定域 K+ε/4 ≤ 0.5（vNeuman），A 档 0.180 / B 档 0.049，余量充足。
 //
-// 为什么不用 compute shader：Graphics.Blit(null, rt, mat) 与主线
-// WaterInteractionManager 的先例同构，探针/桥工具链零新增。
+// 步进节奏由 PoolRipples 以固定 60Hz 累加器驱动（不再每帧×2），
+// 波速从此与帧率解耦、也不再吃 CFL 上限。
 // ============================================================================
 Shader "WaterProject/PoolWaveUpdate"
 {
     Properties
     {
-        _Curr ("当前高度场", 2D) = "black" {}
-        _Prev ("上一步高度场", 2D) = "black" {}
+        _Curr ("当前高度场(RG)", 2D) = "black" {}
+        _Prev ("上一步高度场(RG)", 2D) = "black" {}
     }
     SubShader
     {
@@ -37,10 +47,12 @@ Shader "WaterProject/PoolWaveUpdate"
             float4 _Texel;              // (1/w, 1/h, w, h)——PoolRipples 显式传入，
                                         // 不用 _Curr_TexelSize（Blit(null,dst) 通路实测不填充）
             float2 _FieldSize;          // 模拟域世界尺寸（米），把像素距离换算成米
-            float  _Damping;
+            float4 _Damps;              // (阻尼A, 阻尼B, 0, 0) 每步乘性阻尼
+            float4 _WaveKs;             // (K_A, K_B, 0, 0) 波速系数 c = dx·√K/dt
+            float4 _Smoothes;           // (ε_A, ε_B, 0, 0) 轴向均值耦合（反棋盘+粘性）
             float4 _Drops[8];           // (uv.x, uv.y, 冲量强度, 0)
             int    _DropCount;
-            float  _DropSigma;          // 高斯半径（米）
+            float4 _DropShapes;         // (σ_A, σ_B, 增益A, 增益B)
 
             struct Attributes { uint vertexID : SV_VertexID; };
             struct Varyings  { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; };
@@ -55,37 +67,48 @@ Shader "WaterProject/PoolWaveUpdate"
                 return o;
             }
 
+            // 入水冲量剖面：正沿(0.55σ 处的隆起) − 0.55·负核(中心压低)。
+            // 纯高斯(v1)只会鼓包；这个剖面第一步就直接长成"环"，入水/落脚读感立现。
+            float2 DropShape(float dMeter)
+            {
+                float sA = _DropShapes.x, sB = _DropShapes.y;
+                float2 ring = exp(-pow((dMeter - 0.55 * float2(sA, sB)) / (0.32 * float2(sA, sB)), 2.0));
+                float2 core = exp(-pow(dMeter / (0.60 * float2(sA, sB)), 2.0));
+                return ring - 0.55 * core;
+            }
+
             half4 frag(Varyings i) : SV_Target
             {
                 float2 tx = _Texel.xy;
-                float c = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv, 0).r;
-                float p = SAMPLE_TEXTURE2D_LOD(_Prev, sampler_Prev, i.uv, 0).r;
-                float l = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv - float2(tx.x, 0), 0).r;
-                float r = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv + float2(tx.x, 0), 0).r;
-                float u = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv + float2(0, tx.y), 0).r;
-                float d = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv - float2(0, tx.y), 0).r;
+                float2 c = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv, 0).rg;
+                float2 p = SAMPLE_TEXTURE2D_LOD(_Prev, sampler_Prev, i.uv, 0).rg;
+                float2 l = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv - float2(tx.x, 0), 0).rg;
+                float2 r = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv + float2(tx.x, 0), 0).rg;
+                float2 u = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv + float2(0, tx.y), 0).rg;
+                float2 d = SAMPLE_TEXTURE2D_LOD(_Curr, sampler_Curr, i.uv - float2(0, tx.y), 0).rg;
 
-                float n = (l + r + u + d) * 0.5 - p;
-                n *= _Damping;
-                // 安全钳制：本方案在 CFL 边界（k=0.5）天然 |g|=1，数值异常时
-                // 场会整体漂移把水面顶上天（实测一次域重载竞态）。涟漪正常幅度
-                // <0.5，±1.5 的钳制永远碰不到，只兜底。
+                float2 sum4 = l + r + u + d;
+                // 波动项 + 反棋盘/粘性项（ε 对棋盘模式是强负反馈，对正常波只是轻微平滑）
+                float2 n = 2.0 * c - p
+                         + (sum4 - 4.0 * c) * _WaveKs.xy
+                         + (sum4 * 0.25 - c) * _Smoothes.xy;
+                n *= _Damps.xy;
+                // 安全钳制：涟漪正常幅度 <0.5，±1.5 只兜底数值异常（域重载竞态等）
                 n = clamp(n, -1.5, 1.5);
 
-                // 本帧交互：一次性高斯冲量（uv 距离换算成米再量半径）
+                // 本帧交互：一次性环形冲量（uv 距离换算成米再量半径）
                 [unroll]
                 for (int k = 0; k < 8; k++)
                 {
                     if (k >= _DropCount) break;
                     float2 dd = (i.uv - _Drops[k].xy) * _FieldSize;   // 米
-                    float  m2 = dot(dd, dd);
-                    n += _Drops[k].z * exp(-m2 / (2.0 * _DropSigma * _DropSigma));
+                    n += _Drops[k].z * DropShape(length(dd)) * _DropShapes.zw;
                 }
 
-                return half4(n, 0, 0, 1);
+                return half4(n, 0, 1);
             }
             ENDHLSL
         }
     }
-    FallBack Off
+    Fallback Off
 }

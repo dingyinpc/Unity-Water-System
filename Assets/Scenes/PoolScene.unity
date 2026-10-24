@@ -424,9 +424,18 @@ MonoBehaviour:
   fieldSize: {x: 12, y: 6}
   texW: 256
   texH: 128
-  damping: 0.996
-  stepsPerFrame: 2
-  dropSigma: 0.24
+  simHz: 60
+  maxCatchup: 3
+  waveKA: 0.167
+  waveKB: 0.026
+  smoothA: 0.05
+  smoothB: 0.09
+  dampA: 0.9939
+  dampB: 0.985
+  sigmaA: 0.26
+  sigmaB: 0.11
+  gainA: 1
+  gainB: 1.5
   dropStrength: 0.85
   mouseClick: 1
   autoDemo: 1
@@ -507,11 +516,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   segments: 64
-  life: 1.45
-  stagger: 0.26
-  maxRadius: 2.3
-  bandWidth: 0.44
-  foamColor: {r: 0.92, g: 0.98, b: 1, a: 0.85}
+  life: 1.9
+  stagger: 0.34
+  expandV0: 1.9
+  decel: 0.45
+  bandWidth: 0.5
+  foamColor: {r: 0.92, g: 0.98, b: 1, a: 0.9}
 --- !u!1 &641802349
 GameObject:
   m_ObjectHideFlags: 0

@@ -365,14 +365,16 @@ namespace WaterProject.EditorTools
             sfx.splashClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Pool_Splash.wav");
             // 涟漪环参数每次重写：场景里序列化的是组件入场景那天的类默认值，
             // 改 C# 默认不会追到已存在的实例（和上面 splashClip 同一个道理）
+            // R21 v2：物理减速扩散（expandV0/decel），与波场 1.15m/s 汇合
             var rings = go.GetComponent<WaterProject.Logic.PoolRippleRings>();
             if (rings != null)
             {
-                rings.life = 1.45f;
-                rings.stagger = 0.26f;
-                rings.maxRadius = 2.3f;
-                rings.bandWidth = 0.44f;
-                rings.foamColor = new Color(0.92f, 0.98f, 1.0f, 0.85f);
+                rings.life = 1.9f;
+                rings.stagger = 0.34f;
+                rings.expandV0 = 1.9f;
+                rings.decel = 0.45f;
+                rings.bandWidth = 0.50f;
+                rings.foamColor = new Color(0.92f, 0.98f, 1.0f, 0.9f);
             }
 
             SaveScene();
@@ -670,6 +672,123 @@ namespace WaterProject.EditorTools
             rip.SpawnDrop(new Vector3(-PoolL * 0.38f, 0f, PoolW * 0.30f), 1.0f);
             rip.SpawnDrop(new Vector3(PoolL * 0.40f, 0f, -PoolW * 0.32f), 1.0f);
             WriteProbe("POOL96 test drops spawned\n");
+        }
+        // ═════════════════════════ 101 ═════════════════════════
+        // R21 波速自测：清场→池心单滴→回读高度场追环半径→最小二乘拟合波速。
+        // 为什么读场不读画面：场里环半径是逐像素精确的，画面找环隔着折射/微光
+        // 至少差一个量级。全程用 EditorApplication.Step() 泵着走（失焦也能测），
+        // 顺带把 A/B 场峰值写进探针（衰减半衰期可算）。
+        // 判据：slopeA 应≈1.15 m/s（v1 是 3.98）、slopeB≈0.45、两场分离=色散可见。
+        [MenuItem("Tools/Pool/101 波速自测(清场+中心单滴+场回读,Play)")]
+        public static void WaveSpeedSelfTest()
+        {
+            if (!PlayOnly("POOL101")) return;
+            var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
+            if (rip == null) { WriteProbe("POOL101 REFUSED: 场景里没有 PoolRipples\n"); return; }
+
+            // 污染源全关：巡游脚步/待机小涟漪/球漂浮都会把能量注进场里毁掉测量
+            bool demo = rip.autoDemo, mouse = rip.mouseClick;
+            var ch = Object.FindObjectOfType<WaterProject.Logic.PoolThirdPerson>();
+            var ball = Object.FindObjectOfType<WaterProject.Logic.PoolBall>();
+            bool chOn = ch != null && ch.enabled, ballOn = ball != null && ball.enabled;
+            rip.autoDemo = false; rip.mouseClick = false;
+            if (ch != null) ch.enabled = false;
+            if (ball != null) ball.enabled = false;
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"POOL101 selftest K=({rip.waveKA},{rip.waveKB}) "
+                    + $"c_theory=({12f / 256f * Mathf.Sqrt(rip.waveKA) * 60f:F2},"
+                    + $"{12f / 256f * Mathf.Sqrt(rip.waveKB) * 60f:F2})m/s\n");
+            try
+            {
+                rip.ClearField();
+                // 先泵两拍让 ClearField 的三张 RT 真正轮转一遍（清的是"当前"状态）
+                for (int i = 0; i < 3; i++) { EditorApplication.Step(); System.Threading.Thread.Sleep(8); }
+                rip.ClearField();
+                float t0 = Time.time;
+                rip.SpawnDrop(new Vector3(0f, 0f, 0f), 1.0f);
+
+                var tList = new System.Collections.Generic.List<float>();
+                var rA = new System.Collections.Generic.List<float>();
+                var rB = new System.Collections.Generic.List<float>();
+                var pk = new System.Collections.Generic.List<float>();
+                float lastSample = -1f;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                bool wasPaused = EditorApplication.isPaused;
+                EditorApplication.isPaused = true;
+                try
+                {
+                    while (Time.time - t0 < 2.4f && sw.ElapsedMilliseconds < 30000)
+                    {
+                        EditorApplication.Step();
+                        System.Threading.Thread.Sleep(8);
+                        if (Time.time - lastSample >= 0.1f)
+                        {
+                            lastSample = Time.time;
+                            var tex = rip.SnapshotField();
+                            if (tex == null) { sb.Append("POOL101 snapshot failed\n"); break; }
+                            var px = tex.GetPixels();          // RGBAFloat, 行主序 bottom-left
+                            float bestA = 0, bestRA = 0, bestB = 0, bestRB = 0;
+                            // 像素是正方形（12m/256 = 6m/128 = 4.7cm）——像素空间的圆就是米制圆
+                            float cx = rip.texW * 0.5f, cy = rip.texH * 0.5f;
+                            for (int rpx = 3; rpx < 110; rpx++)
+                            {
+                                float sumA = 0, sumB = 0; int n = 0;
+                                for (int a = 0; a < 48; a++)
+                                {
+                                    float ang = a / 48f * Mathf.PI * 2f;
+                                    for (int dr = -1; dr <= 1; dr++)
+                                    {
+                                        int xx = Mathf.RoundToInt(cx + Mathf.Cos(ang) * (rpx + dr));
+                                        int yy = Mathf.RoundToInt(cy + Mathf.Sin(ang) * (rpx + dr));
+                                        if (xx < 0 || xx >= rip.texW || yy < 0 || yy >= rip.texH) continue;
+                                        var c = px[yy * rip.texW + xx];
+                                        sumA += Mathf.Abs(c.r); sumB += Mathf.Abs(c.g); n++;
+                                    }
+                                }
+                                if (n == 0) continue;
+                                float mA = sumA / n, mB = sumB / n;
+                                if (mA > bestA) { bestA = mA; bestRA = rpx; }
+                                if (mB > bestB) { bestB = mB; bestRB = rpx; }
+                            }
+                            float mPerPx = rip.fieldSize.x / rip.texW;
+                            tList.Add(Time.time - t0); rA.Add(bestRA * mPerPx); rB.Add(bestRB * mPerPx);
+                            pk.Add(bestA);
+                            sb.Append($"RINGTEST t={Time.time - t0:F2} rA={bestRA * mPerPx:F2}m "
+                                    + $"rB={bestRB * mPerPx:F2}m peakA={bestA:F3} peakB_fine={bestB:F3}\n");
+                            Object.DestroyImmediate(tex);
+                        }
+                    }
+                }
+                finally { if (!wasPaused) EditorApplication.isPaused = false; }
+
+                // 最小二乘：只用 0.25s 后的样本（出生瞬间的冲量本体不算"波"）
+                float Fit(System.Collections.Generic.List<float> ts, System.Collections.Generic.List<float> rs)
+                {
+                    int n = 0; float sx = 0, sy = 0, sxx = 0, sxy = 0;
+                    for (int i = 0; i < ts.Count && i < rs.Count; i++)
+                        if (ts[i] >= 0.25f)
+                        { n++; sx += ts[i]; sy += rs[i]; sxx += ts[i] * ts[i]; sxy += ts[i] * rs[i]; }
+                    if (n < 4) return -1f;
+                    float d = n * sxx - sx * sx;
+                    return Mathf.Abs(d) < 1e-6f ? -1f : (n * sxy - sx * sy) / d;
+                }
+                float slopeA = Fit(tList, rA), slopeB = Fit(tList, rB);
+                // 衰减半衰期：peakA 首样本 vs 第 ~1s 样本的比值（够 10 个样本才算）
+                string half = "";
+                if (pk.Count > 10 && pk[0] > 1e-5f && pk[10] < pk[0])
+                    half = $" peakHalf≈{Mathf.Log(0.5f) / Mathf.Log(Mathf.Max(pk[10] / pk[0], 1e-4f)):F1}s";
+                sb.Append($"POOL101 FIT slopeA={slopeA:F3} m/s slopeB={slopeB:F3} m/s n={tList.Count}"
+                        + half
+                        + $"  verdict={(slopeA > 0.85f && slopeA < 1.5f && slopeB > 0.2f && slopeB < 0.75f && slopeB < slopeA * 0.7f ? "PASS(1.15/0.45带内,A>B=色散)" : "CHECK")}\n");
+            }
+            finally
+            {
+                rip.autoDemo = demo; rip.mouseClick = mouse;
+                if (ch != null && chOn) ch.enabled = true;
+                if (ball != null && ballOn) ball.enabled = true;
+                WriteProbe(sb.ToString());
+            }
         }
     }
 }

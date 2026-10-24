@@ -33,9 +33,11 @@ Shader "WaterProject/Water_Pool"
         _RefractStrength ("折射偏移", Float) = 0.12
         _MaxUVOffset     ("偏移上限", Range(0, 0.1)) = 0.02
 
-        // ── 涟漪（波动方程场）──
+        // ── 涟漪（波动方程场，R21 v2：RG 双场 = 长波主环 + 细纹理尾波）──
         _WaveAmp         ("顶点位移幅度(米)", Float) = 0.055
         _NormalStrength  ("法线强度", Float) = 1.6
+        _PoolFineAmp     ("细纹理尾波幅度(G通道)", Range(0,2)) = 0.55
+        _ShimmerMix      ("静水微光混合权", Range(0,1)) = 0.55
         _IdleStrength    ("静水微波强度", Float) = 1.0
         _CrestFoam       ("波峰白沫强度", Range(0,1)) = 0.22
 
@@ -88,6 +90,7 @@ Shader "WaterProject/Water_Pool"
                 float  _Absorb, _FloorDepth, _Opacity;
                 float  _RefractStrength, _MaxUVOffset;
                 float  _WaveAmp, _NormalStrength, _IdleStrength, _CrestFoam;
+                float  _PoolFineAmp, _ShimmerMix;
                 float  _CausticsStrength, _CausticsScale, _CausticsSpeed;
                 float  _CausticMode, _CausticDepthMix, _CausticDisperse, _CausticDetile;
                 float  _FresnelPow, _SkyReflect, _SunGloss, _SunStrength;
@@ -225,21 +228,27 @@ Shader "WaterProject/Water_Pool"
                 float t = _Time.y;
                 float3 V = normalize(_WorldSpaceCameraPos - wp);
 
-                // ── 波动方程高度场：中心 + 梯度 ──
+                // ── 波动方程高度场：中心 + 梯度（R21 v2：R=长波 + G·_PoolFineAmp=细纹理尾波）──
                 float2 wuv = (wp.xz - _PoolWaveRect.xy) / _PoolWaveRect.zw;
                 float2 px = 2.0 / _PoolWaveRect.zw;             // 隔两格差分，噪声更稳
-                float h  = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv)).r;
-                float hx1 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv + float2(px.x, 0))).r;
-                float hx0 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv - float2(px.x, 0))).r;
-                float hz1 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv + float2(0, px.y))).r;
-                float hz0 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv - float2(0, px.y))).r;
-                float2 grad = float2(hx1 - hx0, hz1 - hz0);
+                float2 h  = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv)).rg;
+                float2 hx1 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv + float2(px.x, 0))).rg;
+                float2 hx0 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv - float2(px.x, 0))).rg;
+                float2 hz1 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv + float2(0, px.y))).rg;
+                float2 hz0 = SAMPLE_TEXTURE2D(_PoolWaveTex, sampler_PoolWaveTex, saturate(wuv - float2(0, px.y))).rg;
+                // 合成高度（波峰白沫/调试用）：长波为主，细纹理尾波打七折（碎而不抢主环）
+                float waveH = h.x + h.y * _PoolFineAmp * 0.7;
+                float2 grad = float2(hx1.x + hx1.y * _PoolFineAmp * 0.55 - (hx0.x + hx0.y * _PoolFineAmp * 0.55),
+                                     hz1.x + hz1.y * _PoolFineAmp * 0.55 - (hz0.x + hz0.y * _PoolFineAmp * 0.55));
                 float gradMag = length(grad);
 
                 // ── 法线：波场坡度（主）+ 静水微坡 ──
                 float2 slope = grad * _NormalStrength + IdleSlope(wp.xz, t);
                 float3 N = normalize(float3(-slope.x, 1.0, -slope.y));
-                N = normalize(lerp(N, ShimmerN(wp.xz, t, 1.8), 0.55));
+                // R21 v2：涟漪活跃处让真实波场法线当家（静态微光退场，环才读得出来），
+                // 平静区退回微光补质感——混合权随局部波梯度连续过渡
+                float shimmerMix = lerp(_ShimmerMix, 0.22, saturate(gradMag * 5.0));
+                N = normalize(lerp(N, ShimmerN(wp.xz, t, 1.8), shimmerMix));
 
                 // ── 屏幕空间 UV（clipPos，《05》A-1）──
                 float4 sp = IN.clipPos * 0.5;
@@ -301,12 +310,12 @@ Shader "WaterProject/Water_Pool"
                 body += _SunColor.rgb * spec * L.color * 0.35;
 
                 // ── 波峰白沫：涟漪峰顶淡淡一线 ──
-                float crest = saturate(h * 2.4 - 0.55) * _CrestFoam;
+                float crest = saturate(waveH * 2.4 - 0.55) * _CrestFoam;
                 body = lerp(body, float3(0.95, 0.98, 0.98), crest);
 
                 // ── 调试 ──
                 if (_DebugMode > 1.5) return half4(saturate(gradMag * 8), 0, 0, 1);
-                if (_DebugMode > 0.5) return half4(saturate(h * 2 + 0.5), 0, 0, 1);
+                if (_DebugMode > 0.5) return half4(saturate(waveH * 2 + 0.5), 0, 0, 1);
 
                 // 水线接缝：网格贴壁边缘的折射采样 clamp 出一圈亮线，
                 // 边缘 0.15m 内 alpha 渐隐让水"融"进池壁

@@ -145,13 +145,14 @@ namespace WaterProject.Logic
                         rp.x += Random.Range(-0.22f, 0.22f);
                         rp.z += Random.Range(-0.22f, 0.22f);
                         rp.y = 0f;
-                        PoolRipples.Instance.SpawnDrop(rp, 0.35f + speed * 0.22f);
+                        // R21 v2：系数 0.22→0.30（波速降 3.5 倍后旧系数的尾迹读不出，视觉判"偏淡"）
+                        PoolRipples.Instance.SpawnDrop(rp, 0.35f + speed * 0.30f);
                     }
                 }
                 else if (Time.time >= _nextIdleRipple)
                 {
                     _nextIdleRipple = Time.time + idleRippleInterval;
-                    PoolRipples.Instance.SpawnDrop(transform.position, 0.16f);
+                    PoolRipples.Instance.SpawnDrop(transform.position, 0.20f);
                 }
             }
 

@@ -41,7 +41,9 @@ Material:
     - _MaxUVOffset: 0.02
     - _NormalStrength: 1.6
     - _Opacity: 0.3
+    - _PoolFineAmp: 0.55
     - _RefractStrength: 0.12
+    - _ShimmerMix: 0.55
     - _SkyReflect: 0.55
     - _SunGloss: 240
     - _SunStrength: 0.9

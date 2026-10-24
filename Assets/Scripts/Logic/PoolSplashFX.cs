@@ -36,13 +36,15 @@ namespace WaterProject.Logic
 
             var mu = _ps.main;
             mu.duration = 5f;
-            mu.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.85f);
+            mu.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 1.0f);
             mu.startSpeed = new ParticleSystem.MinMaxCurve(1.6f, 3.2f);
-            mu.startSize = new ParticleSystem.MinMaxCurve(0.035f, 0.09f);
+            // R21 v2：v1 尺寸 3.5~9cm 在 7m 跟随机位下不可见（视觉判词"无水花粒子"）——
+            // 抬到 5~16cm + 数量翻倍，水花必须一眼可见
+            mu.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.16f);
             mu.startColor = new Color(0.82f, 0.94f, 1.0f, 0.9f);
             mu.gravityModifier = 1.0f;
             mu.simulationSpace = ParticleSystemSimulationSpace.World;
-            mu.maxParticles = 256;
+            mu.maxParticles = 512;
 
             var em = _ps.emission;
             em.rateOverTime = 0f;                       // 纯 Burst 模式
@@ -97,7 +99,8 @@ namespace WaterProject.Logic
             transform.position = waterPos + Vector3.up * 0.06f;
             _main.startSpeed = new ParticleSystem.MinMaxCurve(1.2f + strength * 1.6f,
                                                               2.2f + strength * 2.6f);
-            int count = Mathf.Clamp(Mathf.RoundToInt(14f + strength * 26f), 8, 64);
+            // R21 v2：26+54·str（v1 是 14+26·str）——跳水一拍要炸出一片，不是几粒
+            int count = Mathf.Clamp(Mathf.RoundToInt(26f + strength * 54f), 14, 120);
             _ps.Emit(count);
             if (splashClip != null)
                 _src.PlayOneShot(splashClip, Mathf.Clamp(0.35f + strength * 0.5f, 0.3f, 1f));

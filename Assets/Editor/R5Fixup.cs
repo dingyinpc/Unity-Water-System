@@ -120,14 +120,51 @@ namespace WaterProject.EditorTools
             else WriteProbe($"GRADE cur {scene} 无ColorAdjustments\n");
         }
 
-        [MenuItem("Tools/Fix/594 Pool 波速档(stepsPerFrame 2↔1, Play)")]
-        public static void PoolStep()
+        // ── R21 涟漪手感 v2 参数包：组件/材质一次对齐（场景里序列化的旧值唯一刷新点）──
+        [MenuItem("Tools/Fix/594 Pool 涟漪手感v2参数包(波速1.15/0.45+环同步, 存场景)")]
+        public static void PoolFeelV2()
         {
-            if (!Application.isPlaying) { WriteProbe("R594 REFUSED: 仅 Play\n"); return; }
+            if (Application.isPlaying) { WriteProbe("R594 REFUSED: Play 中不存场景（退 Play 再跑）\n"); return; }
             var rip = Object.FindObjectOfType<WaterProject.Logic.PoolRipples>();
-            if (rip == null) { WriteProbe("R594 REFUSED: 无 PoolRipples\n"); return; }
-            rip.stepsPerFrame = rip.stepsPerFrame >= 2 ? 1 : 2;
-            WriteProbe($"R594 stepsPerFrame -> {rip.stepsPerFrame}\n");
+            if (rip == null) { WriteProbe("R594 REFUSED: 无 PoolRipples（先开 PoolScene/跑 Pool/92）\n"); return; }
+
+            // 双场波速系数：c = dx·√K/dt（dx=4.6875cm, dt=1/60）→ A=1.15 m/s, B=0.45 m/s
+            rip.simHz = 60f;
+            rip.maxCatchup = 3;
+            rip.waveKA = 0.167f; rip.waveKB = 0.026f;
+            rip.smoothA = 0.05f; rip.smoothB = 0.09f;
+            rip.dampA = 0.9939f; rip.dampB = 0.985f;
+            rip.sigmaA = 0.26f;  rip.sigmaB = 0.11f;
+            rip.gainA = 1.0f;    rip.gainB = 1.5f;
+            rip.dropStrength = 0.85f;
+
+            var rings = Object.FindObjectOfType<WaterProject.Logic.PoolRippleRings>();
+            if (rings != null)
+            {
+                rings.life = 1.9f; rings.stagger = 0.34f;
+                rings.expandV0 = 1.9f; rings.decel = 0.45f;
+                rings.bandWidth = 0.50f;
+                rings.foamColor = new Color(0.92f, 0.98f, 1.0f, 0.9f);
+            }
+
+            // 水面材质：细纹理尾波 + 微光动态退场（新属性缺省即此值，写一遍防漂移）
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Pool.mat");
+            if (m != null)
+            {
+                m.SetFloat("_PoolFineAmp", 0.55f);
+                m.SetFloat("_ShimmerMix", 0.55f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+            }
+
+            EditorUtility.SetDirty(rip);
+            if (rings != null) EditorUtility.SetDirty(rings);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(rip.gameObject.scene);
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(rip.gameObject.scene);
+            float dts = 1f / rip.simHz, dxm = rip.fieldSize.x / rip.texW;
+            WriteProbe($"R594 feelV2 stamped K=({rip.waveKA},{rip.waveKB}) "
+                     + $"c=({dxm * Mathf.Sqrt(rip.waveKA) / dts:F2},{dxm * Mathf.Sqrt(rip.waveKB) / dts:F2})m/s "
+                     + $"rings={(rings != null)} mat={(m != null)} sceneSaved\n");
         }
 
         [MenuItem("Tools/Fix/597 Main SSR强度切换(0↔0.85, 写材质)")]
