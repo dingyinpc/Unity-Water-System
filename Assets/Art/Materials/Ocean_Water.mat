@@ -33,7 +33,7 @@ Material:
     - _CloudShadowOn: 1
     - _CloudShadowStrength: 0.85
     - _DebugMode: 0
-    - _DetailFlow: 0.16
+    - _DetailFlow: 0.3
     - _DetailScale: 0.9
     - _DetailStrength: 0.3
     - _FlowAdvect: 30
@@ -77,10 +77,10 @@ Material:
     - _SwashFade: 3
     - _SwashFoam: 0.75
     - _SwashReach: 9.5
-    - _SwashSpeed: 0.13
+    - _SwashSpeed: 0.2
     - _SwellAmp: 1.6
     - _SwellScale: 1.45
-    - _SwellSpeed: 0.45
+    - _SwellSpeed: 0.95
     - _Whitecap: 0.9
     - _WindAlign: 0.94
     m_Colors:
