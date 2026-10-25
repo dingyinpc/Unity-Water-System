@@ -26,7 +26,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _CloudBase: 900
-    - _CloudBaseDark: 0.5
+    - _CloudBaseDark: 0.75
     - _CloudCover: 0.52
     - _CloudDrift: 0.01
     - _CloudScale: 0.045

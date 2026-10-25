@@ -139,6 +139,9 @@ namespace WaterProject.Logic
             };
         }
 
+        [Tooltip("R42：太阳光晕底值（正午也有太阳）。旧硬编码 0.15=正午无日")]
+        public float sunGlowFloor = 0.15f;
+
         void Reset() { BuildDefaults(); }
 
         void Awake()
@@ -186,7 +189,9 @@ namespace WaterProject.Logic
                 if (skyMat.HasProperty("_CloudShadow"))
                     skyMat.SetColor("_CloudShadow", Color.Lerp(zen * 0.25f, Color.Lerp(zen, hor, 0.55f), day));
                 if (skyMat.HasProperty("_SunGlow"))
-                    skyMat.SetFloat("_SunGlow", Mathf.Clamp01(1f - Mathf.Abs(elev) / 45f) * 1.1f + 0.15f);
+                    // R42 A2：旧式 +0.15 底值在 |elev|>45°（正午）把光晕压没——太阳消失主因。
+                    // sunGlowFloor 抬底：低角(系数1)总量不变，正午从 0.15→floor。
+                    skyMat.SetFloat("_SunGlow", Mathf.Clamp01(1f - Mathf.Abs(elev) / 45f) * (1.1f - sunGlowFloor) + sunGlowFloor);
                 // R37：云隙压深随昼夜驱动——白天保持 0.52（R18/R32 校准值不动），
                 // 低光抬到 0.75（黄昏/夜天空被调色链压黑的帮凶之一；昼夜各得其所）
                 if (skyMat.HasProperty("_SkyDeep"))

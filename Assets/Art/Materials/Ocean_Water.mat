@@ -25,7 +25,7 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.3
+    - _Absorb: 0.12
     - _BeachCurve: 0.0022
     - _BeachRise: 0.055
     - _BreakFoam: 1

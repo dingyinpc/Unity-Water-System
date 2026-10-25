@@ -50,12 +50,12 @@ Material:
     - _RefractStrength: 0.12
     - _RippleScale: 6.5
     - _RippleStrength: 0.075
-    - _ScatterGain: 2.6
+    - _ScatterGain: 2
     - _ScatterMaxDist: 6
     - _ScatterMode: 2
     - _ScatterSigma: 1
     - _ScatterSteps: 14
-    - _ScatterStrength: 0.75
+    - _ScatterStrength: 0.5
     - _ShoreFoam: 0.28
     - _ShoreWidth: 0.55
     - _SkyReflect: 0.9

@@ -26,14 +26,14 @@ Material:
     m_Ints: []
     m_Floats:
     - _Absorb: 0.55
-    - _CausticDepthMix: 0.6
+    - _CausticDepthMix: 0.25
     - _CausticDetile: 0.6
     - _CausticDisperse: 0.5
     - _CausticMode: 2
-    - _CausticSharp: 3.5
-    - _CausticsScale: 0.34
+    - _CausticSharp: 2.6
+    - _CausticsScale: 0.85
     - _CausticsSpeed: 0.5
-    - _CausticsStrength: 0.62
+    - _CausticsStrength: 0.5
     - _CrestFoam: 0.22
     - _DebugMode: 0
     - _FloorDepth: 1.35

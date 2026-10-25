@@ -27,8 +27,8 @@ Material:
     m_Floats:
     - _FogEnd: 560
     - _FogStart: 160
-    - _SpecInt: 2.6
-    - _SpecPow: 320
+    - _SpecInt: 2.4
+    - _SpecPow: 640
     m_Colors:
     - _DeepColor: {r: 0.02, g: 0.13, b: 0.18, a: 1}
     - _FoamColor: {r: 0.92, g: 0.96, b: 0.98, a: 1}
