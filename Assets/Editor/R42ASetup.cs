@@ -80,7 +80,7 @@ namespace WaterProject.EditorTools
         {
             var m = AssetDatabase.LoadAssetAtPath<Material>(M + "/Water_Advanced.mat");
             if (m == null) return;
-            m.SetColor("_ShallowColor", new Color(0.24f, 0.55f, 0.62f, 1f));   // 旧见探针（灰绿系）
+            m.SetColor("_ShallowColor", new Color(0.30f, 0.62f, 0.68f, 1f));   // R43 再提亮：瀑布岩压水带 E 0.468+参考更亮
             m.SetColor("_DeepColor", new Color(0.030f, 0.105f, 0.185f, 1f));
             AssetDatabase.SaveAssetIfDirty(m);
             Write("R42 main tier: 水色蓝移\n");
