@@ -26,6 +26,47 @@ namespace WaterProject.EditorTools
             { m.SetFloat("_NightAmount", 0f); Write("R37 TEST _NightAmount=0（当前时段渲染对比）\n"); }
         }
 
+        // ── R38 黄昏铺开档：R37 判卷 7/10 的两个扣分点——上部天偏暗 + 水面暖反光弱 ──
+        // 绝对值幂等写入（先跑 90 再跑本档；0.50 正午键不碰 ⇒ 白天零回归）
+        [MenuItem("Tools/R37/91 黄昏铺开档(天顶暖化+水色暖亮)")]
+        static void DuskSpread()
+        {
+            var dn = Object.FindFirstObjectByType<WaterProject.Logic.DayNightCycle>();
+            if (dn == null) { Write("R38 REFUSED: 无 DayNightCycle（开 OceanScene）\n"); return; }
+            SetKey(dn.skyZenith, 0.73f, new Color(0.40f, 0.20f, 0.42f));   // 默认 (0.24,0.12,0.36)：上部天暖亮化（0.52 版过冲 天空带 177）
+            SetKey(dn.skyZenith, 0.65f, new Color(0.36f, 0.38f, 0.72f));   // 默认 (0.20,0.36,0.76)：向暖过渡
+            SetKey(dn.waterShallow, 0.73f, new Color(0.55f, 0.33f, 0.30f)); // 默认 (0.23,0.15,0.19)：水面暖反光主体
+            SetKey(dn.waterDeep, 0.73f, new Color(0.13f, 0.09f, 0.16f));    // 默认 (0.06,0.045,0.11)
+            dn.Apply(true);
+            EditorUtility.SetDirty(dn);
+            EditorSceneManager.MarkSceneDirty(dn.gameObject.scene);
+            Write("R38 dusk spread: zen0.65/0.73 暖化 + water 0.73 暖亮\n");
+        }
+
+        [MenuItem("Tools/R37/91b 黄昏铺开还原(键回默认)")]
+        static void DuskSpreadRevert()
+        {
+            var dn = Object.FindFirstObjectByType<WaterProject.Logic.DayNightCycle>();
+            if (dn == null) return;
+            SetKey(dn.skyZenith, 0.73f, new Color(0.240f, 0.120f, 0.360f));
+            SetKey(dn.skyZenith, 0.65f, new Color(0.200f, 0.360f, 0.760f));
+            SetKey(dn.waterShallow, 0.73f, new Color(0.230f, 0.150f, 0.190f));
+            SetKey(dn.waterDeep, 0.73f, new Color(0.060f, 0.045f, 0.110f));
+            dn.Apply(true);
+            EditorUtility.SetDirty(dn);
+            EditorSceneManager.MarkSceneDirty(dn.gameObject.scene);
+            Write("R38 dusk spread revert\n");
+        }
+
+        static void SetKey(WaterProject.Logic.ColorKey[] keys, float t, Color c)
+        {
+            if (keys == null) return;
+            for (int i = 0; i < keys.Length; i++)
+                if (Mathf.Abs(keys[i].t - t) < 0.003f)
+                { keys[i] = new WaterProject.Logic.ColorKey(t, c); return; }
+            Write($"R38 WARN: 找不到键 t={t}\n");
+        }
+
         [MenuItem("Tools/R37/98 试验:云盖=0.05(不改其它)")]
         static void TestCloudOff()
         {
