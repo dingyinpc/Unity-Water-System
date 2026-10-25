@@ -134,9 +134,12 @@ Shader "WaterProject/Sky_Coast"
                 float2 q = (p.xz + WindOffset(h)) * CLOUD_SCALE;
                 // 原地翻腾（domain-warp 慢流动）：参考 S13 的云 3 秒窗内**全局位移为 0**
                 // （同窗互相关峰 0.71 落在原点）——"云速 0.84 %W/s"实为局部形态演化。
-                // 只平移不翻腾的云读起来是"贴图滑动"，正是"云有问题"观感的来源之一。
-                q += (float2(ValueNoise(q * 0.7 + _Time.y * 1.3),
-                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 1.05)) - 0.5) * 0.5;
+                // ⚠ R36b 实测教训：原幅度 ±0.5、扫速 1.3/1.05 比风平移大一个量级，
+                //   云场读成"果冻弹动"（用户批词）——翻腾必须降为配角：
+                //   幅度 0.5→0.12、速度 1.3/1.05→0.28/0.22，风平移是主导运动。
+                //   保留小量慢翻腾只为云体内部演化，不再负责"动感"。
+                q += (float2(ValueNoise(q * 0.7 + _Time.y * 0.28),
+                             ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.22)) - 0.5) * 0.12;
                 float d = smoothstep(covT, covT + COVER_BAND, Fbm(q));
                 // 高度剖面：底 120m 软入、顶 40% 起收
                 float H = _CloudTop - _CloudBase;

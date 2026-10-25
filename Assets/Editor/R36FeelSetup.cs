@@ -26,18 +26,16 @@ namespace WaterProject.EditorTools
             {
                 var m = AssetDatabase.LoadAssetAtPath<Material>(p);
                 if (m == null) continue;
-                float cur = m.HasProperty("_CloudWindSpeed") ? m.GetFloat("_CloudWindSpeed") : 15f;
-                m.SetFloat("_CloudWindSpeed", cur * 5f);          // 15/18 → 75/90（云高层角速度补偿）
+                m.SetFloat("_CloudWindSpeed", 100f);           // 固定值（幂等）：R36b 果冻修复后平移当主角
                 AssetDatabase.SaveAssetIfDirty(m);
-                Write($"R36 cloud {m.name}: wind {cur} -> {cur * 5f}\n");
+                Write($"R36 cloud {m.name}: wind -> 100\n");
             }
             var it = AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/Sky_IsletTropical.mat");
             if (it != null && it.HasProperty("_CloudDrift"))
             {
-                var v = it.GetVector("_CloudDrift");
-                it.SetVector("_CloudDrift", v * 3f);               // Islet 热带天空漂移 ×3
+                it.SetVector("_CloudDrift", new Vector4(21f, 0f, 9f, 0f));   // 固定值（幂等）= 基础(7,0,3)×3
                 AssetDatabase.SaveAssetIfDirty(it);
-                Write($"R36 cloud IsletTropical: drift {v} -> {v * 3f}\n");
+                Write("R36 cloud IsletTropical: drift -> (21,0,9)\n");
             }
         }
 

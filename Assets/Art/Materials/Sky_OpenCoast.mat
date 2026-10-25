@@ -34,7 +34,7 @@ Material:
     - _CloudSteps: 20
     - _CloudTop: 2000
     - _CloudWindDir: 200
-    - _CloudWindSpeed: 75
+    - _CloudWindSpeed: 100
     - _FlareAmount: 0.9
     - _GalaxyAmount: 0.3
     - _MoonAmount: 0
