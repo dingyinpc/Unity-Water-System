@@ -20059,7 +20059,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   waterHeight: 0.02
   waterRenderer: {fileID: 944617115}
-  resolutionScale: 0.5
+  resolutionScale: 0.75
   reflectLayers:
     serializedVersion: 2
     m_Bits: 0

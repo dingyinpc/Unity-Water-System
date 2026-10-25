@@ -72,6 +72,44 @@ namespace WaterProject.EditorTools
             Write("R34 uninstall done（_PlanarStrength=0，shader 零回归）\n");
         }
 
+        // ── R35 清晰度档：R34 盲看扣分点"波纹扰动的柔化"——扰动减半 + 镜子提分辨率 ──
+        [MenuItem("Tools/R34/91 倒影清晰度档(扰动0.014+镜子0.75x)")]
+        static void ClarityTier()
+        {
+            var comp = Object.FindFirstObjectByType<PondPlanarReflection>();
+            if (comp == null) { Write("R35 REFUSED: 镜像相机不存在（先跑 90 装）\n"); return; }
+            comp.resolutionScale = 0.75f;      // 旧 0.5：RT 更清晰（EnsureRenderTexture 自动重建）
+            EditorUtility.SetDirty(comp);
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m != null)
+            {
+                m.SetFloat("_PlanarDistort", 0.014f);   // 旧 0.03：波纹扰动的"柔化"减半
+                AssetDatabase.SaveAssetIfDirty(m);
+            }
+            Write("R35 clarity: distort=0.014 mirror=0.75x\n");
+        }
+
+        [MenuItem("Tools/R34/91b 倒影清晰度还原(0.03+0.5x)")]
+        static void ClarityRevert()
+        {
+            var comp = Object.FindFirstObjectByType<PondPlanarReflection>();
+            if (comp != null)
+            {
+                comp.resolutionScale = 0.5f;
+                EditorUtility.SetDirty(comp);
+                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            }
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Water_Advanced.mat");
+            if (m != null)
+            {
+                m.SetFloat("_PlanarDistort", 0.03f);
+                AssetDatabase.SaveAssetIfDirty(m);
+            }
+            Write("R35 clarity revert: distort=0.03 mirror=0.5x\n");
+        }
+
         [MenuItem("Tools/R34/99 探针回读(只读)")]
         static void Probe()
         {

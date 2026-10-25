@@ -45,7 +45,7 @@ Material:
     - _MaxTess: 6
     - _MaxUVOffset: 0.025
     - _Opacity: 0.76
-    - _PlanarDistort: 0.03
+    - _PlanarDistort: 0.014
     - _PlanarStrength: 0.85
     - _RefractStrength: 0.3
     - _SSRDebug: 0
