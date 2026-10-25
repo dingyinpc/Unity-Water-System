@@ -145,7 +145,7 @@ Shader "WaterProject/Sky_Coast"
                 float H = _CloudTop - _CloudBase;
                 d *= smoothstep(0.0, 120.0, h) * smoothstep(H, H * 0.40, h);
                 if (d > 0.004)
-                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.22);   // 细节侵蚀两级：云边碎化
+                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.38);   // 细节侵蚀两级：云边碎化(R45 0.22→0.38 盲判"边缘过糊成雾团")
                 return d;
             }
 
