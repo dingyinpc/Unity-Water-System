@@ -89,6 +89,9 @@ Shader "WaterProject/Water_Advanced"
         _SSRThickness     ("命中厚度容差(米)", Float) = 0.5
         _SSREdgeFade      ("屏幕边缘淡出", Float) = 24
         _SSRDebug         ("SSR 调试 0关/1可信度/2SSR色", Float) = 0
+        // ── R34 平面镜像兜底（镜像相机 RT 由 PondPlanarReflection 组件逐帧写入）──
+        _PlanarStrength   ("平面镜像兜底强度", Range(0, 1)) = 0
+        _PlanarDistort    ("平面镜像波纹扰动", Float) = 0.03
     }
 
     SubShader
@@ -142,6 +145,7 @@ Shader "WaterProject/Water_Advanced"
                 float  _CrestJ, _CrestSoft, _CrestFoam, _ShoreFoam, _FoamLift;
                 float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength, _FresnelPow, _AmbientStrength, _DepthDebug, _SkyReflect;
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
+                float  _PlanarStrength, _PlanarDistort;
             CBUFFER_END
 
             #include "SSR.hlsl"
@@ -152,6 +156,9 @@ Shader "WaterProject/Water_Advanced"
             // _SSRTemporalOn=0(默认) ⇒ 完全走旧内联追踪，逐位一致零回归
             TEXTURE2D(_SSRAccumTex); SAMPLER(sampler_SSRAccumTex);
             float _SSRTemporalOn;
+            // R34 平面镜像兜底（PondPlanarReflection 组件逐帧写：与潭共用同一组件）
+            TEXTURE2D(_PlanarRef); SAMPLER(sampler_PlanarRef);
+            float4x4 _WorldToReflClip;
             float4 _InteractionRect;        // (centerX, centerZ, halfW, 0)
             float4 _RippleSources[MAX_RIPPLES];
             float  _RippleCount, _RippleLife;
@@ -550,7 +557,25 @@ Shader "WaterProject/Water_Advanced"
 #endif
                 // _SSRStrength 是 SSR 的**总开关**（0=纯天空兜底，1=命中处全用场景色）：
                 // 不乘它的话 A/B 菜单改了强度但画面不变（P0-2 收尾时抓到的真 bug）。
-                float3 reflBase = lerp(skyCol, ssrCol, smoothstep(0.0, 0.45, ssrConf) * _SSRStrength);   // C7-lite：conf 软化，消中等置信度爆点
+                // R34 平面镜像兜底：SSR miss 处不再是天空渐变，而是**完整镜像相机 RT**
+                //（SSR 只能映"屏幕里有的东西"，出屏即碎；平面镜像按真实几何倒影、
+                //  覆盖全水面——连续性来自它，屏幕空间准确度仍来自 SSR 命中）
+                float3 reflFallback = skyCol;
+                if (_PlanarStrength > 0.001)
+                {
+                    float4 rclip = mul(_WorldToReflClip, float4(worldPos, 1.0));
+                    if (rclip.w > 1e-4)
+                    {
+                        float2 ruv = rclip.xy / rclip.w * 0.5 + 0.5;
+                        ruv += reflDir.xz * _PlanarDistort;   // 波纹扰动（潭同款）
+                        if (all(saturate(ruv) == ruv))
+                        {
+                            float3 planar = SAMPLE_TEXTURE2D(_PlanarRef, sampler_PlanarRef, ruv).rgb;
+                            reflFallback = lerp(skyCol, planar, saturate(_PlanarStrength));
+                        }
+                    }
+                }
+                float3 reflBase = lerp(reflFallback, ssrCol, smoothstep(0.0, 0.45, ssrConf) * _SSRStrength);   // C7-lite：conf 软化，消中等置信度爆点
                 // 太阳碎闪不跟 SSR 走（《05》原文：碎闪要拆出来单独，否则会被"场景色"整条抹掉）
                 float3 reflCol = reflBase + _SunColor * pow(saturate(dot(reflDir, mainLight.direction)), _SunGloss) * _SunStrength;
                 col += reflCol * fres * _SkyReflect * (1.0 - interA * 0.4);
