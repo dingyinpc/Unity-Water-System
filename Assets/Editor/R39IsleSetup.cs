@@ -59,6 +59,36 @@ namespace WaterProject.EditorTools
             Write("R39 uninstall done\n");
         }
 
+        // ── R40② Islet 低太阳暖光档（R31 #5：参考片头太阳低垂暖光 vs 我们正午侧光）──
+        [MenuItem("Tools/R39/91 Islet 低太阳暖光档")]
+        static void LowSun()
+        {
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+                if (l.type == LightType.Directional && l.name != "MainPlanarCam")
+                {
+                    l.transform.rotation = Quaternion.Euler(24f, 235f, 0f);   // 低垂侧逆光
+                    l.color = new Color(1.0f, 0.84f, 0.64f);                  // 暖金
+                    l.intensity = 2.6f;
+                    EditorUtility.SetDirty(l);
+                }
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Write("R40 low sun: elev24 yaw235 warm\n");
+        }
+
+        [MenuItem("Tools/R39/91b Islet 低太阳还原(75/白)")]
+        static void LowSunRevert()
+        {
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+                if (l.type == LightType.Directional)
+                {
+                    l.transform.rotation = Quaternion.Euler(75f, 235f, 0f);
+                    l.color = new Color(1f, 0.96f, 0.88f); l.intensity = 2.9f;
+                    EditorUtility.SetDirty(l);
+                }
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            Write("R40 low sun revert\n");
+        }
+
         [MenuItem("Tools/R39/99 探针(只读)")]
         static void Probe()
         {

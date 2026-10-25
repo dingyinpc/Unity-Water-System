@@ -178,7 +178,7 @@ Shader "WaterProject/Sky_Tropical"
                 // ⚠ 细节倍频尺度 ≈ 1/(_CloudFreq*5.7) ≈ 420 m，两万公里外在屏幕上连
                 //   一个像素都不到 —— 不减幅就是往远处纯灌锯齿，云边糊成一把盐粒。
                 //   按距离平方压掉细节，远处只留大尺度轮廓，读成"软的一团团"。
-                float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 1.7, 3);
+                float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 0.6, 3);   // R40: 1.7→0.6 细节翻腾降档(E 超带根因,与 R36b 同族)
                 float lod = 1.0 / (1.0 + dist * dist * 1.6e-9);
                 d += (det - 0.5) * _CloudDetail * (0.16 + 1.15 * h * h) * lod;
 
