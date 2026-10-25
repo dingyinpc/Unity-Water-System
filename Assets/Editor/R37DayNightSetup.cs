@@ -128,12 +128,10 @@ namespace WaterProject.EditorTools
         static void TestPostOn()
         {
             var cam = Camera.main;
-            if (cam == null) { Write("R37 TEST no main cam
-"); return; }
+            if (cam == null) { Write("R37 TEST no main cam"); return; }
             var data = cam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
             data.renderPostProcessing = true;
-            Write("R37 TEST main cam post -> ON (session only)
-");
+            Write("R37 TEST main cam post -> ON (session only)");
         }
 
         [MenuItem("Tools/R37/96b 试验:SkyDeep=1(会话级)")]
