@@ -25,7 +25,7 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.85
+    - _Absorb: 0.68
     - _AmbientStrength: 0.35
     - _CrestFoam: 0.22
     - _CrestJ: 0.28
@@ -48,10 +48,10 @@ Material:
     - _RefractStrength: 0.3
     - _SSRDebug: 0
     - _SSREdgeFade: 24
-    - _SSRMaxDist: 120
-    - _SSRSteps: 48
+    - _SSRMaxDist: 60
+    - _SSRSteps: 36
     - _SSRStrength: 0.85
-    - _SSRThickness: 1.5
+    - _SSRThickness: 0.7
     - _ScatterGain: 1.6
     - _ScatterMaxDist: 12
     - _ScatterMode: 2
