@@ -187,6 +187,10 @@ namespace WaterProject.Logic
                     skyMat.SetColor("_CloudShadow", Color.Lerp(zen * 0.25f, Color.Lerp(zen, hor, 0.55f), day));
                 if (skyMat.HasProperty("_SunGlow"))
                     skyMat.SetFloat("_SunGlow", Mathf.Clamp01(1f - Mathf.Abs(elev) / 45f) * 1.1f + 0.15f);
+                // R37：云隙压深随昼夜驱动——白天保持 0.52（R18/R32 校准值不动），
+                // 低光抬到 0.75（黄昏/夜天空被调色链压黑的帮凶之一；昼夜各得其所）
+                if (skyMat.HasProperty("_SkyDeep"))
+                    skyMat.SetFloat("_SkyDeep", Mathf.Lerp(0.75f, 0.52f, Mathf.Clamp01(day * 1.6f - 0.2f)));
                 // 夜空：星星/银河/月面全部按"夜因子"淡入淡出 ⇒ 白天这些项恒为 0，零回归
                 float night = 1f - day;
                 if (skyMat.HasProperty("_NightAmount")) skyMat.SetFloat("_NightAmount", night);

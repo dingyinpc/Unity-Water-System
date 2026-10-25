@@ -27,7 +27,7 @@ Material:
     m_Floats:
     - _CloudBase: 900
     - _CloudBaseDark: 0.5
-    - _CloudCover: 0.52
+    - _CloudCover: 0.05
     - _CloudDrift: 0.01
     - _CloudScale: 0.9
     - _CloudShear: 0.006
@@ -36,13 +36,13 @@ Material:
     - _CloudWindDir: 200
     - _CloudWindSpeed: 100
     - _FlareAmount: 0.9
-    - _GalaxyAmount: 0.3
+    - _GalaxyAmount: 0.45
     - _MoonAmount: 0
     - _MoonPhase: 0.62
     - _MoonSize: 0.03
     - _NightAmount: 0
     - _SkyDeep: 0.52
-    - _StarBright: 1.15
+    - _StarBright: 2.4
     - _StarGrid: 320
     - _SunGlow: 0.15
     m_Colors:
