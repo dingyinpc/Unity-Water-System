@@ -43,7 +43,7 @@ Material:
     - _FresnelPow: 4
     - _MaxDepth: 1.6
     - _MaxUVOffset: 0.012
-    - _Opacity: 0.76
+    - _Opacity: 0.62
     - _PlanarStrength: 1.6
     - _ReflDistort: 0.012
     - _ReflFade: 120
