@@ -33,7 +33,7 @@ namespace WaterProject.EditorTools
             var it = AssetDatabase.LoadAssetAtPath<Material>(MatFolder + "/Sky_IsletTropical.mat");
             if (it != null && it.HasProperty("_CloudDrift"))
             {
-                it.SetVector("_CloudDrift", new Vector4(21f, 0f, 9f, 0f));   // 固定值（幂等）= 基础(7,0,3)×3
+                it.SetVector("_CloudDrift", new Vector4(7f, 0f, 3f, 0f));    // R39 回基础档：×3 把 Islet sky E 抬 9×超带(R39 隔离实验实锤,Islet 云本来没被批)
                 AssetDatabase.SaveAssetIfDirty(it);
                 Write("R36 cloud IsletTropical: drift -> (21,0,9)\n");
             }
