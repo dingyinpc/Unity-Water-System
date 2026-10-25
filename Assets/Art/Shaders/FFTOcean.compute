@@ -192,11 +192,16 @@ void GradJacob(uint3 id : SV_DispatchThreadID)
     float dhdx = (R.z - L.z) / (2.0 * dx);
     float dhdz = (U.z - D.z) / (2.0 * dx);
     // choppy 雅可比：J = (1+∂Dx/∂x)(1+∂Dz/∂z) − ∂Dx/∂z·∂Dz/∂x
-    float dxxx = (R.x - L.x) / (2.0 * dx);
-    float dxzz = (U.y - D.y) / (2.0 * dx);
-    float dxxz = (U.x - D.x) / (2.0 * dx);
-    float dxzx = (R.y - L.y) / (2.0 * dx);
+    // R32：位移导数必须乘 choppy（_Sim.w）——水面顶点采样端 Dx/Dz 一直乘着
+    // choppy，这里不乘的话 J 是"未挤压"口径 ⇒ 提 choppy 永远不出更多沫
+    //（R31 帧级对照"浪尖白沫不可见"的根因之一）
+    float ch = max(_Sim.w, 0.0);
+    float dxxx = (R.x - L.x) / (2.0 * dx) * ch;
+    float dxzz = (U.y - D.y) / (2.0 * dx) * ch;
+    float dxxz = (U.x - D.x) / (2.0 * dx) * ch;
+    float dxzx = (R.y - L.y) / (2.0 * dx) * ch;
     float J = (1.0 + dxxx) * (1.0 + dxzz) - dxxz * dxzx;
-    float foam = saturate(-(J - 0.85) * 3.0);         // J<0.85 起沫
+    float foam = saturate(-(J - 0.98) * 3.0);         // J<0.98 起沫（R32 实测定标：J 分布 5%位=0.65、
+                                                      // 中位≈1.0 ⇒ 0.98 阈值下 ~15% 像素有沫，成云絮带）
     _Grad[id.xy] = float4(dhdx, dhdz, J, foam);
 }

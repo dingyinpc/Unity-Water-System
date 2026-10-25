@@ -45,6 +45,26 @@ Shader "WaterProject/Water_FFT"
             float4 _DeepColor, _ScatterColor, _HorizonColor, _ZenithColor, _SunColor, _FoamColor;
             float _SpecPow, _SpecInt, _FogStart, _FogEnd;
 
+            // R32 泡沫颗粒：J 场是平滑场，直接上屏是"糊白带"——用双倍频值噪声
+            // 把沫侵蚀成碎粒/云絮（参考的沫有明确颗粒感）
+            float Hash21(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * 0.1031);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.x + p3.y) * p3.z);
+            }
+            float FoamNoise(float2 xz, float t)
+            {
+                float2 q = xz * 0.85 + float2(t * 0.22, -t * 0.17);
+                float2 i = floor(q), f = frac(q);
+                float2 u = f * f * (3.0 - 2.0 * f);
+                float a = Hash21(i), b = Hash21(i + float2(1, 0));
+                float c = Hash21(i + float2(0, 1)), d = Hash21(i + float2(1, 1));
+                float n1 = lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+                float n2 = Hash21(i * 1.93 + 7.7);
+                return n1 * 0.72 + n2 * 0.28;
+            }
+
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -98,6 +118,12 @@ Shader "WaterProject/Water_FFT"
                 float2 grad = g0.xy * _FFTL0Info.w * w0 + g1.xy * _FFTL1Info.w * w1
                             + g2.xy * _FFTL2Info.w * w2;
                 float foam = saturate((g0.w * w0 + g1.w * w1 + g2.w * w2) * _FFTGlobal.y);
+                // R32：白沫成团——线性叠加偏"蕾丝网"，smoothstep 把中间密度推成
+                // 云絮状斑块（参考浪尖的沫是一团团的，不是均匀网）。
+                // ⚠ 端点别收太紧：首版 (0.12,0.85) 把中密度全灭、只剩饱和点（实测白沫又不可见）
+                foam = smoothstep(0.15, 0.9, foam);
+                // 颗粒侵蚀：噪声均值≈0.8，既碎化又把覆盖从 ~25% 压回 ~15%
+                foam = saturate(foam * (0.30 + 0.95 * FoamNoise(i.wp.xz, _FFTGlobal.z)));
 
                 float3 n = normalize(float3(-grad.x, 1.0, -grad.y));
 

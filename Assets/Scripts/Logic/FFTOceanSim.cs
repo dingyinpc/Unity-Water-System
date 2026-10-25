@@ -48,7 +48,7 @@ namespace WaterProject.Logic
         {
             (250f, 1.00f, 1e9f, 1e9f),
             (60f,  0.55f, 120f, 350f),
-            (15f,  0.28f, 40f,  140f),
+            (15f,  0.34f, 40f,  140f),   // R32 细级 0.28→0.34：浪峰碎粒感+细尺度折叠（泡沫颗粒）
         };
 
         ComputeShader _cs;
@@ -101,6 +101,8 @@ namespace WaterProject.Logic
 
         public void Init()
         {
+            // 编辑器菜单也可能调 Init（Awake 未跑、_cs 还是 null）——这里补赋一次
+            _cs = computeShader;
             if (_cs == null)
             {
                 Debug.LogError("[FFTOceanSim] computeShader 未赋值（菜单 Tools/FFT/90 会赋）");
@@ -411,6 +413,32 @@ namespace WaterProject.Logic
                 }
                 Object.Destroy(tex);
                 sb.Append($"L{Levels[i].L:F0}m max|h|={mx:F3} rms={Mathf.Sqrt(sum2 / cols.Length):F3}  ");
+            }
+            RenderTexture.active = prev;
+            return sb.ToString();
+        }
+
+        /// <summary>R32：_Grad 场统计（Jacobian 分布 + 泡沫通道）——白沫可见性定标用。
+        /// 返回每级 J 的 min/p05/p50 与 foam 的 p50/p95/max，探针直读。</summary>
+        public string ReadGradStats()
+        {
+            if (!_inited) return "FFTSim not inited";
+            var sb = new System.Text.StringBuilder();
+            var prev = RenderTexture.active;
+            for (int i = 0; i < Levels.Length; i++)
+            {
+                var tex = new Texture2D(N, N, TextureFormat.RGBAFloat, false);
+                RenderTexture.active = _rts[i].Grad;
+                tex.ReadPixels(new Rect(0, 0, N, N), 0, 0);
+                tex.Apply();
+                var cols = tex.GetPixels();
+                int n = cols.Length;
+                var js = new float[n]; var fs = new float[n];
+                for (int q = 0; q < n; q++) { js[q] = cols[q].b; fs[q] = cols[q].a; }
+                System.Array.Sort(js); System.Array.Sort(fs);
+                Object.Destroy(tex);
+                sb.Append($"L{Levels[i].L:F0} Jmin={js[0]:F3} J05={js[n / 20]:F3} J50={js[n / 2]:F3} " +
+                          $"foam50={fs[n / 2]:F3} foam95={fs[(int)(n * 0.95f)]:F3} foamMax={fs[n - 1]:F3}  ");
             }
             RenderTexture.active = prev;
             return sb.ToString();

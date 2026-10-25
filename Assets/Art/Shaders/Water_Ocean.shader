@@ -477,18 +477,34 @@ Shader "WaterProject/Water_Ocean"
                 float c0 = sqrt(9.81 / k0) * 1.22 * _SwellSpeed;
                 float ph0 = k0 * dot(_WindDir.xz, worldPos.xz) - c0 * k0 * t;
                 // 白沫只挂在浪头上：pow 把 0~1 的相位压成窄峰
-                float crest = pow(0.5 + 0.5 * sin(ph0), 2.2);
+                //（R32：2.2→3.2，沫线更窄更亮——参考的碎浪线是清晰的"一排排"，
+                //  旧指数把沫摊成宽带、和浅水提亮糊在一起读不出浪线）
+                float crest = pow(0.5 + 0.5 * sin(ph0), 3.2);
                 float hDom = 2.0 * 0.62 * _SwellAmp * gain;
                 float dBreak = hDom / max(_BreakerIndex, 0.1);
                 float inSurf = saturate((dBreak - depth) / max(dBreak * 0.5, 0.25));
                 // 破碎带不是干净的一条线，用噪声把它咬成指状
-                float bite = ValueNoise(float2(worldPos.x * 0.05, t * 0.30)) * 0.6 + 0.4;
+                //（R32：咬边方差 0.6→0.45——带要断续但不碎成斑点）
+                float bite = ValueNoise(float2(worldPos.x * 0.05, t * 0.30)) * 0.45 + 0.55;
                 float breakage = saturate(inSurf * (0.18 + 1.5 * crest) * bite);
                 float breakFoam = breakage * _BreakFoam;
 
-                // 远海白帽：只在够深的地方出现，否则会和碎浪带糊成一片
-                float wc = ValueNoise(worldPos.xz * 0.07 + float2(t * 0.20, t * 0.05));
-                float whitecap = saturate((wc - 0.55) * 3.2) * _Whitecap * saturate(depth - 3.0) * 0.6;
+                // 远海白帽（R32 带状化）：白帽位置挂在**中浪（74m 级）的波峰相位**上
+                // ——参考远海的白是一排排沿浪线的断续白线；旧版噪声决定位置，
+                // 出来的是无方向斑点。噪声降级为"撕裂"因子：决定哪段峰线露白。
+                // ⚠ 本文件 ValueNoise 输出是**带符号**的（≈±0.7）——旧阈值 0.55、
+                //   R32 首版 0.35 都让它处处为 0（白帽其实从未真正显示过），必须先归一到 0..1
+                // ⚠ 距离 LOD：远处一个像素跨好几米，3m 宽的峰线被平均掉（亚像素峰）⇒
+                //   远处放宽峰窗指数+提增益，把"峰的亮度"换成"峰的面积覆盖"读出条带
+                float dCamXZ = distance(worldPos.xz, _WorldSpaceCameraPos.xz);
+                float farW = saturate(dCamXZ / 600.0);
+                float kW = 6.2831853 / max(74.0 * _SwellScale, 0.1);
+                float cW = sqrt(9.81 / kW) * 0.88 * _SwellSpeed;
+                float phW = kW * dot(_WindDir.xz, worldPos.xz) - cW * kW * t;
+                float crestW = pow(0.5 + 0.5 * sin(phW), lerp(2.6, 1.2, farW));
+                float wc = ValueNoise(worldPos.xz * 0.07 + float2(t * 0.20, t * 0.05)) * 0.5 + 0.5;
+                float wcTear = saturate((wc - 0.25) * 1.9);
+                float whitecap = saturate(crestW * wcTear * lerp(1.6, 2.2, farW)) * _Whitecap * saturate(depth - 3.0);
 
                 // ── ⑤ 冲滩沫带：会呼吸的湿沙边界 ──
                 // ⚠ 必须用**有符号**的 offDist。上一版写的是 `1 - up/reach`，

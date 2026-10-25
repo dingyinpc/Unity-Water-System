@@ -28,7 +28,7 @@ Material:
     - _Absorb: 0.3
     - _BeachCurve: 0.0022
     - _BeachRise: 0.055
-    - _BreakFoam: 0.95
+    - _BreakFoam: 1
     - _BreakerIndex: 0.72
     - _CloudShadowOn: 1
     - _CloudShadowStrength: 0.85
@@ -71,18 +71,18 @@ Material:
     - _SkyReflect: 0.56
     - _SpecPower: 420
     - _SpecStrength: 0.7
-    - _Steep: 0.62
+    - _Steep: 0.68
     - _SunGloss: 200
     - _SunStrength: 2.2
     - _SwashFade: 3
     - _SwashFoam: 0.75
     - _SwashReach: 9.5
     - _SwashSpeed: 0.13
-    - _SwellAmp: 1
-    - _SwellScale: 1
+    - _SwellAmp: 1.6
+    - _SwellScale: 1.45
     - _SwellSpeed: 0.45
-    - _Whitecap: 0.2
-    - _WindAlign: 0.8
+    - _Whitecap: 0.9
+    - _WindAlign: 0.94
     m_Colors:
     - _DeepColor: {r: 0.012, g: 0.075, b: 0.13, a: 1}
     - _FoamColor: {r: 0.94, g: 0.965, b: 0.975, a: 1}

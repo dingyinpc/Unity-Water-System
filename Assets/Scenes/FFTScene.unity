@@ -366,13 +366,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 780d5c2fb9549994d942f4a081ac897e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  windSpeed: 9
+  windSpeed: 12.5
   windDirDeg: 35
-  ampScale: 985
+  ampScale: 780
   timeMultiplier: 1.1
   fixedStep: 0.016666668
-  choppy: 1
-  foamScale: 1
+  choppy: 1.35
+  foamScale: 1.45
   waterPlane: {fileID: 407681599}
   computeShader: {fileID: 7200000, guid: 2c2f6327e9c0ddf4b8082a86956f3401, type: 3}
 --- !u!4 &693041431

@@ -25,6 +25,7 @@ Shader "WaterProject/Sky_Coast"
         _CloudColor   ("云色", Color) = (1.00, 0.995, 0.985, 1)
         _CloudShadow  ("云底阴影色", Color) = (0.520, 0.570, 0.650, 1)
         _CloudCover   ("云量", Range(0, 1)) = 0.52
+        _CloudBaseDark ("云底暗度(R32,0=旧亮底)", Range(0, 1)) = 0
         _SunGlow      ("日晕强度", Range(0, 2)) = 0.55
 
         // ── 体积云（R3）：_CloudScale/_CloudDrift 旧参废弃保留兼容，不再参与 ──
@@ -68,7 +69,7 @@ Shader "WaterProject/Sky_Coast"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _HorizonColor, _ZenithColor, _GroundColor, _CloudColor, _CloudShadow;
-                float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow;
+                float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow, _CloudBaseDark;
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
@@ -230,17 +231,19 @@ Shader "WaterProject/Sky_Coast"
                             float dS2 = CloudDensity(p + sunDir * 420.0, h + sunDir.y * 420.0);
                             float dS3 = CloudDensity(p + sunDir * 900.0, h + sunDir.y * 900.0);
                             float dSun = dS1 * 0.5 + dS2 * 0.35 + dS3 * 0.25;
-                            float shadow = exp(-(dens * 1.2 + dSun) * 2.6);
+                            // R32 云底阴影：_CloudBaseDark 把"云底亮多少"从常数变成可调——
+                            // 参考厚云有明显暗底，旧常数 0.80/2.6/0.18 把底面托得太亮
+                            float shadow = exp(-(dens * 1.2 + dSun) * lerp(2.6, 3.5, _CloudBaseDark));
                             float phase = 0.62 + 0.38 * pow(saturate(dot(d, sunDir)), 3.0);
                             // 粉末效应：薄处（迎光边）提亮，厚处压住——云边的银线由此来
                             float powder = 1.0 - exp(-dens * 8.0);
                             float Hc = _CloudTop - _CloudBase;
                             // 云顶环境光：高处泛天光蓝白，与云底阴影拉开层次
                             float topAmb = smoothstep(0.25, 1.0, h / Hc) * (1.0 - _NightAmount);
-                            float3 lit = lerp(_CloudShadow.rgb * 0.80, _CloudColor.rgb * 1.6,
+                            float3 lit = lerp(_CloudShadow.rgb * lerp(0.80, 0.42, _CloudBaseDark), _CloudColor.rgb * 1.6,
                                               saturate(shadow * (0.45 + 0.40 * phase) + powder * 0.30 * shadow));
                             lit += _CloudColor.rgb * 0.20 * topAmb * shadow;
-                            lit += _CloudColor.rgb * 0.18 * (1.0 - shadow);   // 多散射下限：密核不坠入死黑
+                            lit += _CloudColor.rgb * lerp(0.18, 0.10, _CloudBaseDark) * (1.0 - shadow);   // 多散射下限：密核不坠入死黑
                             // 太阳低时云缘向环境暖色过渡（S13 续卡"云体边缘向环境色"）
                             lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
                                        saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);
