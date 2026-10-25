@@ -529,6 +529,10 @@ Shader "WaterProject/Water_Ocean"
                 // 冲上来的那圈沫本身要更接近实心白，否则薄薄一层看不出"水到过这里"
                 alpha = max(alpha, washFoam * 0.85 * step(0.001, up));
 
+                // ── R30 近水俯角压暗：参考剖面近水 82~115 且向下变暗，我们 126~131 反向最亮
+                //（明暗分层缺的另一半）——俯角越大(V.y 大=看近处)水体越暗，掠射恢复 1.0
+                col *= lerp(0.78, 1.0, saturate(V.y * 3.0));
+
                 // ── 远景雾（P2-3 / 参考 S15）：沿视线到水面的**解析高度雾**（Beer–Lambert 积分）──
                 //   密度随高度指数衰减：d(y)=exp(-(y-_FogBaseY)*_FogFalloff)；
                 //   取相机/水面两点平均，光程 = density × 距离。参考是全 raymarch+3D噪声，此处为闭式近似。
@@ -547,7 +551,12 @@ Shader "WaterProject/Water_Ocean"
                               * (bank * 2.0 - 0.55);
                     float dens = _FogDensity * (1.0 + max(amt, -0.5));
                     float fd    = dens * distV * sqrt(dCam * dSurf);
-                    col = lerp(_FogColor.rgb, col, exp(-fd * fd));   // exp(-(d·x)²) == URP Exp²
+                    // R30 明暗分层：雾色随掠射角增亮（物理=地平线气溶胶更厚且反亮天）——
+                    // 原版把远近全拉向同一雾色，亮地平线被抹平 ⇒ 静帧对比 45 vs 参考 77；
+                    // 近水保深色、远水转亮雾带，层次即参考的"暗海亮带"结构
+                    float hor = saturate((0.14 - V.y) * 7.0);          // 仅地平线带(V.y<0.14)起效
+                    float3 fogCol = _FogColor.rgb * lerp(1.0, 1.45, hor);
+                    col = lerp(fogCol, col, exp(-fd * fd));   // exp(-(d·x)²) == URP Exp²
                 }
 
                 // 开了解析雾就不再叠一次 URP 雾（叠两次 => 水面比地形白，岸线断层）

@@ -1,0 +1,76 @@
+{
+ "label": "R30_Ocean_regress",
+ "ours_dir": "Docs/screenshots/seq_OceanScene_141430",
+ "ref": [
+  1700,
+  1790
+ ],
+ "ours_frames": 96,
+ "ref_frames": 91,
+ "compare_sec": 2.15,
+ "rois": {
+  "sky": {
+   "D1_ours": 42.4,
+   "D1_ref": 23.7,
+   "rho_E": 1.788,
+   "pass_E": true,
+   "D2_spike_ours": 2.39,
+   "D2_spike_ref": 3.16,
+   "pass_D2": true,
+   "D3_v_ours": 3.9,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    5,
+    7
+   ],
+   "D4_f_ours": 1.38,
+   "D4_f_ref": 0.92,
+   "rho_f": 1.5,
+   "pass_D4": true
+  },
+  "water": {
+   "D1_ours": 36.2,
+   "D1_ref": 30.4,
+   "rho_E": 1.191,
+   "pass_E": true,
+   "D2_spike_ours": 2.55,
+   "D2_spike_ref": 3.19,
+   "pass_D2": true,
+   "D3_v_ours": 6.51,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    5,
+    6
+   ],
+   "D4_f_ours": 0.92,
+   "D4_f_ref": 0.92,
+   "rho_f": 1.0,
+   "pass_D4": true
+  },
+  "full": {
+   "D1_ours": 37.5,
+   "D1_ref": 26.2,
+   "rho_E": 1.429,
+   "pass_E": true,
+   "D2_spike_ours": 2.1,
+   "D2_spike_ref": 3.13,
+   "pass_D2": true,
+   "D3_v_ours": 2.1,
+   "D3_v_ref": 0.0,
+   "rho_v": null,
+   "pass_D3": false,
+   "D3_hits": [
+    5,
+    6
+   ],
+   "D4_f_ours": 1.38,
+   "D4_f_ref": 0.92,
+   "rho_f": 1.5,
+   "pass_D4": true
+  }
+ }
+}

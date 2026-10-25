@@ -440,7 +440,11 @@ Shader "WaterProject/Water_Lagoon"
                 if (_DebugMode > 0.5) return half4(saturate(vd / 6.0), saturate(depthMix), saturate(shallow), 1);
 
                 float alpha = saturate(_Opacity + fres * 0.08 - sandMix * 0.10);
-                col += mainLight.color * Sparkle(worldPos.xz, t, Ng, V, mainLight.direction) * 1.8;
+                // R30-b：1.8→0.8 且去暖——两轮视觉判读"波光仍稍多稍暖，参考冷灰静水"
+                //（7→8/10 后再收一档）；E 余量足（S0 ρ1.68，压后仍 >0.5）
+                float3 coolLight = lerp(mainLight.color,
+                    dot(mainLight.color, float3(0.299, 0.587, 0.114)).xxx, 0.45);
+                col += coolLight * Sparkle(worldPos.xz, t, Ng, V, mainLight.direction) * 0.8;
                 return half4(col, alpha);
             }
             ENDHLSL
