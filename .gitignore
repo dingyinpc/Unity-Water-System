@@ -64,5 +64,9 @@ Docs/视频逐帧/
 
 # 博主授权参考视频原片（不入库、不二次分发）
 Docs/参考视频/
-mark
 Docs/screenshots/seq_*/
+# 每轮 A/B 中间对照目录（每个 2~20 张、可重跑生成；结论回填报告，只把最终对照帧入库）
+Docs/screenshots/cmp_*/
+# 临时静帧 / 泵采集残留
+Docs/screenshots/still_*
+Docs/Temp/
