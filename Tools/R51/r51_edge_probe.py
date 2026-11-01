@@ -100,17 +100,22 @@ def step_metrics(ts, vals):
     return step, float(width), step / max(width, 1e-6), low, high
 
 
-def analyze(path, roi_s, save_overlay=None):
+def analyze(path, roi_s, save_overlay=None, forced_line=None):
     im = imread_u(path)
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32)
     roi = parse_roi(roi_s, im.shape)
-    lines, crop = find_lines(gray, roi)
-    if not lines:
-        return {"file": os.path.basename(path), "lines": 0}
-    best = lines[0]
-    # Hough 坐标是 ROI 内的，转回全图
-    x0, y0 = roi[0], roi[1]
-    best_g = (best[0], best[1] + x0, best[2] + y0, best[3] + x0, best[4] + y0)
+
+    if forced_line is not None:
+        x1, y1, x2, y2 = forced_line
+        best_g = (float(np.hypot(x2 - x1, y2 - y1)), x1, y1, x2, y2)
+        lines = [best_g]
+    else:
+        lines, crop = find_lines(gray, roi)
+        if not lines:
+            return {"file": os.path.basename(path), "lines": 0}
+        best = lines[0]
+        x0, y0 = roi[0], roi[1]
+        best_g = (best[0], best[1] + x0, best[2] + y0, best[3] + x0, best[4] + y0)
     ts, vals = profile_across(gray, best_g)
     m = step_metrics(ts, vals)
     if save_overlay:
@@ -131,15 +136,20 @@ def main():
     ap.add_argument("--compare", nargs=2)
     ap.add_argument("--roi", default="0,0,420,200")
     ap.add_argument("--overlay", default="")
+    ap.add_argument("--line", default="", help="强制用这条线测：x1,y1,x2,y2（A/B 必须锁同一条）")
     a = ap.parse_args()
 
+    forced = None
+    if a.line:
+        forced = [float(v) for v in a.line.split(",")]
+
     if a.img:
-        r = analyze(a.img, a.roi, a.overlay or None)
+        r = analyze(a.img, a.roi, a.overlay or None, forced)
         print(r)
         return
     if a.compare:
-        r1 = analyze(a.compare[0], a.roi, "Docs/Temp/r51_before_overlay.png")
-        r2 = analyze(a.compare[1], a.roi, "Docs/Temp/r51_after_overlay.png")
+        r1 = analyze(a.compare[0], a.roi, "Docs/Temp/r52_before_overlay.png", forced)
+        r2 = analyze(a.compare[1], a.roi, "Docs/Temp/r52_after_overlay.png", forced)
         print("改前:", r1)
         print("改后:", r2)
         if "ratio" in r1 and "ratio" in r2:

@@ -367,6 +367,7 @@ Shader "WaterProject/Water_Lagoon"
                 // 两条取帧通路里都不可信（离屏全远平面；GameView ~10m 外膨胀→20m 归零）。
                 // gap 是【视深】；vd 才是垂直水深，带宽与吸收都用它（《05》D-2/D-3）
                 float vd;
+                float domainM = 0.0;   // R52 域边界混色权重（0=不受影响, 1=正好在边界上）
                 if (_DepthSource > 0.5)
                 {
                     // 足印外（clamp 到边缘）= rim 的 -7.5m → vd 7.5m：出礁盘即"深水"，物理正确
@@ -381,12 +382,9 @@ Shader "WaterProject/Water_Lagoon"
                     float2 dHalf = abs(worldPos.xz - (_IsletFloorHRect.xy + _IsletFloorHRect.z * 0.5))
                                  - _IsletFloorHRect.z * 0.5;
                     float dOut = max(dHalf.x, dHalf.y);                 // <0 域内, >0 域外
-                    // ⚠ R51：这里试过三种"域边界过渡"，**全部失败并已回滚**（见 R49 报告 §7/§11）：
-                    //   · 只在内侧渐变 120m → 整片泻湖压深（暗水 26%→85%）
-                    //   · 只在内侧渐变 35m  → 仅 1.73% 像素，肉眼无感
-                    //   · 跨边界对称 60m    → 台阶比反而 1.83→**3.11**（更硬）
-                    //   结论：颜色差不是单纯由 vd 决定（vd 两侧都已饱和），在 vd 上做文章没用。
-                    //   保留 dOut 供后续"按边界混色"方案使用，但**不改 vd**。
+                    // R51 试过三种"在 vd 上做过渡"，全部失败（120m 压深 / 35m 无感 / 对称60m 更硬）。
+                    // R52：不在 vd 上动手，只算一个"边界权重"，交给下面的最终着色去混。
+                    domainM = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), abs(dOut));
                 }
                 else
                 {
@@ -398,6 +396,15 @@ Shader "WaterProject/Water_Lagoon"
 
                 float depthMix = 1.0 - exp(-vd * _Absorb);          // 水色：浅→深
                 float sandMix  = exp(-vd * _SandAbsorb);            // 沙底还能返多少光
+
+                // R52：这一版"把 depthMix/sandMix 沿边界混到中性值"**实测更硬**（1.71→2.33），已停用。
+                //   原因：暗的一侧其实在矩形**内部**（dOut<0），把它再往"深水"推只会更暗。
+                //   domainM 保留下来供下一轮做"逐项可视化"时定位用。
+                if (domainM > 0.0005 && _DomainFade < 0.0)   // 恒假：保留代码但不生效
+                {
+                    sandMix  = lerp(sandMix,  0.0, domainM);
+                    depthMix = lerp(depthMix, 1.0, domainM);
+                }
 
                 float fres = pow(1.0 - saturate(dot(V, Ng)), _FresnelPow);
 
