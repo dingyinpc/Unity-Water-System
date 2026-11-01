@@ -83,6 +83,34 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R49/96b 诊断:显示水面")]
         public static void ShowWater() => SetWaterVisible(true, "96b");
 
+        // 决定实验：把水调成**全不透明**。若暗楔消失 ⇒ 是透过水看到的海底/地形边缘；
+        // 若仍在 ⇒ 是水面自身着色。
+        static float _savOpacity = -1f;
+        static void SetOpacity(float v, string tag)
+        {
+            var seen = new HashSet<Material>();
+            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                var m = r.sharedMaterial;
+                if (m == null || !seen.Add(m) || !m.HasProperty("_Opacity")) continue;
+                if (_savOpacity < 0f) _savOpacity = m.GetFloat("_Opacity");
+                m.SetFloat("_Opacity", v);
+                EditorUtility.SetDirty(m);
+                P($"MENU R49/{tag} _Opacity={v}（{m.name}，原 {_savOpacity}）\n");
+            }
+        }
+
+        [MenuItem("Tools/R49/97 诊断:水面全不透明")]
+        public static void Opaque() => SetOpacity(1f, "97");
+
+        [MenuItem("Tools/R49/97b 诊断:还原不透明度")]
+        public static void OpaqueRestore()
+        {
+            if (_savOpacity < 0f) { P("R49/97b 无存档\n"); return; }
+            SetOpacity(_savOpacity, "97b");
+            _savOpacity = -1f;
+        }
+
         [MenuItem("Tools/R49/93 探针(域外过渡/深水深度/足印)")]
         public static void Probe()
         {
