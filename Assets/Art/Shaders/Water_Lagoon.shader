@@ -100,7 +100,7 @@ Shader "WaterProject/Water_Lagoon"
         _AmbientStrength  ("环境光强度", Float) = 0.55
         _DepthSource      ("水深来源 0深度纹理 1解析地面", Range(0,1)) = 0
         // R49 域外过渡：足印边界原来是硬跳变（俯视是"黑楔"）。这两个值把跳变拉成渐变。
-        _DomainFade       ("域外过渡宽度(米)", Float) = 35
+        _DomainFade       ("域外过渡宽度(米)", Float) = 60
         _DeepDepth        ("域外深水深度(米)", Float) = 14
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
         // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
@@ -381,12 +381,12 @@ Shader "WaterProject/Water_Lagoon"
                     float2 dHalf = abs(worldPos.xz - (_IsletFloorHRect.xy + _IsletFloorHRect.z * 0.5))
                                  - _IsletFloorHRect.z * 0.5;
                     float dOut = max(dHalf.x, dHalf.y);                 // <0 域内, >0 域外
-                    // ⚠ 只在**域外**渐变是没用的：域外本来 clamp 成 rim(-8m) 就已是"深水饱和"，
-                    //   8m 和 14m 的 depthMix 都≈1，颜色几乎不变（第一版 A/B 实测逐位相同）。
-                    //   真正要渐变的是**边界内侧**：让水在靠边 _DomainFade 米内逐渐加深，
-                    //   把"浅水→深水"的一步台阶摊成 120 米的坡。
-                    float tIn = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), -dOut);  // 边界处=1, 内侧/DomainFade=0
-                    vd = lerp(vd, max(vd, _DeepDepth), tIn);
+                    // ⚠ R51：这里试过三种"域边界过渡"，**全部失败并已回滚**（见 R49 报告 §7/§11）：
+                    //   · 只在内侧渐变 120m → 整片泻湖压深（暗水 26%→85%）
+                    //   · 只在内侧渐变 35m  → 仅 1.73% 像素，肉眼无感
+                    //   · 跨边界对称 60m    → 台阶比反而 1.83→**3.11**（更硬）
+                    //   结论：颜色差不是单纯由 vd 决定（vd 两侧都已饱和），在 vd 上做文章没用。
+                    //   保留 dOut 供后续"按边界混色"方案使用，但**不改 vd**。
                 }
                 else
                 {

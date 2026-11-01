@@ -38,8 +38,8 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R49/90 域外过渡=关(硬边, 仅A/B用)")]
         public static void FadeOff() => SetFade(0.001f, "90");
 
-        [MenuItem("Tools/R49/90b 域外过渡=开(35m)")]
-        public static void FadeOn() => SetFade(35f, "90b");
+        [MenuItem("Tools/R49/90b 域外过渡=开(60m)")]
+        public static void FadeOn() => SetFade(60f, "90b");
 
         // 诊断：_DebugMode 1 = 直接输出水深（saturate(vd/6)）。用来判断"暗区是不是深度跳变"。
         static void SetDebug(float v, string tag)
@@ -109,6 +109,32 @@ namespace WaterProject.EditorTools
             if (_savOpacity < 0f) { P("R49/97b 无存档\n"); return; }
             SetOpacity(_savOpacity, "97b");
             _savOpacity = -1f;
+        }
+
+        // 决定性实验 2：关掉平行光阴影。若暗楔消失 ⇒ 它是**某个大物体投的阴影**（多边形硬边）。
+        static LightShadows _savShadows = LightShadows.Soft;
+        static bool _hasSavShadow;
+        static void SetShadows(LightShadows s, string tag)
+        {
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (l.type != LightType.Directional) continue;
+                if (!_hasSavShadow) { _savShadows = l.shadows; _hasSavShadow = true; }
+                l.shadows = s;
+                EditorUtility.SetDirty(l);
+                P($"MENU R49/{tag} {l.name}.shadows={s}（原 {_savShadows}）\n");
+            }
+        }
+
+        [MenuItem("Tools/R49/98 诊断:关阴影")]
+        public static void ShadowsOff() => SetShadows(LightShadows.None, "98");
+
+        [MenuItem("Tools/R49/98b 诊断:恢复阴影")]
+        public static void ShadowsOn()
+        {
+            if (!_hasSavShadow) { P("R49/98b 无存档\n"); return; }
+            SetShadows(_savShadows, "98b");
+            _hasSavShadow = false;
         }
 
         [MenuItem("Tools/R49/93 探针(域外过渡/深水深度/足印)")]

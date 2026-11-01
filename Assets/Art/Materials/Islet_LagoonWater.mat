@@ -38,7 +38,7 @@ Material:
     - _DebugMode: 0
     - _DeepDepth: 14
     - _DepthSource: 1
-    - _DomainFade: 120
+    - _DomainFade: 0.001
     - _Eta: 1.33
     - _FlowSpeed: 0.22
     - _FoamBand: 0.3
