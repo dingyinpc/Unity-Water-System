@@ -75,7 +75,10 @@ namespace WaterProject.EditorTools
             // Volume 里的曝光/对比（如果有）
             foreach (var v in Object.FindObjectsByType<Volume>(FindObjectsSortMode.None))
             {
-                sb.Append($"  VOLUME {v.name} weight={v.weight:F2} profile={(v.profile != null ? v.profile.name : "null")}\n");
+                sb.Append($"  VOLUME {v.name} weight={v.weight:F2} priority={v.priority} global={v.isGlobal} " +
+                          $"profile={(v.profile != null ? v.profile.name : "null")} " +
+                          $"shared={(v.sharedProfile != null ? v.sharedProfile.name : "null")} " +
+                          $"inst={(v.profile != null && v.sharedProfile != null && v.profile != v.sharedProfile ? "DIFF" : "same")}\n");
                 if (v.profile == null) continue;
                 if (v.profile.TryGet<ColorAdjustments>(out var ca))
                     sb.Append($"    ColorAdjustments postExposure={ca.postExposure.value:F2} contrast={ca.contrast.value:F1} saturation={ca.saturation.value:F1}\n");
