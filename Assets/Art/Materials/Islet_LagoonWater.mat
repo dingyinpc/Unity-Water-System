@@ -36,7 +36,9 @@ Material:
     - _CapStrength: 0.2
     - _CapToNg: 0.25
     - _DebugMode: 0
+    - _DeepDepth: 14
     - _DepthSource: 1
+    - _DomainFade: 120
     - _Eta: 1.33
     - _FlowSpeed: 0.22
     - _FoamBand: 0.3

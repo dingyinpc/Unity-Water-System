@@ -99,6 +99,9 @@ Shader "WaterProject/Water_Lagoon"
         // ── 环境 ──
         _AmbientStrength  ("环境光强度", Float) = 0.55
         _DepthSource      ("水深来源 0深度纹理 1解析地面", Range(0,1)) = 0
+        // R49 域外过渡：足印边界原来是硬跳变（俯视是"黑楔"）。这两个值把跳变拉成渐变。
+        _DomainFade       ("域外过渡宽度(米)", Float) = 35
+        _DeepDepth        ("域外深水深度(米)", Float) = 14
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
         // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
         _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (35, 150, 0, 0)
@@ -153,6 +156,7 @@ Shader "WaterProject/Water_Lagoon"
                 float4 _FoamColor;
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
+                float  _DomainFade, _DeepDepth;
                 float4 _SparkleFade;
             CBUFFER_END
 
@@ -370,6 +374,19 @@ Shader "WaterProject/Water_Lagoon"
                     float floorY = lerp(_IsletFloorHRect.w, _IsletFloorHH,
                                         SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv, 0).r);
                     vd = max(-floorY, 0.0);
+
+                    // ⚠ R49：上面这个 clamp 让**足印边界变成一条硬直线**——域内浅水、域外深水
+                    //   瞬间跳变，俯视就是"黑楔"（实测 RGB 73,149,132 vs 周围 112,200,180；
+                    //   不是真黑，是硬边读出来的暗）。在边界外侧 _DomainFade 米内渐变过去。
+                    float2 dHalf = abs(worldPos.xz - (_IsletFloorHRect.xy + _IsletFloorHRect.z * 0.5))
+                                 - _IsletFloorHRect.z * 0.5;
+                    float dOut = max(dHalf.x, dHalf.y);                 // <0 域内, >0 域外
+                    // ⚠ 只在**域外**渐变是没用的：域外本来 clamp 成 rim(-8m) 就已是"深水饱和"，
+                    //   8m 和 14m 的 depthMix 都≈1，颜色几乎不变（第一版 A/B 实测逐位相同）。
+                    //   真正要渐变的是**边界内侧**：让水在靠边 _DomainFade 米内逐渐加深，
+                    //   把"浅水→深水"的一步台阶摊成 120 米的坡。
+                    float tIn = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), -dOut);  // 边界处=1, 内侧/DomainFade=0
+                    vd = lerp(vd, max(vd, _DeepDepth), tIn);
                 }
                 else
                 {
