@@ -104,6 +104,11 @@ Shader "WaterProject/Water_Lagoon"
         _DeepDepth        ("域外深水深度(米)", Float) = 14
         // R53：水深采样的软化半径（UV 单位；0 = 旧行为）。默认 0.0015 ≈ 1.5 texel
         _FloorBlur        ("水深采样软化(UV, 0=关)", Float) = 0
+        // R54 径向加深（0=关）：潟湖内不生效，向外平滑加深，用来盖掉 RimFalloff 造成的直线边
+        _RadialDepth      ("径向加深上限(米, 0=关)", Float) = 0
+        _RadialShallow    ("径向浅水半径(米)", Float) = 120
+        _RadialDeep       ("径向深水半径(米)", Float) = 420
+        _RadialCenter     ("径向中心(世界XZ)", Vector) = (0, 0, 0, 0)
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
         // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
         _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (35, 150, 0, 0)
@@ -159,6 +164,8 @@ Shader "WaterProject/Water_Lagoon"
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
                 float  _DomainFade, _DeepDepth, _FloorBlur;
+                float  _RadialDepth, _RadialShallow, _RadialDeep;
+                float4 _RadialCenter;
                 float4 _SparkleFade;
             CBUFFER_END
 
@@ -412,6 +419,20 @@ Shader "WaterProject/Water_Lagoon"
                     float waterDepth = IN.clipPos.w;
                     float gap = max(sceneDepth - waterDepth, 0.0);
                     vd  = gap * max(abs(V.y), 0.06);
+                }
+
+                // ═══ R54：按"离岛距离"的平滑加深（可选，默认关）═══
+                // 为什么需要：vd 来自烘焙地面高度，而 LandHeight 末尾的 RimFalloff 会在矩形边缘把地面
+                //   硬压到 -7.5m，形成一道**放射状的坎**（R53 实测 vd 在该处 1 像素跳变）。
+                //   与其去修地形（会动岸线），不如叠一层**天生平滑**的"外海加深"：
+                //   离岛中心 _RadialShallow 米内不生效，到 _RadialDeep 米线性加深到 _RadialDepth。
+                //   径向函数不可能产生直线边，因此边界会被这层"盖平"。
+                if (_RadialDepth > 0.001)
+                {
+                    float radial = length(worldPos.xz - float2(_RadialCenter.x, _RadialCenter.y));
+                    float rt = saturate((radial - _RadialShallow) / max(_RadialDeep - _RadialShallow, 1.0));
+                    rt = rt * rt * (3.0 - 2.0 * rt);                 // smoothstep
+                    vd = max(vd, rt * _RadialDepth);
                 }
 
                 float depthMix = 1.0 - exp(-vd * _Absorb);          // 水色：浅→深

@@ -40,6 +40,7 @@ Material:
     - _DepthSource: 1
     - _DomainFade: 0.001
     - _Eta: 1.33
+    - _FloorBlur: 0.0015
     - _FlowSpeed: 0.22
     - _FoamBand: 0.3
     - _FoamStrength: 0.3
@@ -49,6 +50,9 @@ Material:
     - _GlitterStrength: 1.7
     - _MaxUVOffset: 0.022
     - _Opacity: 0.94
+    - _RadialDeep: 420
+    - _RadialDepth: 20
+    - _RadialShallow: 120
     - _RefractStrength: 0.16
     - _SandAbsorb: 0.34
     - _SheenPow: 60
@@ -69,6 +73,7 @@ Material:
     - _FoamColor: {r: 0.94, g: 0.98, b: 0.98, a: 1}
     - _GlitterFade: {r: 18, g: 75, b: 0, a: 0}
     - _MidColor: {r: 0.05, g: 0.64, b: 0.66, a: 1}
+    - _RadialCenter: {r: 0, g: 0, b: 0, a: 0}
     - _SandReturn: {r: 0.58, g: 0.6, b: 0.54, a: 1}
     - _ShallowColor: {r: 0.18, g: 0.78, b: 0.74, a: 1}
     - _SkyHorizon: {r: 0.46, g: 0.78, b: 0.9, a: 1}
