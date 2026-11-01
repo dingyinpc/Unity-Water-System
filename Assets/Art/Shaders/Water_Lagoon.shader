@@ -435,10 +435,14 @@ Shader "WaterProject/Water_Lagoon"
                 //   只做淡出会把远处水面砍掉（能量没了、看着发闷）；正确做法是：
                 //   近处保持 420 的锐利碎闪，远处把指数降到 ~80（同能量摊成一片柔光），
                 //   最后再按 _GlitterFade 收到 0。这是标准的高光 LOD。
+                // R48：再加一层**解析抗锯齿**——用 fwidth(Ns) 直接量"这一像素内法线变化多少"。
+                //   距离只是代理量，真正导致走样的是"法线变化率 × 像素足迹"。
                 float glDist = distance(_WorldSpaceCameraPos, worldPos);
                 float glF = saturate(1.0 - (glDist - _GlitterFade.x) / max(_GlitterFade.y - _GlitterFade.x, 1.0));
                 glF = glF * glF * (3.0 - 2.0 * glF);
-                float glPow = lerp(_GlitterPow, 80.0, saturate(glDist / max(_GlitterFade.y, 1.0)));
+                float fp = length(fwidth(Ns));                       // 每像素法线变化量
+                float aaF = saturate(fp * 90.0);                     // 0=近景锐利 1=远景糊化
+                float glPow = lerp(lerp(_GlitterPow, 80.0, saturate(glDist / max(_GlitterFade.y, 1.0))), 20.0, aaF);
                 float gl = pow(saturate(dot(Ns, Hs)), glPow);
                 col += _SunColor.rgb * gl * _GlitterStrength * glF;
                 // 日光盘：低锐度高强度的一层，给碎闪带一个底

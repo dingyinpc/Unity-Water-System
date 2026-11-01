@@ -36,8 +36,8 @@ namespace WaterProject.EditorTools
 
             var root = new GameObject(Root);
             var rng = new System.Random(20261101);
-            var rockMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Ocean_Rock.mat");
-            if (rockMat == null) { P("R47/90 REFUSED: 找不到 Ocean_Rock.mat\n"); Object.DestroyImmediate(root); return; }
+            var rockMat = GetReefRockMat();
+            if (rockMat == null) { P("R47/90 REFUSED: 建不出礁石材质\n"); Object.DestroyImmediate(root); return; }
 
             var rockMesh = new Mesh[3];
             for (int v = 0; v < 3; v++) rockMesh[v] = WaterProjectSetup.BuildFacetedRock(v, 1f);
@@ -65,31 +65,23 @@ namespace WaterProject.EditorTools
             };
             var coralMats = new Material[3];
             for (int i = 0; i < 3; i++) coralMats[i] = GetCoralMat(i, coralCols[i]);
+            // R48：珊瑚从"球堆"换成**带枝杈的程序化网格**（球堆在俯视就是彩色小点）
+            var coralMeshes = new Mesh[3];
+            for (int v = 0; v < 3; v++) coralMeshes[v] = BuildCoralMesh(v, new System.Random(500 + v));
             var coralPts = Sample(14, rng, 6f, 80f, -0.80f, -0.05f);
             if (coralPts.Count == 0)
                 P("R47/90 WARN: 珊瑚落点 0 个（水面下没有探测到可行走的地形？）\n");
 
             for (int i = 0; i < coralPts.Count; i++)
             {
-                var grp = new GameObject("R47_Coral_" + i);
-                grp.transform.SetParent(root.transform, false);
-                grp.transform.position = coralPts[i];
-                var mat = coralMats[i % 3];
-                int lobes = 2 + (i % 2);
-                for (int k = 0; k < lobes; k++)
-                {
-                    var lobe = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    Object.DestroyImmediate(lobe.GetComponent<Collider>());
-                    lobe.name = "lobe";
-                    lobe.transform.SetParent(grp.transform, false);
-                    float s = 0.55f + (float)rng.NextDouble() * 0.55f;
-                    lobe.transform.localScale = new Vector3(s, s * 0.55f, s);
-                    lobe.transform.localPosition = new Vector3(
-                        ((float)rng.NextDouble() - 0.5f) * 0.8f,
-                        k * 0.18f + 0.1f,
-                        ((float)rng.NextDouble() - 0.5f) * 0.8f);
-                    lobe.GetComponent<MeshRenderer>().sharedMaterial = mat;
-                }
+                var go = new GameObject("R47_Coral_" + i);
+                go.transform.SetParent(root.transform, false);
+                go.transform.position = coralPts[i];
+                float s = 0.8f + (float)rng.NextDouble() * 0.9f;
+                go.transform.localScale = new Vector3(s, s, s);
+                go.transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+                go.AddComponent<MeshFilter>().sharedMesh = coralMeshes[i % 3];
+                go.AddComponent<MeshRenderer>().sharedMaterial = coralMats[i % 3];
             }
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
@@ -109,6 +101,81 @@ namespace WaterProject.EditorTools
             foreach (var g in Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
                 if (g != null && g.name.StartsWith("R47_Coral_")) Object.DestroyImmediate(g);
             if (!quiet) { EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene()); P($"R47/90b 已拆除（石头 {n} 个）\n"); }
+        }
+
+        // R48：礁石不再用 Ocean_Rock（那套是"崖体 splat"用的，在这个光照下渲染成纯黑），
+        //   改成一个朴素 URP/Lit 灰褐色，至少能看出明暗面。
+        static Material GetReefRockMat()
+        {
+            string p = MatDir + "/Islet_ReefRock.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m != null) return m;
+            var sh = Shader.Find("Universal Render Pipeline/Lit");
+            if (sh == null) { P("R48 WARN: 找不到 URP/Lit\n"); return null; }
+            m = new Material(sh) { name = "Islet_ReefRock" };
+            m.SetColor("_BaseColor", new Color(0.33f, 0.31f, 0.28f));
+            m.SetFloat("_Smoothness", 0.22f);
+            m.SetFloat("_Metallic", 0f);
+            AssetDatabase.CreateAsset(m, p);
+            P("R48 新建礁石材质 Islet_ReefRock.mat\n");
+            return m;
+        }
+
+        // 程序化珊瑚：4~6 根**带锥度的枝杈**从同一点向外上生长（球堆在俯视只是彩色点）。
+        static Mesh BuildCoralMesh(int variant, System.Random rng)
+        {
+            var verts = new List<Vector3>();
+            var norms = new List<Vector3>();
+            var tris = new List<int>();
+
+            int branches = 4 + variant;
+            for (int b = 0; b < branches; b++)
+            {
+                float ang = (b / (float)branches) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.6f;
+                float tilt = 0.42f + (float)rng.NextDouble() * 0.42f;
+                Vector3 dir = new Vector3(Mathf.Cos(ang) * Mathf.Sin(tilt),
+                                          Mathf.Cos(tilt),
+                                          Mathf.Sin(ang) * Mathf.Sin(tilt)).normalized;
+                float len = 0.55f + (float)rng.NextDouble() * 0.55f;
+                float r0 = 0.075f, r1 = 0.018f;
+
+                Vector3 right = Vector3.Cross(dir, Vector3.forward);
+                if (right.sqrMagnitude < 1e-4f) right = Vector3.right;
+                right.Normalize();
+                Vector3 fwd = Vector3.Cross(dir, right).normalized;
+
+                const int rings = 4, seg = 6;
+                int baseIdx = verts.Count;
+                for (int i = 0; i <= rings; i++)
+                {
+                    float tt = i / (float)rings;
+                    Vector3 c = dir * (len * tt);
+                    float r = Mathf.Lerp(r0, r1, tt);
+                    for (int s = 0; s < seg; s++)
+                    {
+                        float a = s / (float)seg * Mathf.PI * 2f;
+                        Vector3 off = right * (Mathf.Cos(a) * r) + fwd * (Mathf.Sin(a) * r);
+                        verts.Add(c + off);
+                        norms.Add((off.normalized + dir * 0.25f).normalized);
+                    }
+                }
+                for (int i = 0; i < rings; i++)
+                    for (int s = 0; s < seg; s++)
+                    {
+                        int a0 = baseIdx + i * seg + s;
+                        int a1 = baseIdx + i * seg + (s + 1) % seg;
+                        int b0 = a0 + seg, b1 = a1 + seg;
+                        tris.Add(a0); tris.Add(b0); tris.Add(a1);
+                        tris.Add(a1); tris.Add(b0); tris.Add(b1);
+                    }
+            }
+
+            var m = new Mesh { name = "Coral_" + variant };
+            m.SetVertices(verts);
+            m.SetNormals(norms);
+            m.SetTriangles(tris, 0);
+            m.RecalculateBounds();
+            return m;
         }
 
         static Material GetCoralMat(int i, Color c)
