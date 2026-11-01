@@ -102,6 +102,8 @@ Shader "WaterProject/Water_Lagoon"
         // R49 域外过渡：足印边界原来是硬跳变（俯视是"黑楔"）。这两个值把跳变拉成渐变。
         _DomainFade       ("域外过渡宽度(米)", Float) = 60
         _DeepDepth        ("域外深水深度(米)", Float) = 14
+        // R53：水深采样的软化半径（UV 单位；0 = 旧行为）。默认 0.0015 ≈ 1.5 texel
+        _FloorBlur        ("水深采样软化(UV, 0=关)", Float) = 0
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
         // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
         _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (35, 150, 0, 0)
@@ -156,7 +158,7 @@ Shader "WaterProject/Water_Lagoon"
                 float4 _FoamColor;
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
-                float  _DomainFade, _DeepDepth;
+                float  _DomainFade, _DeepDepth, _FloorBlur;
                 float4 _SparkleFade;
             CBUFFER_END
 
@@ -372,8 +374,21 @@ Shader "WaterProject/Water_Lagoon"
                 {
                     // 足印外（clamp 到边缘）= rim 的 -7.5m → vd 7.5m：出礁盘即"深水"，物理正确
                     float2 fuv = (worldPos.xz - _IsletFloorHRect.xy) / _IsletFloorHRect.z;
-                    float floorY = lerp(_IsletFloorHRect.w, _IsletFloorHH,
-                                        SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv, 0).r);
+                    // R53：vd 在这条线上是**1 像素跳变**（逐项可视化实测 width=0）。
+                    //   原因不是"高度图没覆盖"，而是 LandHeight 用 max() 拼地形 ⇒ 台阶两侧是 C0 断崖。
+                    //   治法是**只对水深采样做 5 tap 软化**（不动地形几何，岸线不变），
+                    //   把断崖在"水的眼里"摊成几个像素的坡。_FloorBlur=0 时与旧行为等价。
+                    float fb = _FloorBlur;
+                    float hsum = SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv, 0).r;
+                    if (fb > 1e-6)
+                    {
+                        hsum += SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv + float2( fb, 0), 0).r;
+                        hsum += SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv + float2(-fb, 0), 0).r;
+                        hsum += SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv + float2(0,  fb), 0).r;
+                        hsum += SAMPLE_TEXTURE2D_LOD(_IsletFloorH, sampler_IsletFloorH, fuv + float2(0, -fb), 0).r;
+                        hsum *= 0.2;
+                    }
+                    float floorY = lerp(_IsletFloorHRect.w, _IsletFloorHH, hsum);
                     vd = max(-floorY, 0.0);
 
                     // ⚠ R49：上面这个 clamp 让**足印边界变成一条硬直线**——域内浅水、域外深水
@@ -382,9 +397,14 @@ Shader "WaterProject/Water_Lagoon"
                     float2 dHalf = abs(worldPos.xz - (_IsletFloorHRect.xy + _IsletFloorHRect.z * 0.5))
                                  - _IsletFloorHRect.z * 0.5;
                     float dOut = max(dHalf.x, dHalf.y);                 // <0 域内, >0 域外
-                    // R51 试过三种"在 vd 上做过渡"，全部失败（120m 压深 / 35m 无感 / 对称60m 更硬）。
-                    // R52：不在 vd 上动手，只算一个"边界权重"，交给下面的最终着色去混。
-                    domainM = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), abs(dOut));
+                    // R53 定位结果：逐项可视化显示 **depthMix 的过渡宽度 = 0 像素**（其余项都平滑），
+                    //   即 vd 在边界上是断的。之前"往 _DeepDepth 混"之所以更硬，是因为 14m 比边界值(8m)
+                    //   更深 —— 把内侧压得比外侧还暗，反而制造了反向台阶。
+                    //   正解：**两侧都收敛到"边界处应有的值"**（= rim 高度对应的 vd），不是收敛到某个固定深水值。
+                    float vdEdge = max(-_IsletFloorHRect.w, 0.0);      // rim(-8m) ⇒ 8m
+                    float tBand = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), abs(dOut));
+                    vd = lerp(vd, vdEdge, tBand);
+                    domainM = tBand;
                 }
                 else
                 {
@@ -482,6 +502,14 @@ Shader "WaterProject/Water_Lagoon"
                 // （mode 3 曾在 2026-10-04 轮临时征用为深度链路解剖 R/G/B 三件套，
                 //   排查完 URP14 深度纹理问题后已复原；那次排查的结论与替代方案
                 //   见 IsletFloorHBinder.cs 文件头与 _DepthSource 注释）
+                // ── R53 逐项可视化：哪一项在屏幕上"一刀切"，哪一项就是域边界硬边的真凶 ──
+                //   用法：菜单 Tools/R53/90~94 逐个切，截图后用 Tools/R51 的边量具对比。
+                if (_DebugMode > 8.5) return half4(col, 1);                                  // 9 = 雾前最终色
+                if (_DebugMode > 7.5) return half4(dot(col, float3(0.299,0.587,0.114)).xxx, 1); // 8 = 雾前亮度
+                if (_DebugMode > 6.5) return half4(fres.xxx, 1);                              // 7 = 菲涅尔
+                if (_DebugMode > 5.5) return half4(dot(waterBody, float3(0.299,0.587,0.114)).xxx, 1); // 6 = 水色本体亮度
+                if (_DebugMode > 4.5) return half4(saturate(depthMix).xxx, 1);                // 5 = depthMix
+                if (_DebugMode > 3.5) return half4(saturate(sandMix).xxx, 1);                 // 4 = sandMix
                 if (_DebugMode > 2.5) return half4(grad.x * 0.5 + 0.5, grad.y * 0.5 + 0.5, fres, 1);
                 if (_DebugMode > 1.5) return half4(reflW, saturate(gl * 4), sandMix, 1);
                 if (_DebugMode > 0.5) return half4(saturate(vd / 6.0), saturate(depthMix), saturate(shallow), 1);
