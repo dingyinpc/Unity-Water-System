@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Water_Lagoon.shader — 第四条水线：热带环礁潟湖（`IsletScene`）
 //
 // 对标 Docs/参考视频帧/参考1~6.png。这六张里的水**不是**开海，判据完全不同：
@@ -85,6 +85,9 @@ Shader "WaterProject/Water_Lagoon"
         _GlitterPow       ("碎闪锐度", Float) = 420.0
         _GlitterStrength  ("碎闪强度", Float) = 2.6
         _GlitterBand      ("碎闪带宽度(法线放大)", Float) = 1.9
+        // R47 白点根因：碎闪锐度 420 = 只有法线**几乎完全对准**太阳的像素才亮 ⇒ 远处法线
+        //   是亚像素采样，随机命中 ⇒ 整片水面"撒盐"。按距离淡出（近处保留闪，远处不撒）。
+        _GlitterFade      ("碎闪距离淡出(近,远)", Vector) = (18, 75, 0, 0)
         _SheenPow         ("日光盘锐度", Float) = 60.0
         _SheenStrength    ("日光盘强度", Float) = 0.35
 
@@ -97,6 +100,8 @@ Shader "WaterProject/Water_Lagoon"
         _AmbientStrength  ("环境光强度", Float) = 0.55
         _DepthSource      ("水深来源 0深度纹理 1解析地面", Range(0,1)) = 0
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
+        // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
+        _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (35, 150, 0, 0)
     }
 
     SubShader
@@ -144,9 +149,11 @@ Shader "WaterProject/Water_Lagoon"
                 float  _FresnelPow, _SkyReflect;
                 float4 _SunColor;
                 float  _GlitterPow, _GlitterStrength, _GlitterBand, _SheenPow, _SheenStrength;
+                float4 _GlitterFade;
                 float4 _FoamColor;
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
+                float4 _SparkleFade;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; };
@@ -225,13 +232,17 @@ Shader "WaterProject/Water_Lagoon"
             }
             // R18-G1 亮闪场：噪声离散化的太阳耀斑点（随微光场时间演化）——
             // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
-            float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
+            float Sparkle(float3 wpos, float t, float3 N, float3 V, float3 sunDir)
             {
+                float2 xz = wpos.xz;
                 float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
                 float glint = smoothstep(0.960, 0.995, s);
-                float3 rv = reflect(-V, N);
-                return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5))));
+                // R47：距离淡出——远处一个像素盖住几十个噪声格，硬采样就是"撒盐"
+                float d = distance(_WorldSpaceCameraPos, wpos);
+                float f = saturate(1.0 - (d - _SparkleFade.x) / max(_SparkleFade.y - _SparkleFade.x, 1.0));
+                f = f * f * (3.0 - 2.0 * f);
+                return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5)))) * f;
             }
 
             float3 ShimmerN(float2 xz, float t, float scale)
@@ -420,8 +431,16 @@ Shader "WaterProject/Water_Lagoon"
                 //   light.intensity（太阳 3.2）。乘了就是 2.6×3.2=8.3 的峰值，
                 //   整片近景直接冲到 (157,255,255) 死白 —— 实测踩过。
                 float3 Hs = normalize(mainLight.direction + V);
-                float gl = pow(saturate(dot(Ns, Hs)), _GlitterPow);
-                col += _SunColor.rgb * gl * _GlitterStrength;
+                // R47：距离淡出 + **高光瓣随距离加宽**。
+                //   只做淡出会把远处水面砍掉（能量没了、看着发闷）；正确做法是：
+                //   近处保持 420 的锐利碎闪，远处把指数降到 ~80（同能量摊成一片柔光），
+                //   最后再按 _GlitterFade 收到 0。这是标准的高光 LOD。
+                float glDist = distance(_WorldSpaceCameraPos, worldPos);
+                float glF = saturate(1.0 - (glDist - _GlitterFade.x) / max(_GlitterFade.y - _GlitterFade.x, 1.0));
+                glF = glF * glF * (3.0 - 2.0 * glF);
+                float glPow = lerp(_GlitterPow, 80.0, saturate(glDist / max(_GlitterFade.y, 1.0)));
+                float gl = pow(saturate(dot(Ns, Hs)), glPow);
+                col += _SunColor.rgb * gl * _GlitterStrength * glF;
                 // 日光盘：低锐度高强度的一层，给碎闪带一个底
                 col += _SunColor.rgb * pow(saturate(dot(reflDir, mainLight.direction)), _SheenPow)
                      * _SheenStrength;
@@ -444,7 +463,7 @@ Shader "WaterProject/Water_Lagoon"
                 //（7→8/10 后再收一档）；E 余量足（S0 ρ1.68，压后仍 >0.5）
                 float3 coolLight = lerp(mainLight.color,
                     dot(mainLight.color, float3(0.299, 0.587, 0.114)).xxx, 0.45);
-                col += coolLight * Sparkle(worldPos.xz, t, Ng, V, mainLight.direction) * 0.8;
+                col += coolLight * Sparkle(worldPos, t, Ng, V, mainLight.direction) * 0.8;
                 return half4(col, alpha);
             }
             ENDHLSL

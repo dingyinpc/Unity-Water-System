@@ -184,10 +184,13 @@ void Pack(uint3 id : SV_DispatchThreadID)
 void GradJacob(uint3 id : SV_DispatchThreadID)
 {
     float dx = _Grid.y / FFT_N;                       // 世界步长（米/格）
-    uint2 xl = uint2(max(id.x - 1, 0), id.y);
-    uint2 xr = uint2(min(id.x + 1, FFT_N - 1), id.y);
-    uint2 yd = uint2(id.x, max(id.y - 1, 0));
-    uint2 yu = uint2(id.x, min(id.y + 1, FFT_N - 1));
+    // R47：**必须环绕取样**。_Disp 是 IFFT 输出 ⇒ 天然周期；原来用 clamp
+    //   （max(id.x-1,0) / min(id.x+1,N-1)）在贴图边界上把步长砍半，
+    //   于是每条 tile 边界上的法线/泡沫都断一次 —— 俯视就是一条竖直缝。
+    uint2 xl = uint2((id.x + FFT_N - 1) % FFT_N, id.y);
+    uint2 xr = uint2((id.x + 1) % FFT_N, id.y);
+    uint2 yd = uint2(id.x, (id.y + FFT_N - 1) % FFT_N);
+    uint2 yu = uint2(id.x, (id.y + 1) % FFT_N);
     float4 L = _Disp[xl], R = _Disp[xr], D = _Disp[yd], U = _Disp[yu];
     float dhdx = (R.z - L.z) / (2.0 * dx);
     float dhdz = (U.z - D.z) / (2.0 * dx);

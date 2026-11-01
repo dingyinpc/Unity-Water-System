@@ -92,6 +92,8 @@ Shader "WaterProject/Water_Advanced"
         // ── R34 平面镜像兜底（镜像相机 RT 由 PondPlanarReflection 组件逐帧写入）──
         _PlanarStrength   ("平面镜像兜底强度", Range(0, 1)) = 0
         _PlanarDistort    ("平面镜像波纹扰动", Float) = 0.03
+        // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）
+        _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (45, 200, 0, 0)
     }
 
     SubShader
@@ -146,6 +148,7 @@ Shader "WaterProject/Water_Advanced"
                 float  _SpecPower, _SpecStrength, _SunGloss, _SunStrength, _FresnelPow, _AmbientStrength, _DepthDebug, _SkyReflect;
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _PlanarStrength, _PlanarDistort;
+                float4 _SparkleFade;
             CBUFFER_END
 
             #include "SSR.hlsl"
@@ -273,13 +276,18 @@ Shader "WaterProject/Water_Advanced"
             }
             // R18-G1 亮闪场：噪声离散化的太阳耀斑点（随微光场时间演化）——
             // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
-            float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
+            float Sparkle(float3 wpos, float t, float3 N, float3 V, float3 sunDir)
             {
+                float2 xz = wpos.xz;
                 float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ShimmerNoise(q) * 0.7 + ShimmerNoise(q * 1.9 + 4.7) * 0.3;
                 float glint = smoothstep(0.960, 0.995, s);
                 float3 rv = reflect(-V, N);
-                return glint * pow(saturate(dot(rv, sunDir)), 24.0);
+                // R47：距离淡出（同 Water_Ocean）
+                float d = distance(_WorldSpaceCameraPos, wpos);
+                float f = saturate(1.0 - (d - _SparkleFade.x) / max(_SparkleFade.y - _SparkleFade.x, 1.0));
+                f = f * f * (3.0 - 2.0 * f);
+                return glint * pow(saturate(dot(rv, sunDir)), 24.0) * f;
             }
 
             float3 ShimmerN(float2 xz, float t, float scale)
@@ -648,7 +656,7 @@ Shader "WaterProject/Water_Advanced"
                 if (_SSRDebug > 0.5) return half4(ssrConf.xxx, 1.0);
 
                 float alpha = saturate(_Opacity + fres * 0.1 - foam * 0.2);
-                col += mainLight.color * Sparkle(worldPos.xz, t, N, V, mainLight.direction) * 1.8;
+                col += mainLight.color * Sparkle(worldPos, t, N, V, mainLight.direction) * 1.8;
                 return half4(col + _FoamColor * interFoam * 0.12, alpha);   // 交互泡沫收敛，避免突兀白圈
             }
             ENDHLSL

@@ -138,11 +138,19 @@ Shader "WaterProject/Beach_Sand"
 
                 // 沙粒（G6 免费细节）：两级高频噪声 ≈ 1.8cm / 6mm。
                 // 湿沙被水膜糊平 ⇒ 按 wet 衰减；_GrainAmount=0 时这一整块等于没写。
+                // R47：**加距离 LOD**。细粒（1.8cm）在 40m 外一个像素盖住 3~10 个格子，
+                //   硬采样就是规则"扇贝纹"摩尔纹（俯视机位实测每块约 40px 重复）。
+                //   远处改成一层 25cm 的粗斑驳：既保住质感，又不会亚像素走样。
                 {
                     float gs = max(_GrainScale, 1.0);
                     float g1 = ValueNoise(IN.worldPos.xz * gs);
                     float g2 = ValueNoise(IN.worldPos.xz * (gs * 3.1) + 17.3);
-                    float grain = (g1 * 0.65 + g2 * 0.35) - 0.5;
+                    float dcam = distance(_WorldSpaceCameraPos, IN.worldPos);
+                    float lodFine = saturate(1.0 - (dcam - 3.0) / 12.0);     // 15m 外细粒归零
+                    float lodCoarse = saturate(1.0 - (dcam - 15.0) / 45.0);  // 60m 外粗斑驳也归零
+                    float g3 = ValueNoise(IN.worldPos.xz * 4.0 + 91.7);
+                    float grain = ((g1 * 0.65 + g2 * 0.35) - 0.5) * lodFine
+                                + (g3 - 0.5) * 0.55 * lodCoarse;
                     base *= 1.0 + grain * 0.42 * _GrainAmount * (1.0 - wet * 0.65);
                 }
 

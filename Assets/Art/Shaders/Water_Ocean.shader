@@ -134,6 +134,9 @@ Shader "WaterProject/Water_Ocean"
         _SwashReach ("沫带上冲 (菜单写)", Float) = 9.5
         _SwashSpeed ("沫带周期 (菜单写)", Float) = 0.13
         _SwashFade  ("沫带退透 (菜单写)", Float) = 3.0
+        // R47 全局画质：亮闪场是**世界固定频率**（格子约 15cm）。远处一个像素盖住几十个格子
+        //   ⇒ 采样走样成"撒盐"白点（俯视机位实测六个场景都有）。按相机距离淡出。
+        _SparkleFade ("亮闪距离淡出(近,远)", Vector) = (60, 260, 0, 0)
     }
 
     SubShader
@@ -190,6 +193,7 @@ Shader "WaterProject/Water_Ocean"
                 }
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
+                float4 _SparkleFade;
             CBUFFER_END
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
@@ -309,13 +313,17 @@ Shader "WaterProject/Water_Ocean"
             // 参考的水面能量来自频谱演化，静态图滚动给不出（R13 归因、R15 副产物证实）。
             // R18-G1 亮闪场：噪声离散化的太阳耀斑点（随微光场时间演化）——
             // 参考水面能量(72~117)的主体是**离散亮斑的闪动**，连续高光给不出（R16 饱和结论）
-            float Sparkle(float2 xz, float t, float3 N, float3 V, float3 sunDir)
+            float Sparkle(float3 wpos, float t, float3 N, float3 V, float3 sunDir)
             {
+                float2 xz = wpos.xz;
                 float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
                 float s = ValueNoise(q) * 0.7 + ValueNoise(q * 1.9 + 4.7) * 0.3;
                 float glint = smoothstep(0.960, 0.995, s);
-                float3 rv = reflect(-V, N);
-                return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5))));
+                // R47：距离淡出（见属性区注释）。远处没有单个耀斑是物理正确的，不是为了省事。
+                float d = distance(_WorldSpaceCameraPos, wpos);
+                float f = saturate(1.0 - (d - _SparkleFade.x) / max(_SparkleFade.y - _SparkleFade.x, 1.0));
+                f = f * f * (3.0 - 2.0 * f);
+                return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5)))) * f;
             }
 
             float3 ShimmerN(float2 xz, float t)
@@ -577,7 +585,7 @@ Shader "WaterProject/Water_Ocean"
 
                 // 开了解析雾就不再叠一次 URP 雾（叠两次 => 水面比地形白，岸线断层）
                 if (_FogOn < 0.5) col = MixFog(col, IN.fogCoord);
-                col += mainLight.color * Sparkle(worldPos.xz, t, N, V, mainLight.direction) * 2.2;
+                col += mainLight.color * Sparkle(worldPos, t, N, V, mainLight.direction) * 2.2;
                 return half4(col, alpha);
             }
             ENDHLSL
