@@ -408,10 +408,12 @@ Shader "WaterProject/Water_Lagoon"
                     //   即 vd 在边界上是断的。之前"往 _DeepDepth 混"之所以更硬，是因为 14m 比边界值(8m)
                     //   更深 —— 把内侧压得比外侧还暗，反而制造了反向台阶。
                     //   正解：**两侧都收敛到"边界处应有的值"**（= rim 高度对应的 vd），不是收敛到某个固定深水值。
-                    float vdEdge = max(-_IsletFloorHRect.w, 0.0);      // rim(-8m) ⇒ 8m
+                    // R55：**这一版已停用**。实测（R53）：它会边界 60m 内的水压暗、并把台阶做得更硬
+                    //   （ratio 1.78→2.31）。用户反馈"画面变脏变暗"——这就是元凶之一，已回滚为原始 vd。
+                    float vdEdge = max(-_IsletFloorHRect.w, 0.0);
                     float tBand = 1.0 - smoothstep(0.0, max(_DomainFade, 1e-3), abs(dOut));
-                    vd = lerp(vd, vdEdge, tBand);
                     domainM = tBand;
+                    // vd 保持原始解析值，不做任何过渡（见上）
                 }
                 else
                 {
