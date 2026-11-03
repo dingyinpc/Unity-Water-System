@@ -123,7 +123,7 @@ namespace WaterProject.EditorTools
                         float dune  = Fbm(u * 0.9f, v * 0.9f, 3);
                         float grain = Fbm(u * 9.0f, v * 9.0f, 2);
                         float rip   = 0.5f + 0.5f * Mathf.Sin((u * 7.0f + v * 2.0f) * 3.0f + dune * 4f);
-                        float k = 0.480f + 0.008f * dune + 0.055f * (grain - 0.5f) + 0.045f * rip;
+                        float k = 0.480f + 0.008f * dune + 0.095f * (grain - 0.5f) + 0.014f * rip;   // R87: 0.045->0.014, 斜纹太强会读成编织纹
                         c = new Color(k, k * 0.965f, k * 0.855f);
                     }
                     else
