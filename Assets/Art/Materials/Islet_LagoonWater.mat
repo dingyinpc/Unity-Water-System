@@ -39,7 +39,7 @@ Material:
     - _DeepDepth: 14
     - _DepthSource: 1
     - _DomainFade: 0.001
-    - _EdgeFade: 0.001
+    - _EdgeFade: 60
     - _Eta: 1.33
     - _FloorBlur: 0.0015
     - _FlowSpeed: 0.22

@@ -68,6 +68,24 @@ namespace WaterProject.EditorTools
             ScaleCurve(dn.skyHorizon, 1f, false, "horizon");
         }
 
+        // 找"岩石类"渲染器（按名字/材质名筛），用于定位画面里那块纯黑巨岩
+        [MenuItem("Tools/R61/95 岩石探针")]
+        public static void RockProbe()
+        {
+            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                var m = r.sharedMaterial;
+                string mn = m != null ? m.name : "";
+                bool hit = r.name.ToLower().Contains("rock") || r.name.ToLower().Contains("boulder")
+                        || r.name.ToLower().Contains("cliff") || mn.ToLower().Contains("rock");
+                if (!hit) continue;
+                var b = r.bounds;
+                P($"R61 ROCK r={r.name} size=({b.size.x:F1},{b.size.y:F1},{b.size.z:F1}) " +
+                  $"center=({b.center.x:F0},{b.center.y:F1},{b.center.z:F0}) " +
+                  $"mat={mn} shader={(m != null && m.shader != null ? m.shader.name : "-")} enabled={r.enabled}\n");
+            }
+        }
+
         // 找"远处那块灰色平板"：列出包围盒很大的渲染器
         [MenuItem("Tools/R61/94 大物体探针")]
         public static void BigObjects()
