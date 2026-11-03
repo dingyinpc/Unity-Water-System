@@ -32,7 +32,7 @@ Material:
     - _MicroAmount: 1
     - _MidPoint: 0.35
     m_Colors:
-    - _MossColor: {r: 0.014, g: 0.116, b: 0.077, a: 1}
+    - _MossColor: {r: 0.10, g: 0.215, b: 0.135, a: 1}
     - _RockHi: {r: 0.175, g: 0.175, b: 0.180, a: 1}
     - _RockLo: {r: 0.085, g: 0.086, b: 0.092, a: 1}
     - _RockMid: {r: 0.125, g: 0.126, b: 0.132, a: 1}
