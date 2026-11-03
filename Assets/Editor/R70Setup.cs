@@ -51,7 +51,7 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R70/94 全部还原")]
         public static void Restore()
         {
-            foreach (var p in new[] { "_PlanarStrength", "_RefractStrength", "_ScatterMode", "_ScatterStrength", "_DetailStrength", "_ScatterSteps", "_ScatterMaxDist" })
+            foreach (var p in new[] { "_PlanarStrength", "_RefractStrength", "_ScatterMode", "_ScatterStrength", "_DetailStrength", "_ScatterSteps", "_ScatterMaxDist", "_ScatterDither" })
                 if (EditorPrefs.HasKey("R70." + p)) Set(p, EditorPrefs.GetFloat("R70." + p), "94");
             P("R70/94 已还原\n");
         }
@@ -73,6 +73,11 @@ namespace WaterProject.EditorTools
 
         [MenuItem("Tools/R70/99b 散射强度=0.25")]
         public static void ScatterStr025() => Set("_ScatterStrength", 0.25f, "99b");
+        [MenuItem("Tools/R70/9a 散射抖动=开")]
+        public static void DitherOn() => Set("_ScatterDither", 1f, "9a");
+
+        [MenuItem("Tools/R70/9b 散射抖动=关")]
+        public static void DitherOff() => Set("_ScatterDither", 0f, "9b");
         [MenuItem("Tools/R70/95 探针(读当前值)")]
         public static void Probe()
         {

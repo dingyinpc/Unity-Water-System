@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Water_Pond.shader — 一潭静水
 //
 // 与 Water_Advanced.shader（"浪漫化的池子里塞了大洋的波浪统计"）刻意不同：
@@ -40,6 +40,9 @@ Shader "WaterProject/Water_Pond"
         _ScatterMaxDist   ("RayMarch 最大光程(米)", Float) = 6
         _ScatterSigma     ("消光系数倍率(×_Absorb)", Float) = 1.0
         _ScatterGain      ("RayMarch 散射增益", Float) = 1.4
+        // R71：RayMarch 步进抖动（0=旧行为）。固定采样点采阴影会产生**大块结构化斑纹**，
+        //   逐像素抖动把它打散成细噪 —— 不改亮度，只改斑纹的空间频率。
+        _ScatterDither    ("RayMarch 抖动(0关1开)", Range(0,1)) = 0
         _ScatterStrength  ("体散射强度", Range(0, 1)) = 0.35
 
         // ── 细波（几何）──
@@ -123,12 +126,12 @@ Shader "WaterProject/Water_Pond"
                 float  _CrestJ, _CrestSoft, _CrestFoam, _ShoreFoam, _ShoreWidth;
                 float  _AmbientStrength, _DebugMode;
                 float4 _WaterScatter;
-                float  _ScatterMode, _ScatterSteps, _ScatterMaxDist, _ScatterSigma, _ScatterGain, _ScatterStrength;
+                float  _ScatterMode, _ScatterSteps, _ScatterMaxDist, _ScatterSigma, _ScatterGain, _ScatterStrength, _ScatterDither;
             CBUFFER_END
 
             // ── 水底散射 RayMarch [S6 / C11]（与 Water_Advanced 同款实现）──
             float3 VolumeScatterRM(float3 surfPos, float2 screenUV, float3 V, Light L,
-                                   float sigmaT, int steps, float maxDist, out float pathLenOut)
+                                   float sigmaT, int steps, float maxDist, float dither, out float pathLenOut)
             {
                 float rawDepth = SampleSceneDepth(screenUV);
                 float3 endPos = ComputeWorldSpacePosition(screenUV, rawDepth, UNITY_MATRIX_I_VP);
@@ -146,7 +149,10 @@ Shader "WaterProject/Water_Pond"
                 [loop]
                 for (int i = 0; i < steps; i++)
                 {
-                    float t = ((float)i + 0.5) / N;
+                    float jit = dither > 0.5
+                        ? frac(sin(dot(screenUV * _ScreenParams.xy, float2(12.9898, 78.233))) * 43758.5453)
+                        : 0.5;
+                    float t = ((float)i + jit) / N;
                     float3 p = surfPos + delta * t;
                     float d  = pathLen * t;
                     float Tr = exp(-d * sigmaT);
@@ -363,7 +369,7 @@ Shader "WaterProject/Water_Pond"
                     float3 sc = VolumeScatterRM(worldPos, screenUV, V, mainLight,
                                                 max(_Absorb, 1e-3) * _ScatterSigma,
                                                 (int)clamp(_ScatterSteps, 1.0, 32.0),
-                                                _ScatterMaxDist, pathLen);
+                                                _ScatterMaxDist, _ScatterDither, pathLen);
                     // 有界混合（不是 col +=）：避免暗场景里水被顶成发光板
                     float pathW = saturate(pathLen / max(_ScatterMaxDist, 1e-3)) * 0.6 + 0.4;
                     float w = saturate(length(sc) * _ScatterGain) * _ScatterStrength * pathW;
