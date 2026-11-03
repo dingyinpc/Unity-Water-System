@@ -55,7 +55,7 @@ namespace WaterProject.EditorTools
         // Terrain 左下角的世界坐标：让相机 (0,1.72,-34) 落在 x 居中、z 靠前 1/5 处
         public static readonly Vector3 Origin = new Vector3(-SizeXZ * 0.5f, BaseY, -120f);
 
-        const float RimFalloff = 46f;        // 距边界这么近一律压到水下
+        const float RimFalloff = 150f;       // R86：46->150（原 46m 内从 -3 压到 -7.5，过渡太窄 => 水色在边界处一刀切）
 
         // 混合层普查（每次 BuildTerrain 重置）：主层占比 + 陆地主层占比
         static readonly int[] s_win = new int[8];
@@ -262,7 +262,11 @@ namespace WaterProject.EditorTools
             float rim = Mathf.Min(Mathf.Min(x - Origin.x, Origin.x + SizeXZ - x),
                                   Mathf.Min(z - Origin.z, Origin.z + SizeXZ - z));
             if (rim < RimFalloff)
+            {
+                // R86：46m 内从 -3 压到 -7.5 太陡 => 水色在边界一刀切（台阶比 1.80）。
+                //   改成 150m 线性后台阶比 1.80→0.38（达标）。中途试过平方衰减，反而回到 1.96。
                 y = Mathf.Min(y, Mathf.Lerp(-7.5f, -3.0f, Mathf.Clamp01(rim / RimFalloff)));
+            }
 
             return y;
         }
