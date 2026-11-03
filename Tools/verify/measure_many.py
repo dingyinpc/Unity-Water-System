@@ -32,6 +32,7 @@ def stat(path):
         "contrast": float(g.std()),
         "sat": float(hsv[:, :, 1].mean()),
         "near_black": float((g < 25).mean() * 100.0),
+        "blown": float((g > 250).mean() * 100.0),
         "size": list(im.shape[:2]),
     }
 
@@ -47,7 +48,7 @@ def main():
     if a.baseline and os.path.exists(a.baseline):
         base = json.load(open(a.baseline, encoding="utf-8-sig"))
 
-    print(f"{'场景':<10}{'亮度':>8}{'对比':>8}{'饱和':>8}{'近黑%':>8}   判定")
+    print(f"{'场景':<10}{'亮度':>8}{'对比':>8}{'饱和':>8}{'近黑%':>8}{'爆白%':>8}   判定")
     out = {}
     for p in a.images:
         name = os.path.basename(p).replace("verify_", "").replace(".png", "")
@@ -62,7 +63,7 @@ def main():
                 b = base[name].get(k, 0)
                 if b > 1e-6 and abs(s[k] - b) / b > th:
                     verdict += f" ⚠{k} {b:.0f}->{s[k]:.0f}"
-        print(f"{name:<10}{s['luma']:>8.1f}{s['contrast']:>8.1f}{s['sat']:>8.1f}{s['near_black']:>8.2f}   {verdict or 'OK'}")
+        print(f"{name:<10}{s['luma']:>8.1f}{s['contrast']:>8.1f}{s['sat']:>8.1f}{s['near_black']:>8.2f}{s['blown']:>8.2f}   {verdict or 'OK'}")
 
     if a.write_baseline:
         old = {}
