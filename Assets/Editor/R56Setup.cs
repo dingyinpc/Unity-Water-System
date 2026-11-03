@@ -133,6 +133,11 @@ namespace WaterProject.EditorTools
             EditorUtility.SetDirty(sky);
             P($"R56/{tag} {prop} {EditorPrefs.GetFloat("R56." + prop)} -> {v}（材质 {sky.name}）\n");
         }
+        [MenuItem("Tools/R56/96 云积分=_MarchPasses 3")]
+        public static void MarchPasses3() => SetSkyFloat("_MarchPasses", 3f, "96");
+
+        [MenuItem("Tools/R56/95 云积分=_MarchPasses 4")]
+        public static void MarchPasses4() => SetSkyFloat("_MarchPasses", 4f, "95");
         [MenuItem("Tools/R56/93 回读(云/曝光/对比/相机post)")]
         public static void Probe()
         {
