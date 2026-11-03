@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &-9113669825762867060
 MonoBehaviour:
@@ -80,7 +80,7 @@ MonoBehaviour:
     m_Value: 0
   saturation:
     m_OverrideState: 1
-    m_Value: -22
+    m_Value: -10
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
