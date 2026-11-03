@@ -25,13 +25,14 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _CloudBand: 0.14
     - _CloudBase: 900
     - _CloudBaseDark: 0.75
     - _CloudCover: 0.05
     - _CloudDrift: 0.01
     - _CloudScale: 0.9
     - _CloudShear: 0.006
-    - _CloudSteps: 20
+    - _CloudSteps: 28
     - _CloudTop: 2000
     - _CloudWindDir: 200
     - _CloudWindSpeed: 100

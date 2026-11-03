@@ -181,3 +181,8 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
 20. **编辑模式直接调 `FFTOceanSim.Init()` 曾经自禁用**（Awake 没跑、`_cs=null` → error + `enabled=false`，
     且被 128 存进场景 ⇒ 进 Play 无波浪）。Init() 现自带 `_cs=computeShader`；R32/90 也强制 `enabled=true`。
     教训泛化：**组件的方法在编辑模式调用前，想清楚 Awake 里初始化的字段**。
+
+21. **切场景后第一张截图可能是上一张的"旧帧"**（R56/R57 实测）：两张不同场景的截图，MD5 不同但**像素统计完全一致**，
+    打开看发现"Main"那张其实是 Pond 的画面。哈希不同是因为 PNG 里带了时间戳块，**不能靠 MD5 判断新鲜度**。
+    判定办法：①比对**像素统计**（亮度/对比/饱和）是否与上一张雷同；②必要时在画面里放一个当帧时间戳/场景名的 UI 文字。
+    无人值守批量截图请走后台泵 `Tools/Seq/93/94`（见第 14 条），并**每张都做统计比对**。

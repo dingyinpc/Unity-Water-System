@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Sky_Coast.shader — 开阔海岸的天空：分层渐变 + 体积云 + 太阳晕/LensFlare
 //
 // R3 版（2026-10-24，替代 2D 平面投影云）：
@@ -35,6 +35,8 @@ Shader "WaterProject/Sky_Coast"
         _CloudBase      ("云底高度(米)", Float) = 900
         _CloudTop       ("云顶高度(米)", Float) = 2000
         _CloudSteps     ("RayMarch 步数", Float) = 20
+        // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
+        _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
         _NightAmount  ("夜色强度(0昼1夜)", Range(0,1)) = 0
@@ -71,6 +73,7 @@ Shader "WaterProject/Sky_Coast"
                 float4 _HorizonColor, _ZenithColor, _GroundColor, _CloudColor, _CloudShadow;
                 float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow, _CloudBaseDark;
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps;
+float  _CloudBand;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
                 float  _MoonSize, _MoonPhase, _MoonAmount;
@@ -126,7 +129,7 @@ Shader "WaterProject/Sky_Coast"
             #define CLOUD_SCALE 0.00042
             #define COVER_LO 0.70
             #define COVER_HI 0.24
-            #define COVER_BAND 0.08
+            
 
             float CloudDensity(float3 p, float h)
             {
@@ -140,7 +143,7 @@ Shader "WaterProject/Sky_Coast"
                 //   保留小量慢翻腾只为云体内部演化，不再负责"动感"。
                 q += (float2(ValueNoise(q * 0.7 + _Time.y * 0.28),
                              ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.22)) - 0.5) * 0.12;
-                float d = smoothstep(covT, covT + COVER_BAND, Fbm(q));
+                float d = smoothstep(covT, covT + max(_CloudBand, 0.02), Fbm(q));
                 // 高度剖面：底 120m 软入、顶 40% 起收
                 float H = _CloudTop - _CloudBase;
                 d *= smoothstep(0.0, 120.0, h) * smoothstep(H, H * 0.40, h);
@@ -216,7 +219,7 @@ Shader "WaterProject/Sky_Coast"
                     float t0 = (_CloudBase - camH) / d.y;
                     float t1 = (_CloudTop - camH) / d.y;
                     float2 camXZ = _WorldSpaceCameraPos.xz;
-                    int N = (int)clamp(_CloudSteps, 8, 32);
+                    int N = (int)clamp(_CloudSteps, 8, 48);
                     float dt = (t1 - t0) / N;
                     float t = t0 + dt * Hash21(IN.positionCS.xy);   // 抖动起点去条带
                     float T = 1.0;
