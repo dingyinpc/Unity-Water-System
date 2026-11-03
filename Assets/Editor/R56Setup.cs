@@ -1,4 +1,4 @@
-// R56Setup.cs — R56 Ocean 观感对齐：云量/云底 + 曝光对比
+﻿// R56Setup.cs — R56 Ocean 观感对齐：云量/云底 + 曝光对比
 //
 // 背景（R55 查出来的）：
 //   · Ocean 相机后处理一直是关的（已修），打开后暴露出两个问题：
@@ -117,6 +117,22 @@ namespace WaterProject.EditorTools
               $"steps={(sky.HasProperty("_CloudSteps") ? sky.GetFloat("_CloudSteps") : -1):F0}\n");
         }
 
+        // 诊断：把云步数压到 8（如果画面变"块状"，说明该参数真的生效；不变则是没接线）
+        [MenuItem("Tools/R56/97 云步数=8(诊断)")]
+        public static void CloudSteps8() => SetSkyFloat("_CloudSteps", 8f, "97");
+
+        [MenuItem("Tools/R56/98 云步数=40(诊断)")]
+        public static void CloudSteps40() => SetSkyFloat("_CloudSteps", 40f, "98");
+
+        static void SetSkyFloat(string prop, float v, string tag)
+        {
+            var sky = RenderSettings.skybox;
+            if (sky == null || !sky.HasProperty(prop)) { P($"R56/{tag} REFUSED: 没有此属性\n"); return; }
+            EditorPrefs.SetFloat("R56." + prop, sky.GetFloat(prop));
+            sky.SetFloat(prop, v);
+            EditorUtility.SetDirty(sky);
+            P($"R56/{tag} {prop} {EditorPrefs.GetFloat("R56." + prop)} -> {v}（材质 {sky.name}）\n");
+        }
         [MenuItem("Tools/R56/93 回读(云/曝光/对比/相机post)")]
         public static void Probe()
         {

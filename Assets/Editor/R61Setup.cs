@@ -87,6 +87,42 @@ namespace WaterProject.EditorTools
         }
 
         // 找"远处那块灰色平板"：列出包围盒很大的渲染器
+        // 找"云"相关对象（若存在，说明云不是天空盒 shader 画的）
+        [MenuItem("Tools/R61/96 云对象探针")]
+        public static void CloudProbe()
+        {
+            int n = 0;
+            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                string nm = r.name.ToLower();
+                var m = r.sharedMaterial;
+                string mn = m != null ? m.name.ToLower() : "";
+                if (!nm.Contains("cloud") && !mn.Contains("cloud")) continue;
+                var b = r.bounds;
+                P($"R61 CLOUD r={r.name} mat={(m != null ? m.name : "-")} " +
+                  $"shader={(m != null && m.shader != null ? m.shader.name : "-")} " +
+                  $"pos=({b.center.x:F0},{b.center.y:F0},{b.center.z:F0}) size=({b.size.x:F0},{b.size.y:F0},{b.size.z:F0})\n");
+                n++;
+            }
+            P($"R61 CLOUD 共 {n} 个云相关渲染器\n");
+        }
+        [MenuItem("Tools/R61/97 天空穹顶探针")]
+        public static void SkyDomeProbe()
+        {
+            int n = 0;
+            foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+            {
+                var m = r.sharedMaterial;
+                if (m == null || m.shader == null) continue;
+                if (!m.shader.name.ToLower().Contains("sky")) continue;
+                var b = r.bounds;
+                P($"R61 SKY r={r.name} mat={m.name} shader={m.shader.name} " +
+                  $"center=({b.center.x:F0},{b.center.y:F0},{b.center.z:F0}) size=({b.size.x:F0},{b.size.y:F0},{b.size.z:F0})\n");
+                n++;
+            }
+            P($"R61 SKY 共 {n} 个使用天空 shader 的渲染器；RenderSettings.skybox=" +
+              $"{(RenderSettings.skybox != null ? RenderSettings.skybox.name : "null")}\n");
+        }
         [MenuItem("Tools/R61/94 大物体探针")]
         public static void BigObjects()
         {
