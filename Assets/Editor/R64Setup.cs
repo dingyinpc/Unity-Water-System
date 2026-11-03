@@ -22,6 +22,9 @@ namespace WaterProject.EditorTools
         // 归一化屏幕点（0~1，左下原点）。默认取"平板"所在的几个点。
         static readonly Vector2[] Points =
         {
+            new Vector2(0.15f, 0.22f),
+            new Vector2(0.85f, 0.28f),
+            new Vector2(0.50f, 0.15f),
             new Vector2(0.24f, 0.18f),
             new Vector2(0.90f, 0.30f),
             new Vector2(0.86f, 0.24f),

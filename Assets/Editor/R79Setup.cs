@@ -56,6 +56,22 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R79/92 档C 曝光-0.20 对比16 饱和-10")]
         public static void C() => Apply(-0.20f, 16f, -10f, "92");
 
+        [MenuItem("Tools/R79/93 本场景相机后处理=开")]
+        public static void PostOn()
+        {
+            int n = 0;
+            foreach (var cam in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
+            {
+                var d = cam.GetComponent<UniversalAdditionalCameraData>();
+                if (d == null) d = cam.gameObject.AddComponent<UniversalAdditionalCameraData>();
+                if (!d.renderPostProcessing) { d.renderPostProcessing = true; EditorUtility.SetDirty(d); n++; }
+            }
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+                UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+            P($"R79/93 本场景 post 开了 {n} 台\n");
+        }
+        [MenuItem("Tools/R79/94 曝光=-0.55(压爆白) 对比24 饱和-14")]
+        public static void PoolDarker() => Apply(-0.55f, 24f, -14f, "94");
         [MenuItem("Tools/R79/99 探针")]
         public static void Probe()
         {
