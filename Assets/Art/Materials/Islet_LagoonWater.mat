@@ -43,8 +43,8 @@ Material:
     - _Eta: 1.33
     - _FloorBlur: 0.0015
     - _FlowSpeed: 0.22
-    - _FoamBand: 0.3
-    - _FoamStrength: 0.3
+    - _FoamBand: 0.15
+    - _FoamStrength: 0.15
     - _FresnelPow: 18
     - _GlitterBand: 2.4
     - _GlitterPow: 260
