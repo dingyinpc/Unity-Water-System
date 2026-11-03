@@ -18,7 +18,7 @@ namespace WaterProject.EditorTools
 {
     public static class FrondTextureGen
     {
-        const int W = 512, H = 512;
+        const int W = 1024, H = 1024;   // R88: 512->1024（近看 512 糊成塑料）
         const string OutDir  = "Assets/Art/Textures/Islet";
         const string OutPath = OutDir + "/Islet_FrondDetail_Proc.png";
 
@@ -69,8 +69,8 @@ namespace WaterProject.EditorTools
                     float mott = Fbm(u * 4f, v * 4f) * 0.62f + Fbm(u * 13f, v * 13f) * 0.38f;
 
                     // 只做**乘法变暗**（≤1.0）：超过 1 会被 8 位贴图裁掉，反而制造硬斑
-                    float d = 0.86f + 0.10f * mott + 0.06f * rib + 0.05f * vein;
-                    d = Mathf.Clamp(d, 0.86f, 1.0f);
+                    float d = 0.90f + 0.055f * mott + 0.030f * rib + 0.025f * vein;   // R88: 1024 下原幅度读成斑马纹
+                    d = Mathf.Clamp(d, 0.90f, 1.0f);
                     byte c = (byte)Mathf.Clamp(Mathf.RoundToInt(d * 255f), 0, 255);
                     px[y * W + x] = new Color32(c, c, c, 255);
                 }
