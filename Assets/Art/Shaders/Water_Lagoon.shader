@@ -109,6 +109,8 @@ Shader "WaterProject/Water_Lagoon"
         _RadialShallow    ("径向浅水半径(米)", Float) = 120
         _RadialDeep       ("径向深水半径(米)", Float) = 420
         _RadialCenter     ("径向中心(世界XZ)", Vector) = (0, 0, 0, 0)
+        // R59：沙底返色在域边界内侧的淡出距离（米）。0 = 旧行为（硬边）
+        _EdgeFade         ("域边界沙底淡出(米)", Float) = 60
         _DebugMode        ("调试 0关 1水深 2菲涅尔 3只用皮肤法线", Range(0,3)) = 0
         // R47 全局画质：亮闪距离淡出（同 Water_Ocean 注释）——远处亚像素采样会走样成白点
         _SparkleFade      ("亮闪距离淡出(近,远)", Vector) = (35, 150, 0, 0)
@@ -164,7 +166,7 @@ Shader "WaterProject/Water_Lagoon"
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
                 float  _DomainFade, _DeepDepth, _FloorBlur;
-                float  _RadialDepth, _RadialShallow, _RadialDeep;
+                float  _RadialDepth, _RadialShallow, _RadialDeep, _EdgeFade;
                 float4 _RadialCenter;
                 float4 _SparkleFade;
             CBUFFER_END
@@ -377,6 +379,7 @@ Shader "WaterProject/Water_Lagoon"
                 // gap 是【视深】；vd 才是垂直水深，带宽与吸收都用它（《05》D-2/D-3）
                 float vd;
                 float domainM = 0.0;   // R52 域边界混色权重（0=不受影响, 1=正好在边界上）
+                float dOut = 0.0;      // R59：到域边界的距离（<0 域内, >0 域外），提到分支外供着色用
                 if (_DepthSource > 0.5)
                 {
                     // 足印外（clamp 到边缘）= rim 的 -7.5m → vd 7.5m：出礁盘即"深水"，物理正确
@@ -403,7 +406,7 @@ Shader "WaterProject/Water_Lagoon"
                     //   不是真黑，是硬边读出来的暗）。在边界外侧 _DomainFade 米内渐变过去。
                     float2 dHalf = abs(worldPos.xz - (_IsletFloorHRect.xy + _IsletFloorHRect.z * 0.5))
                                  - _IsletFloorHRect.z * 0.5;
-                    float dOut = max(dHalf.x, dHalf.y);                 // <0 域内, >0 域外
+                    dOut = max(dHalf.x, dHalf.y);                       // <0 域内, >0 域外
                     // R53 定位结果：逐项可视化显示 **depthMix 的过渡宽度 = 0 像素**（其余项都平滑），
                     //   即 vd 在边界上是断的。之前"往 _DeepDepth 混"之所以更硬，是因为 14m 比边界值(8m)
                     //   更深 —— 把内侧压得比外侧还暗，反而制造了反向台阶。
@@ -480,8 +483,14 @@ Shader "WaterProject/Water_Lagoon"
                 float shallow = 1.0 - saturate(depthMix);
                 float2 refrUV = screenUV + uvOff * shallow * (1.0 - fres * 0.7);
                 float3 bottom = SampleSceneColor(refrUV).rgb;
+                // R59：**沙底返色在域边界内侧逐渐撤掉**。
+                //   前面的诊断（R53 逐项可视化）已确认：最终画面 112 灰阶的台阶里，
+                //   sandMix(44)/waterBody(17)/fres(0) 都是平滑的 ⇒ 差在"底部折射采样"这一项：
+                //   域内采到沙底（亮），域外采到深水（暗）。这里让它在靠边 60m 内自然淡出，
+                //   两侧在边界处收敛到同一亮度。dOut<0 在域内，所以用 -dOut 作为"入内距离"。
+                float edgeFade = smoothstep(0.0, max(_EdgeFade, 0.001), -dOut);
                 col = lerp(col, bottom * (waterBody * 1.6 + 0.05),
-                           shallow * _BottomBlend * (1.0 - fres));
+                           shallow * _BottomBlend * (1.0 - fres) * edgeFade);
 
                 // ── ③ 反射：lerp 替换，不是累加（《05》D-1）──
                 float3 reflDir = reflect(-V, Ng);
