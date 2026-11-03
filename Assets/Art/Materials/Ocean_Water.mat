@@ -86,13 +86,14 @@ Material:
     m_Colors:
     - _DeepColor: {r: 0.012, g: 0.075, b: 0.13, a: 1}
     - _FoamColor: {r: 0.94, g: 0.965, b: 0.975, a: 1}
-    - _FogColor: {r: 0.7, g: 0.8, b: 0.91, a: 1}
+    - _FogColor: {r: 0.945, g: 1, b: 1, a: 1}
     - _ShallowColor: {r: 0.15, g: 0.56, b: 0.58, a: 1}
     - _Shore: {r: -400, g: 0, b: 0, a: 0}
     - _ShoreA: {r: 22, g: 9, b: 3.2, a: 0}
     - _ShoreB: {r: 0.0033333334, g: 0.008333334, b: 0.022222223, a: 0}
-    - _SkyHorizon: {r: 0.7, g: 0.8, b: 0.91, a: 1}
-    - _SkyZenith: {r: 0.22, g: 0.44, b: 0.88, a: 1}
+    - _SkyHorizon: {r: 0.945, g: 1, b: 1, a: 1}
+    - _SkyZenith: {r: 0.297, g: 0.594, b: 1, a: 1}
+    - _SparkleFade: {r: 60, g: 260, b: 0, a: 0}
     - _SunColor: {r: 1, g: 0.955, b: 0.885, a: 1}
     - _WindDir: {r: -0.175, g: 0, b: -0.985, a: 0}
   m_BuildTextureStacks: []
