@@ -29,7 +29,7 @@ Material:
     - _BeachRise: 0.055
     - _GrainAmount: 1
     - _GrainScale: 55
-    - _RippleTint: 0.22
+    - _RippleTint: 0.05
     - _ShoreSlope: 0.055
     - _SpecPower: 90
     - _SwashFade: 3
