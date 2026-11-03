@@ -37,6 +37,7 @@ Shader "WaterProject/Sky_Coast"
         _CloudSteps     ("RayMarch 步数", Float) = 20
         // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
         _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
+        _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
         _NightAmount  ("夜色强度(0昼1夜)", Range(0,1)) = 0
@@ -74,6 +75,7 @@ Shader "WaterProject/Sky_Coast"
                 float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow, _CloudBaseDark;
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps;
 float  _CloudBand;
+float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
                 float  _MoonSize, _MoonPhase, _MoonAmount;
@@ -314,6 +316,9 @@ float  _CloudBand;
                     col += float3(1.0, 0.55, 0.30) * pow(sd, 150.0) * 1.7 * duskW * cloudT * _FlareAmount;
                 }
 
+                // R74 调试：把云参数直接输出成颜色，验证材质值是否真的进了 shader
+                if (_SkyDebug > 1.5) return half4(saturate(_CloudCover), saturate(_CloudSteps / 48.0), saturate(_CloudBand), 1);
+                if (_SkyDebug > 0.5) return half4(saturate(_CloudCover), saturate(_NightAmount), saturate(_CloudBaseDark), 1);
                 return half4(col, 1.0);
             }
             ENDHLSL
