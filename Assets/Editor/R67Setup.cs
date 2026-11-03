@@ -19,6 +19,21 @@ namespace WaterProject.EditorTools
         static void P(string s)
             => File.AppendAllText(Path.Combine(Application.dataPath, "../Logs/water_probe.txt"), s);
 
+        static void Toggle(string name, bool on, string tag)
+        {
+            var go = GameObject.Find(name);
+            var r = go != null ? go.GetComponent<Renderer>() : null;
+            if (r == null) { P($"R67/{tag} 找不到 {name}\n"); return; }
+            r.enabled = on;
+            EditorUtility.SetDirty(r);
+            P($"R67/{tag} {name}.renderer = {on}\n");
+        }
+
+        [MenuItem("Tools/R67/91 隐藏 GreenWall")]
+        public static void HideWall() => Toggle("GreenWall", false, "91");
+
+        [MenuItem("Tools/R67/91b 显示 GreenWall")]
+        public static void ShowWall() => Toggle("GreenWall", true, "91b");
         [MenuItem("Tools/R67/90 Main 地面放大 ×4(消除硬地平线)")]
         public static void ScaleGround()
         {

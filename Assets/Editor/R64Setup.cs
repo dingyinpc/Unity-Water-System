@@ -22,11 +22,12 @@ namespace WaterProject.EditorTools
         // 归一化屏幕点（0~1，左下原点）。默认取"平板"所在的几个点。
         static readonly Vector2[] Points =
         {
-            new Vector2(0.20f, 0.60f),
-            new Vector2(0.40f, 0.60f),
-            new Vector2(0.60f, 0.60f),
-            new Vector2(0.40f, 0.52f),
-            new Vector2(0.40f, 0.45f),
+            new Vector2(0.20f, 0.92f),
+            new Vector2(0.45f, 0.92f),
+            new Vector2(0.70f, 0.92f),
+            new Vector2(0.45f, 0.82f),
+            new Vector2(0.45f, 0.72f),
+            new Vector2(0.45f, 0.60f),
         };
 
         // ── 给 OceanHeadland 换"远景陆地"专用材质（高度渐变 + 斑驳 + 雾）──
