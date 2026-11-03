@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """measure_many.py — 批量量测（配合 verify_scenes.ps1）
 
 输出：亮度 / 对比(std) / 饱和 / 近黑占比(0-25)。
@@ -45,7 +45,7 @@ def main():
 
     base = {}
     if a.baseline and os.path.exists(a.baseline):
-        base = json.load(open(a.baseline, encoding="utf-8"))
+        base = json.load(open(a.baseline, encoding="utf-8-sig"))
 
     print(f"{'场景':<10}{'亮度':>8}{'对比':>8}{'饱和':>8}{'近黑%':>8}   判定")
     out = {}
@@ -67,7 +67,7 @@ def main():
     if a.write_baseline:
         old = {}
         if os.path.exists(a.write_baseline):
-            old = json.load(open(a.write_baseline, encoding="utf-8"))
+            old = json.load(open(a.write_baseline, encoding="utf-8-sig"))
         old.update(out)
         json.dump(old, open(a.write_baseline, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"\n基线已写入 {a.write_baseline}")
