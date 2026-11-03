@@ -1,4 +1,4 @@
-// Tree_Leaf.shader — 叶片卡片：背光透射 + 风摆动
+﻿// Tree_Leaf.shader — 叶片卡片：背光透射 + 风摆动
 //
 // 为什么不用 URP 内置 Lit：Lit 没有 transmission 通道，逆光的叶子只会黑成剪影，
 // 而"光穿过树叶"正是这个场景要的感觉。这里只写叶片需要的那几项，不做完整 PBR：
@@ -58,6 +58,9 @@ Shader "WaterProject/TreeLeaf"
         {
             Name "TreeLeafForward"
             Tags { "LightMode"="UniversalForward" }
+            // R83：alpha 裁剪（clip）边 MSAA 是管不到的 —— 只有开 AlphaToMask，
+            //   MSAA 才会把"半透覆盖率"算进去，棕榈叶缘才不会是一排台阶。
+            AlphaToMask On
 
             HLSLPROGRAM
             #pragma vertex vert
