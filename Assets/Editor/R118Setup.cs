@@ -196,6 +196,52 @@ namespace WaterProject.EditorTools
             P($"R119/91 崖体贴图密度 -> 0.010（{n} 个材质）\n");
         }
 
+
+        // R120：棕榈叶贴 AI 叶片（背景已填成叶片平均色的版本，**不用它的轮廓**）
+        //   模型是真实棕榈（SM_Palm_Coconut_01，77k 顶点），叶片按网格 UV 采样 _BaseMap；
+        //   AI 叶片自带 alpha 轮廓，直接换会把叶片"切碎"，所以先用扁平化版本。
+        [MenuItem("Tools/R120/91 棕榈叶贴 AI 叶片(扁平版)")]
+        public static void PalmLeafAI()
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ProcDir}/Palm_Frond_AI_flat.png");
+            if (tex == null) { P("R120/91 REFUSED: 没有 Palm_Frond_AI_flat.png\n"); return; }
+
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmLeaf.mat");
+            if (m == null) { P("R120/91 REFUSED: 找不到 Islet_PalmLeaf\n"); return; }
+
+            var prev = m.GetTexture("_BaseMap");
+            EditorPrefs.SetString("R120.palmLeafPrev", prev != null ? AssetDatabase.GetAssetPath(prev) : "");
+            m.SetTexture("_BaseMap", tex);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P($"R120/91 Islet_PalmLeaf._BaseMap = {tex.name}（原 {prev?.name}）\n");
+        }
+
+        [MenuItem("Tools/R120/91b 棕榈叶贴图还原")]
+        public static void PalmLeafBack()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmLeaf.mat");
+            if (m == null) return;
+            string path = EditorPrefs.GetString("R120.palmLeafPrev", "");
+            if (string.IsNullOrEmpty(path)) { P("R120/91b 没有记录原贴图\n"); return; }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex == null) { P($"R120/91b 找不到 {path}\n"); return; }
+            m.SetTexture("_BaseMap", tex);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P($"R120/91b Islet_PalmLeaf._BaseMap 还原为 {tex.name}\n");
+        }
+
+        [MenuItem("Tools/R120/99 探针(叶片贴图)")]
+        public static void PalmProbe()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmLeaf.mat");
+            if (m == null) { P("R120/99 无 Islet_PalmLeaf\n"); return; }
+            var t = m.GetTexture("_BaseMap");
+            P($"R120 PROBE PalmLeaf baseMap={(t == null ? "null" : t.name)} " +
+              $"detail={m.GetFloat("_DetailAmount"):F2} frondVar={m.GetFloat("_FrondVar"):F2}\n");
+        }
+
         [MenuItem("Tools/R118/99 探针")]
         public static void Probe()
         {
