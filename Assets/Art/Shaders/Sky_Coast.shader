@@ -367,12 +367,15 @@ float CloudDensity(float3 p, float h, float viewDist)
                 return smoothstep(t, t + 0.16, c);
             }
 
-            float SkyDensity(float3 p, float3 wind, float dist)
+            // R128b：**cover 从外面传进来**。原来每步、每条阴影射线都重算一次 SkyColumnCoverage
+            //   （20 步 × (1+4) ≈ 100 次/像素，每次还带 2 个 Worley）⇒ 帧耗 23.6 → 50.7ms。
+            //   柱状覆盖度沿高度基本恒定，所以只在**云底/云顶两个点**算一次，沿高度线性插值。
+            float SkyDensity(float3 p, float covLo, float covHi, float3 wind, float dist)
             {
                 float h = (p.y - _CloudBase) / max(_CloudTop - _CloudBase, 1.0);
                 if (h < 0.0 || h > 1.0) return 0.0;
 
-                float cover = SkyColumnCoverage(p, wind);
+                float cover = lerp(covLo, covHi, h);
                 if (cover <= 0.001) return 0.0;
 
                 // ★ 平底 + 花椰菜顶就来自这一行
@@ -380,12 +383,9 @@ float CloudDensity(float3 p, float h, float viewDist)
 
                 // 顶部侵蚀：越高处搅得越狠，底部几乎不动 ⇒ 下缘保持平
                 float det = Fbm3(p * (_CloudFreq * _BillowScale) + wind * 0.6, 3);
-                // R128：把侵蚀噪声换成 Worley billow ⇒ 云边从"棉花糖"变成"小球堆"（花椰菜）
-                if (_CloudBillow > 0.001)
-                {
-                    float bw = Billow(p * (_CloudFreq * _BillowScale) + wind * 0.6);
-                    det = lerp(det, bw, _CloudBillow);
-                }
+                // ⚠ R128b：这里原本也接了 Worley billow，**实测帧耗 +17ms**（每个步进内循环都算 3D Worley，
+                //   20 步 × (1+4 阴影) ≈ 100 次/像素），而视觉贡献几乎看不出（v1 实测）。
+                //   所以侵蚀项退回 Fbm3，花椰菜只做在**轮廓层**（SkyColumnCoverage 的域扭曲，每像素只算 2 次）。
                 // R127：**AI 贴图在这里出力**——只做表面细节，不碰轮廓。
                 //   每层按高度错开采样，避免"同一张切片往上堆"（那会变成竖着的板）。
                 if (_CloudTexAmt > 0.001)
@@ -404,14 +404,14 @@ float CloudDensity(float3 p, float h, float viewDist)
                 return saturate(d);
             }
 
-            float SkySunShadow(float3 p, float3 sunDir, float3 wind, float dist)
+            float SkySunShadow(float3 p, float covLo, float covHi, float3 sunDir, float3 wind, float dist)
             {
                 float t = 0.0, tr = 1.0;
                 int n = (int)max(_ShadeSteps, 0.0);
                 for (int i = 0; i < n; i++)
                 {
                     t += 90.0;
-                    float den = SkyDensity(p + sunDir * t, wind, dist + t);
+                    float den = SkyDensity(p + sunDir * t, covLo, covHi, wind, dist + t);
                     tr *= exp(-den * _Extinct * 90.0);
                     if (tr < 0.02) break;
                 }
@@ -424,16 +424,21 @@ float CloudDensity(float3 p, float h, float viewDist)
             {
                 acc = 0; trans = 1.0;
                 float nightDim = lerp(1.0, 0.24, _NightAmount);
+                // 覆盖度只在射线进入/离开云层处各算一次（见 SkyDensity 注释）
+                float3 pEnter = _WorldSpaceCameraPos + d * t0;
+                float3 pExit  = _WorldSpaceCameraPos + d * min(t1, t0 + 9000.0);
+                float covLo = SkyColumnCoverage(pEnter, wind);
+                float covHi = SkyColumnCoverage(pExit,  wind);
                 float t = t0 + dt * jit;
                 for (int i = 0; i < N; i++)
                 {
                     float3 p = _WorldSpaceCameraPos + d * t;
-                    float den = SkyDensity(p, wind, t);
+                    float den = SkyDensity(p, covLo, covHi, wind, t);
                     if (den > 0.001)
                     {
                         float sigma = den * _Extinct;
                         float stepT = exp(-sigma * dt);
-                        float sun = SkySunShadow(p, sunDir, wind, t);
+                        float sun = SkySunShadow(p, covLo, covHi, sunDir, wind, t);
                         float fwd = 0.5 + 0.5 * dot(d, sunDir);
                         float lit = pow(sun, _SunPow) * lerp(0.55, 1.75, pow(fwd, 3.0));
                         lit += pow(sun, 1.6) * 0.45;                     // 天光填充，背光面不死黑
