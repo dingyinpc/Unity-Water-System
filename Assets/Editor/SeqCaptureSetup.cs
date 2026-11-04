@@ -56,7 +56,7 @@ namespace WaterProject.EditorTools
             if (cam == null) { WriteProbe("SEQ95 REFUSED: 无 Camera.main\n"); return; }
             const int W = 1920, H = 1080;
             var rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGBHalf,
-                                       RenderTextureReadWrite.Default) { antiAliasing = 1 };
+                                       RenderTextureReadWrite.Default) { antiAliasing = 4 };   // R104: 1->4（原来离屏采集不带 MSAA，截图里的锯齿比实际游戏画面严重）
             rt.Create();
             var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
             var prevTarget = cam.targetTexture; var prevActive = RenderTexture.active; float prevAspect = cam.aspect;
