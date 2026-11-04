@@ -22,7 +22,11 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _RockTex:
+        m_Texture: {fileID: 2800000, guid: 2c5ecd84cbc0db348a41943b9b003fc7, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _AmbStrength: 1
@@ -31,9 +35,12 @@ Material:
     - _HMin: -1
     - _MicroAmount: 1
     - _MidPoint: 0.5
+    - _MossAmount: 0.15
+    - _RockTexAmount: 0.5
+    - _RockTexScale: 0.18
     m_Colors:
     - _MossColor: {r: 0.175, g: 0.23, b: 0.13, a: 1}
-    - _RockHi: {r: 0.33, g: 0.32, b: 0.295, a: 1}
-    - _RockLo: {r: 0.15, g: 0.15, b: 0.14, a: 1}
-    - _RockMid: {r: 0.245, g: 0.24, b: 0.22, a: 1}
+    - _RockHi: {r: 0.6, g: 0.59, b: 0.565, a: 1}
+    - _RockLo: {r: 0.365, g: 0.358, b: 0.34, a: 1}
+    - _RockMid: {r: 0.49, g: 0.48, b: 0.46, a: 1}
   m_BuildTextureStacks: []

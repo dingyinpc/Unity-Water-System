@@ -25,6 +25,7 @@ Shader "WaterProject/IsletRockSplat"
         _RockMid     ("岩·中", Color) = (0.0160, 0.1008, 0.1636, 1)
         _RockHi      ("岩·高", Color) = (0.0190, 0.1181, 0.1870, 1)
         _MossColor   ("苔", Color) = (0.0140, 0.1160, 0.0770, 1)
+        _MossAmount  ("苔覆盖上限(R130: 1=旧全苔)", Range(0,1)) = 0.30
         _HMin        ("高度下(m, 局部Z)", Float) = -3
         _HMax        ("高度上(m, 局部Z)", Float) = 50
         _MidPoint    ("中档中心(0-1)", Float) = 0.35
@@ -61,6 +62,7 @@ Shader "WaterProject/IsletRockSplat"
             TEXTURE2D(_RockTex); SAMPLER(sampler_RockTex);
             CBUFFER_START(UnityPerMaterial)
                 float4 _RockLo, _RockMid, _RockHi, _MossColor;
+            float _MossAmount;
                 float  _HMin, _HMax, _MidPoint, _FillLight, _AmbStrength;
                 float  _RockTexScale, _RockTexAmount;
                 float  _MicroAmount;
@@ -151,7 +153,9 @@ Shader "WaterProject/IsletRockSplat"
 
                 // ── 苔：顶点色权重按像素插值（粗糙感的正解）+ 噪声破边 ──
                 // 噪声让苔的边界不再跟随顶点渐变的等值线（那条线仍隐约可读）
-                float mossW = saturate(IN.col.r)
+                // R130：**苔必须封顶**。程序化网格的顶点色 R 恒为 1 ⇒ 原来 mossW≈1，
+            //   整块石头等于被涂成 _MossColor（"绿土豆"就是这么来的），岩灰一点看不见。
+            float mossW = saturate(IN.col.r * _MossAmount)
                             * (0.72 + 0.56 * VNoise(wxz * 2.2 + 13.7));
                 float3 albedo = lerp(rock, _MossColor.rgb, mossW);
                 // R118：AI 岩贴图（三平面投影，不需要 UV）。
