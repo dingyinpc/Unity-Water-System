@@ -62,8 +62,8 @@ Material:
     - _ScatterStrength: 0.45
     - _ShoreFoam: 0.3
     - _SkyReflect: 1
-    - _SpecPower: 200
-    - _SpecStrength: 2
+    - _SpecPower: 90
+    - _SpecStrength: 0.6
     - _SunGloss: 90
     - _SunStrength: 2.2
     - _SunTransmission: 0.2
