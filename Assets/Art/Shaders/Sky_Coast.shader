@@ -58,6 +58,8 @@ Shader "WaterProject/Sky_Coast"
         _CloudBillow   ("花椰菜噪声(0=旧软团块 1=Worley球堆)", Range(0,1)) = 0
         _BillowScale   ("花椰菜尺度(相对云细节)", Float) = 5.7
         _BillowAmt     ("花椰菜侵蚀强度", Range(0, 2)) = 1.0
+        _CloudMS       ("多次散射(R128c: 0=旧单次)", Range(0,1)) = 0
+        _CloudPowder   ("粉末效应(R128c: 0=关)", Range(0,1)) = 0
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
@@ -103,6 +105,7 @@ float  _CloudBand;
                 float  _CloudNoiseMode;
                 float  _CloudTexAmt, _CloudTexWorld, _CloudTexLod;
                 float  _CloudBillow, _BillowScale, _BillowAmt;
+                float  _CloudMS, _CloudPowder;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
@@ -440,8 +443,29 @@ float CloudDensity(float3 p, float h, float viewDist)
                         float stepT = exp(-sigma * dt);
                         float sun = SkySunShadow(p, covLo, covHi, sunDir, wind, t);
                         float fwd = 0.5 + 0.5 * dot(d, sunDir);
-                        float lit = pow(sun, _SunPow) * lerp(0.55, 1.75, pow(fwd, 3.0));
+
+                        // R128c：**多次散射近似**。真实的云不是"要么全亮要么全暗"——
+                        //   光在云里会反复弹射，厚云内部也有微弱照明（这是积云"云底发亮"的原因）。
+                        //   做法：对透射率取三条不同"衰减深度"的曲线加权求和（业界常用近似）。
+                        float sunEff = pow(sun, _SunPow);
+                        if (_CloudMS > 0.001)
+                        {
+                            float ms = 0.55 * pow(saturate(sun), 0.55)
+                                     + 0.30 * pow(saturate(sun), 1.30)
+                                     + 0.15 * pow(saturate(sun), 2.60);
+                            sunEff = lerp(sunEff, ms, _CloudMS);
+                        }
+
+                        float lit = sunEff * lerp(0.55, 1.75, pow(fwd, 3.0));
                         lit += pow(sun, 1.6) * 0.45;                     // 天光填充，背光面不死黑
+
+                        // R128c：**粉末效应**。云体边缘（密度低）在迎光侧会"发暗"，
+                        //   只有从云心看过去才亮 —— 这是积云最有辨识度的一圈暗边。
+                        if (_CloudPowder > 0.001)
+                        {
+                            float powder = 1.0 - exp(-den * 6.0);
+                            lit *= lerp(1.0, powder, _CloudPowder * (1.0 - saturate(fwd)));
+                        }
                         float3 cc = lerp(_CloudShadow.rgb, _CloudColor.rgb, saturate(lit));
                         // 逆光银边：刚进入云体的边缘最亮
                         cc += _CloudColor.rgb * _SilverLining * pow(sun, 3.0) * (1.0 - trans) * saturate(den);

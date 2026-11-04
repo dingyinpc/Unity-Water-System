@@ -64,6 +64,22 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R128/92c 花椰菜强度=1.5")]
         public static void Amt15() => Set("_BillowAmt", 1.5f, "92c 强度1.5");
 
+        [MenuItem("Tools/R128/94 云光照=旧(单次散射)")]
+        public static void LightOld()
+        {
+            Set("_CloudMS", 0f, "94 MS关");
+            Set("_CloudPowder", 0f, "94 粉末关");
+        }
+
+        [MenuItem("Tools/R128/94b 云光照=多次散射")]
+        public static void LightMS() { Set("_CloudMS", 1f, "94b MS开"); Set("_CloudPowder", 0f, "94b 粉末关"); }
+
+        [MenuItem("Tools/R128/94c 云光照=多次散射+粉末")]
+        public static void LightMSPowder() { Set("_CloudMS", 1f, "94c MS开"); Set("_CloudPowder", 1f, "94c 粉末开"); }
+
+        [MenuItem("Tools/R128/94d 云光照=只粉末")]
+        public static void LightPowder() { Set("_CloudMS", 0f, "94d MS关"); Set("_CloudPowder", 1f, "94d 粉末开"); }
+
         [MenuItem("Tools/R128/93 探针: 云参数")]
         public static void Probe()
         {

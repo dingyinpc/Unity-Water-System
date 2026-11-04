@@ -40,8 +40,10 @@ Material:
     - _CloudDrift: 0.01
     - _CloudFreq: 0.00042
     - _CloudJitterIGN: 0
+    - _CloudMS: 1
     - _CloudNoiseMode: 0
     - _CloudOptical: 1
+    - _CloudPowder: 0
     - _CloudScale: 0.045
     - _CloudShear: 0.006
     - _CloudSteps: 20
