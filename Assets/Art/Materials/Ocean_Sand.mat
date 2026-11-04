@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
@@ -22,7 +22,11 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _SandTex:
+        m_Texture: {fileID: 2800000, guid: 72bde1608e13f0f4aa9f29576e3617cf, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _BeachCurve: 0.0022
@@ -30,6 +34,8 @@ Material:
     - _GrainAmount: 0.35
     - _GrainScale: 55
     - _RippleTint: 0.05
+    - _SandTexAmount: 0.75
+    - _SandTexScale: 0.35
     - _ShoreSlope: 0.055
     - _SpecPower: 90
     - _SwashFade: 3
@@ -42,6 +48,6 @@ Material:
     - _Shore: {r: -400, g: 0, b: 0, a: 0}
     - _ShoreA: {r: 22, g: 9, b: 3.2, a: 0}
     - _ShoreB: {r: 0.0033333334, g: 0.008333334, b: 0.022222223, a: 0}
-    - _WetColor: {r: 0.30, g: 0.265, b: 0.215, a: 1}
+    - _WetColor: {r: 0.3, g: 0.265, b: 0.215, a: 1}
     - _WindDir: {r: -0.175, g: 0, b: -0.985, a: 0}
   m_BuildTextureStacks: []

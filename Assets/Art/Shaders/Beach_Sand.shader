@@ -16,6 +16,10 @@ Shader "WaterProject/Beach_Sand"
     Properties
     {
         _DryColor   ("干沙色", Color) = (0.360, 0.285, 0.180, 1)
+        // R117：AI 生成的沙贴图（世界空间平铺，不需要 UV）。_SandTexAmount=0 时完全不参与，零回归。
+        _SandTex        ("沙贴图(AI)", 2D) = "white" {}
+        _SandTexScale   ("沙贴图密度(1/米)", Float) = 0.35
+        _SandTexAmount  ("沙贴图强度", Range(0,1)) = 0
         _WetColor   ("湿沙色", Color) = (0.098, 0.076, 0.050, 1)
         _FoamColor  ("沫边色", Color) = (0.94, 0.97, 0.98, 1)
         _RippleTint ("沙纹深浅", Range(0, 0.4)) = 0.14
@@ -60,6 +64,7 @@ Shader "WaterProject/Beach_Sand"
 
             // ⚠ 顺序有讲究：OceanShore.hlsl 的函数体直接用这 10 个名字，
             //   所以它必须在块**之后**才 include。详见该文件头部的契约说明。
+            TEXTURE2D(_SandTex); SAMPLER(sampler_SandTex);
             CBUFFER_START(UnityPerMaterial)
                 float4 _Shore, _ShoreA, _ShoreB, _WindDir;
                 float  _ShoreSlope, _BeachRise, _BeachCurve;
@@ -68,6 +73,7 @@ Shader "WaterProject/Beach_Sand"
                 float4 _DryColor, _WetColor, _FoamColor;
                 float  _RippleTint, _WetGloss, _SpecPower;
                 float  _GrainAmount, _GrainScale;
+                float  _SandTexScale, _SandTexAmount;
             CBUFFER_END
 
             #include "OceanShore.hlsl"
@@ -135,6 +141,15 @@ Shader "WaterProject/Beach_Sand"
                 float rip = ValueNoise(float2(IN.worldPos.x * 0.045, up * 0.85));
                 float3 base = lerp(_DryColor.rgb, _WetColor.rgb, wet);
                 base *= 1.0 + (rip - 0.5) * _RippleTint * saturate(1.0 - up * 0.05);
+                // R117：世界空间采样（沙贴图本身无缝），只保留贴图的明度结构，
+                //   色相仍由 _DryColor/_WetColor 主导 —— 这样换贴图不会把画面色调带跑。
+                if (_SandTexAmount > 0.001)
+                {
+                    float3 tex = SAMPLE_TEXTURE2D(_SandTex, sampler_SandTex,
+                                                  IN.worldPos.xz * _SandTexScale).rgb;
+                    float tl = dot(tex, float3(0.299, 0.587, 0.114));
+                    base *= 1.0 + (tl - 0.62) * 1.30 * _SandTexAmount;   // 保持均值，只加结构（否则整片沙会变亮）
+                }
 
                 // R99：大尺度色斑。原来整片沙滩只有一个低频沙纹，远处读成一块纯色塑料板。
                 //   两级（48m / 133m）叠一点明度和色温起伏 —— 就是真实沙滩上"哪块干、哪块湿、
