@@ -69,6 +69,14 @@ namespace WaterProject.EditorTools
         // R111：温和 Bloom —— 只让"太阳"这类真正超过 1.3 的高光发光，不把整幅画面糊掉
 
         // R112：Ocean 的"平"—— 对比/饱和各提一档（参考 51.2 / 124.3，我们是 40.8 / 107）
+
+        // R114：云移植后画面整体偏亮偏灰（白云占比上升），用"降曝光 + 提饱和"拉回参考
+        [MenuItem("Tools/R114/90 Ocean 曝光-0.45 对比26 饱和+10")]
+        public static void OceanGradeC() => Grade(-0.45f, 26f, 10f, "R114-90");
+
+        [MenuItem("Tools/R114/91 Ocean 曝光-0.55 对比28 饱和+14")]
+        public static void OceanGradeD() => Grade(-0.55f, 28f, 14f, "R114-91");
+
         [MenuItem("Tools/R112/90 Ocean 对比26 饱和+2")]
         public static void OceanGradeA() => Grade(-0.30f, 26f, 2f, "R112-90");
 
