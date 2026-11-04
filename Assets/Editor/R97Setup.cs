@@ -65,6 +65,34 @@ namespace WaterProject.EditorTools
 
 
         // R107：查"巨大白色光斑"——先把 Bloom 关掉，看它是不是放大器
+
+        // R111：温和 Bloom —— 只让"太阳"这类真正超过 1.3 的高光发光，不把整幅画面糊掉
+        [MenuItem("Tools/R111/90 Bloom 温和档(阈值1.30/强度0.30)")]
+        public static void BloomGentle()
+        {
+            var prof = Profile();
+            if (prof == null) { P("R111/90 REFUSED: 无全局 Volume\n"); return; }
+            if (prof.TryGet<Bloom>(out var b))
+            {
+                b.intensity.value = 0.30f;
+                b.threshold.value = 1.30f;
+                b.scatter.value = 0.65f;
+                EditorUtility.SetDirty(b);
+                P($"R111/90 Bloom 阈值 1.30 / 强度 0.30（{prof.name}）\n");
+            }
+            else P("R111/90 没有 Bloom override\n");
+        }
+
+        [MenuItem("Tools/R111/91 探针(Bloom)")]
+        public static void BloomProbe()
+        {
+            var prof = Profile();
+            if (prof == null) { P("R111/91 无 Volume\n"); return; }
+            if (prof.TryGet<Bloom>(out var b))
+                P($"R111 PROBE bloom={b.intensity.value:F2} thr={b.threshold.value:F2} scatter={b.scatter.value:F2} vol={prof.name}\n");
+            else P($"R111 PROBE {prof.name} 无 Bloom\n");
+        }
+
         [MenuItem("Tools/R107/90 Bloom=关")]
         public static void BloomOff()
         {
