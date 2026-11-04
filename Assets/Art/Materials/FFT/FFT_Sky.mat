@@ -22,34 +22,49 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _CloudTex:
+        m_Texture: {fileID: 2800000, guid: 2e84cc57dbe0b0f429fc8005d57ba301, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _CloudBand: 0.08
     - _CloudBase: 900
     - _CloudBaseDark: 0.75
     - _CloudCover: 0.15
+    - _CloudDetail: 1
     - _CloudDrift: 0.01
+    - _CloudFreq: 0.00042
     - _CloudJitterIGN: 0
     - _CloudNoiseMode: 0
     - _CloudOptical: 1
     - _CloudScale: 0.045
     - _CloudShear: 0.006
     - _CloudSteps: 20
+    - _CloudTexAmt: 0
+    - _CloudTexLod: 2
+    - _CloudTexWorld: 4000
     - _CloudTop: 2000
+    - _CloudVertWarp: 0
     - _CloudWindDir: 200
     - _CloudWindSpeed: 100
+    - _Extinct: 0.0028
     - _FlareAmount: 0.9
     - _GalaxyAmount: 0.3
+    - _MarchPasses: 3
     - _MoonAmount: 0
     - _MoonPhase: 0.62
     - _MoonSize: 0.03
     - _NightAmount: 0
+    - _ShadeSteps: 4
+    - _SilverLining: 0.35
     - _SkyDebug: 0
     - _SkyDeep: 0.52
     - _StarBright: 1.6
     - _StarGrid: 320
     - _SunGlow: 0.55
+    - _SunPow: 2.6
     m_Colors:
     - _CloudColor: {r: 1, g: 0.995, b: 0.985, a: 1}
     - _CloudShadow: {r: 0.52, g: 0.57, b: 0.65, a: 1}

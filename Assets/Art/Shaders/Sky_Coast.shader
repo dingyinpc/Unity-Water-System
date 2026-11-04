@@ -50,6 +50,11 @@ Shader "WaterProject/Sky_Coast"
         _MarchPasses    ("云积分平均相位", Float) = 3
         _CloudVertWarp ("垂直变化(0=每层同形)", Float) = 0.0
         _CloudNoiseMode ("云噪声(0=value/1=梯度)", Range(0,1)) = 0
+        // ── R127：AI 云密度贴图（俯视积云，可平铺）──
+        _CloudTex      ("云密度贴图(R127: 空=纯程序化)", 2D) = "black" {}
+        _CloudTexAmt   ("贴图权重(0=纯程序化 1=全贴图)", Range(0,1)) = 0
+        _CloudTexWorld ("贴图铺开尺寸(米/格)", Float) = 8000
+        _CloudTexLod   ("贴图 mip 偏置(越大越柔)", Range(0, 6)) = 3
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
@@ -93,12 +98,16 @@ float  _CloudBand;
                 float  _SunPow, _SilverLining, _MarchPasses;
                 float  _CloudVertWarp;
                 float  _CloudNoiseMode;
+                float  _CloudTexAmt, _CloudTexWorld, _CloudTexLod;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
                 float  _MoonSize, _MoonPhase, _MoonAmount;
                 float  _FlareAmount, _SkyDeep;
             CBUFFER_END
+            // ⚠ 纹理/采样器**必须**在 CBUFFER 之外（R127 踩坑：写进 CBUFFER 里，
+            //   Shader 能编译、但 SRP Batcher 不会上传这些 uniform ⇒ 改材质画面纹丝不动）
+            TEXTURE2D(_CloudTex); SAMPLER(sampler_CloudTex);
 
             struct Attributes { float4 positionOS : POSITION; };
             struct Varyings { float4 positionCS : SV_POSITION; float3 dir : TEXCOORD0; };
@@ -276,6 +285,10 @@ float CloudDensity(float3 p, float h, float viewDist)
             // 这一列有多少云（fbm 取值天生挤在中间，必须窄 smoothstep 才出"一团一团"）
             float SkyColumnCoverage(float3 p, float3 wind)
             {
+                // ⚠ R127 实测：**贴图不能接管"柱覆盖度"**。
+                //   SkyDensity 的模型是 d=(cover-h)/max(cover,0.2)，cover 被当成"云顶高度"读，
+                //   换成高频俯视图后每根柱子高矮不一 ⇒ 屏幕上是一根根竖条/锥形（三档铺开尺寸同一个病）。
+                //   所以轮廓继续用程序化 Fbm3，贴图只负责**表面细节侵蚀**（见 SkyDensity 的 det 项）。
                 float c = Fbm3(p * _CloudFreq + wind, 4);
                 float t = lerp(0.74, 0.40, _CloudCover);
                 return smoothstep(t, t + 0.16, c);
@@ -294,6 +307,16 @@ float CloudDensity(float3 p, float h, float viewDist)
 
                 // 顶部侵蚀：越高处搅得越狠，底部几乎不动 ⇒ 下缘保持平
                 float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 0.6, 3);
+                // R127：**AI 贴图在这里出力**——只做表面细节，不碰轮廓。
+                //   每层按高度错开采样，避免"同一张切片往上堆"（那会变成竖着的板）。
+                if (_CloudTexAmt > 0.001)
+                {
+                    float k = _CloudFreq * 5.7;
+                    float2 euv = (p.xz * k + wind.xz * 0.6) / max(_CloudTexWorld * k, 1e-6);
+                    euv += float2(h * 0.37, h * 0.23);
+                    float ex = SAMPLE_TEXTURE2D_LOD(_CloudTex, sampler_CloudTex, euv, _CloudTexLod).r;
+                    det = lerp(det, ex, _CloudTexAmt);
+                }
                 float lod = 1.0 / (1.0 + dist * dist * 1.6e-9);
                 d += (det - 0.5) * _CloudDetail * (0.16 + 1.15 * h * h) * lod;
 
