@@ -40,6 +40,14 @@ Shader "WaterProject/Sky_Coast"
         // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
         _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
         _CloudOptical   ("云光学厚度倍率(1=当前)", Range(0.1, 2)) = 1.0
+        // ── R113：从 Sky_Tropical 移植的云（3D 噪声 + 平底花椰菜顶）──
+        _CloudFreq      ("云列频率(1/m)", Float) = 0.00042
+        _CloudDetail    ("云细节侵蚀", Float) = 1.0
+        _ShadeSteps     ("太阳步进数", Float) = 4
+        _Extinct        ("消光系数", Float) = 0.0028
+        _SunPow         ("云受光对比", Float) = 2.6
+        _SilverLining   ("银边", Float) = 0.35
+        _MarchPasses    ("云积分平均相位", Float) = 3
         _CloudVertWarp ("垂直变化(0=每层同形)", Float) = 0.0
         _CloudNoiseMode ("云噪声(0=value/1=梯度)", Range(0,1)) = 0
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
@@ -81,6 +89,8 @@ Shader "WaterProject/Sky_Coast"
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps, _CloudJitterIGN;
 float  _CloudBand;
                 float  _CloudOptical;
+                float  _CloudFreq, _CloudDetail, _ShadeSteps, _Extinct;
+                float  _SunPow, _SilverLining, _MarchPasses;
                 float  _CloudVertWarp;
                 float  _CloudNoiseMode;
 float  _SkyDebug;
@@ -226,6 +236,117 @@ float CloudDensity(float3 p, float h, float viewDist)
                 return acc * night * _StarBright;
             }
 
+            // ───────── R113：3D 值噪声 + 云算法（从 Sky_Tropical 移植）─────────
+            // 为什么移植：Sky_Coast 原来用"2D 噪声 + 阈值"，云的轮廓就是噪声晶格的
+            //   圆角方格（一格 2.4km，一朵云就是一格）。Sky_Tropical 用的是
+            //   **3D 噪声 + 列覆盖度**：云从层底一直填到 h = cover，
+            //   于是自然得到"平底 + 花椰菜顶"，而且高度方向也有变化。
+            float Hash31(float3 p)
+            {
+                p = frac(p * float3(0.1031, 0.1030, 0.0973));
+                p += dot(p, p.yxz + 33.33);
+                return frac((p.x + p.y) * p.z);
+            }
+
+            float Noise3(float3 p)
+            {
+                float3 i = floor(p), f = frac(p);
+                float3 u = f * f * (3.0 - 2.0 * f);
+                float n000 = Hash31(i),                  n100 = Hash31(i + float3(1, 0, 0));
+                float n010 = Hash31(i + float3(0, 1, 0)), n110 = Hash31(i + float3(1, 1, 0));
+                float n001 = Hash31(i + float3(0, 0, 1)), n101 = Hash31(i + float3(1, 0, 1));
+                float n011 = Hash31(i + float3(0, 1, 1)), n111 = Hash31(i + float3(1, 1, 1));
+                return lerp(lerp(lerp(n000, n100, u.x), lerp(n010, n110, u.x), u.y),
+                            lerp(lerp(n001, n101, u.x), lerp(n011, n111, u.x), u.y), u.z);
+            }
+
+            float Fbm3(float3 p, int oct)
+            {
+                float s = 0.0, amp = 0.5, norm = 0.0;
+                for (int k = 0; k < oct; k++)
+                {
+                    s += amp * Noise3(p);
+                    norm += amp;
+                    p = p * 2.13 + float3(9.7, 3.1, 5.3);
+                    amp *= 0.5;
+                }
+                return s / max(norm, 1e-4);
+            }
+
+            // 这一列有多少云（fbm 取值天生挤在中间，必须窄 smoothstep 才出"一团一团"）
+            float SkyColumnCoverage(float3 p, float3 wind)
+            {
+                float c = Fbm3(p * _CloudFreq + wind, 4);
+                float t = lerp(0.74, 0.40, _CloudCover);
+                return smoothstep(t, t + 0.16, c);
+            }
+
+            float SkyDensity(float3 p, float3 wind, float dist)
+            {
+                float h = (p.y - _CloudBase) / max(_CloudTop - _CloudBase, 1.0);
+                if (h < 0.0 || h > 1.0) return 0.0;
+
+                float cover = SkyColumnCoverage(p, wind);
+                if (cover <= 0.001) return 0.0;
+
+                // ★ 平底 + 花椰菜顶就来自这一行
+                float d = saturate((cover - h) / max(cover, 0.20));
+
+                // 顶部侵蚀：越高处搅得越狠，底部几乎不动 ⇒ 下缘保持平
+                float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 0.6, 3);
+                float lod = 1.0 / (1.0 + dist * dist * 1.6e-9);
+                d += (det - 0.5) * _CloudDetail * (0.16 + 1.15 * h * h) * lod;
+
+                d *= smoothstep(0.0, 0.045, h);
+                return saturate(d);
+            }
+
+            float SkySunShadow(float3 p, float3 sunDir, float3 wind, float dist)
+            {
+                float t = 0.0, tr = 1.0;
+                int n = (int)max(_ShadeSteps, 0.0);
+                for (int i = 0; i < n; i++)
+                {
+                    t += 90.0;
+                    float den = SkyDensity(p + sunDir * t, wind, dist + t);
+                    tr *= exp(-den * _Extinct * 90.0);
+                    if (tr < 0.02) break;
+                }
+                return saturate(tr);
+            }
+
+            void MarchCloudsSky(float3 d, float3 sunDir, float3 wind,
+                                float t0, float t1, float dt, int N, float jit,
+                                out float3 acc, out float trans)
+            {
+                acc = 0; trans = 1.0;
+                float nightDim = lerp(1.0, 0.24, _NightAmount);
+                float t = t0 + dt * jit;
+                for (int i = 0; i < N; i++)
+                {
+                    float3 p = _WorldSpaceCameraPos + d * t;
+                    float den = SkyDensity(p, wind, t);
+                    if (den > 0.001)
+                    {
+                        float sigma = den * _Extinct;
+                        float stepT = exp(-sigma * dt);
+                        float sun = SkySunShadow(p, sunDir, wind, t);
+                        float fwd = 0.5 + 0.5 * dot(d, sunDir);
+                        float lit = pow(sun, _SunPow) * lerp(0.55, 1.75, pow(fwd, 3.0));
+                        lit += pow(sun, 1.6) * 0.45;                     // 天光填充，背光面不死黑
+                        float3 cc = lerp(_CloudShadow.rgb, _CloudColor.rgb, saturate(lit));
+                        // 逆光银边：刚进入云体的边缘最亮
+                        cc += _CloudColor.rgb * _SilverLining * pow(sun, 3.0) * (1.0 - trans) * saturate(den);
+                        cc *= nightDim;
+                        acc += cc * trans * (1.0 - stepT);
+                        trans *= stepT;
+                        if (trans < 0.012) { trans = 0.0; break; }
+                    }
+                    // 步长随距离温和放大（否则掠射方向一步跨几十公里，云内部采不到点）
+                    t += dt * (1.0 + 0.6 * (t - t0) / max(t1 - t0, 1.0));
+                }
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
                 float3 d = normalize(IN.dir);
@@ -264,65 +385,39 @@ float CloudDensity(float3 p, float h, float viewDist)
                 float3 cloudAcc = 0;
                 if (d.y > 0.015)
                 {
-                    // ⚠ 不能用真球壳求交：Re=6.37e6 下 b²−|ro|²+R² 是 4e13 量级相减，
-                    //   fp32 只有 7 位有效数字 ⇒ 判别式全是垃圾 ⇒ 步进永不进入、
-                    //   天空只剩静态渐变（实测连拍 4.7s 逐位相同）。
-                    //   平流层近似 t=(H−camH)/d.y：所有量 ≤1e5，fp32 安全，
-                    //   地平线处的视觉与球壳无差（旧 2D 云也是平面投影）。
+                    // 平流层近似：t=(H−camH)/d.y（真球壳求交在 fp32 下精度爆炸，见旧注释）
                     float camH = max(_WorldSpaceCameraPos.y, 2.0);
-                    float t0 = (_CloudBase - camH) / d.y;
-                    float t1 = (_CloudTop - camH) / d.y;
-                    float2 camXZ = _WorldSpaceCameraPos.xz;
-                    int N = (int)clamp(_CloudSteps, 8, 48);
-                    float dt = (t1 - t0) / N;
-                    float jit = lerp(Hash21(IN.positionCS.xy), IGN(IN.positionCS.xy), _CloudJitterIGN);
-                    float t = t0 + dt * jit;   // R90：可逆 A/B（0=旧白噪）
-                    float T = 1.0;
-                    float nightDim = lerp(1.0, 0.24, _NightAmount);
-                    for (int i = 0; i < N; i++)
+                    float t0 = max((_CloudBase - camH) / d.y, 0.0);
+                    float t1 = min((_CloudTop - camH) / d.y, 45000.0);
+                    if (t1 > t0)
                     {
-                        float3 p = float3(camXZ.x, 0, camXZ.y) + d * t;
-                        float h = (camH - _CloudBase) + t * d.y;     // 云层内相对高度 0..H
-                        float dens = CloudDensity(p, h, length(p - float3(camXZ.x, camH, camXZ.y)));
-                        if (dens > 0.004)
+                        // 风：世界 XZ 速度 → 噪声空间（云图和细节图共用，单位 1/m）
+                        float ra = radians(_CloudWindDir);
+                        float2 wd = float2(sin(ra), cos(ra)) * (_CloudWindSpeed * _Time.y);
+                        float3 wind = float3(wd.x, 0.0, wd.y) * _CloudFreq;
+
+                        int N = (int)max(_CloudSteps, 4.0);
+                        float dt = (t1 - t0) / (float)N;
+
+                        // 多相位平均：单相位抖动会把"密度估计误差"变成满屏颗粒（R104 在 Islet 上验证过）
+                        float base = Hash21(IN.positionCS.xy * 0.6135);
+                        int P = (int)max(_MarchPasses, 1.0);
+                        float3 acc = 0; float trans = 0;
+                        for (int k = 0; k < P; k++)
                         {
-                            // R5#9 三 tap 太阳行进（180/420/900m 加权）——单 tap 给不出
-                            // "云底暗、云顶亮"的立体明暗，是对比度 ×3 缺口的主因之一
-                            float dS1 = CloudDensity(p + sunDir * 180.0, h + sunDir.y * 180.0, 3000.0);
-                            float dS2 = CloudDensity(p + sunDir * 420.0, h + sunDir.y * 420.0, 3000.0);
-                            float dS3 = CloudDensity(p + sunDir * 900.0, h + sunDir.y * 900.0, 3000.0);
-                            float dSun = dS1 * 0.5 + dS2 * 0.35 + dS3 * 0.25;
-                            // R32 云底阴影：_CloudBaseDark 把"云底亮多少"从常数变成可调——
-                            // 参考厚云有明显暗底，旧常数 0.80/2.6/0.18 把底面托得太亮
-                            float shadow = exp(-(dens * 1.2 + dSun) * lerp(2.6, 3.5, _CloudBaseDark));
-                            float phase = 0.62 + 0.38 * pow(saturate(dot(d, sunDir)), 3.0);
-                            // 粉末效应：薄处（迎光边）提亮，厚处压住——云边的银线由此来
-                            float powder = 1.0 - exp(-dens * 8.0);
-                            float Hc = _CloudTop - _CloudBase;
-                            // 云顶环境光：高处泛天光蓝白，与云底阴影拉开层次
-                            float topAmb = smoothstep(0.25, 1.0, h / Hc) * (1.0 - _NightAmount);
-                            float3 lit = lerp(_CloudShadow.rgb * lerp(0.80, 0.42, _CloudBaseDark), _CloudColor.rgb * 1.6,
-                                              saturate(shadow * (0.45 + 0.40 * phase) + powder * 0.30 * shadow));
-                            lit += _CloudColor.rgb * 0.20 * topAmb * shadow;
-                            lit += _CloudColor.rgb * lerp(0.18, 0.10, _CloudBaseDark) * (1.0 - shadow);   // 多散射下限：密核不坠入死黑
-                            // 太阳低时云缘向环境暖色过渡（S13 续卡"云体边缘向环境色"）
-                            lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
-                                       saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);
-                            lit *= nightDim;
-                            // R94：低仰角淡出 —— 掠射角下 t0 对像素极敏感，步进相位去相关，
-                            //   远处会压成一条麻点带。真实里地平线附近的云也被雾吃掉，直接淡出。
-                            // R112：低仰角淡出范围加大。原来的 0.015~0.085 只挡住贴地平线那一小条，
-                            //   而 8°~20° 这一段是"云层柱状积分"最难看的地方 —— 会拉成一排竖条纹。
-                            //   真实里这一段本来就被大气雾吃掉，直接按仰角淡出最干净。
-                            float hFade = smoothstep(0.10, 0.26, d.y);
-                            float a = (1.0 - exp(-dens * dt * 0.0016 * _CloudOptical)) * hFade;
-                            cloudAcc += T * a * lit;
-                            T *= 1.0 - a;
-                            if (T < 0.05) break;
+                            float3 ac2; float tr2;
+                            MarchCloudsSky(d, sunDir, wind, t0, t1, dt, N,
+                                           frac(base + (float)k * 0.37), ac2, tr2);
+                            acc += ac2; trans += tr2;
                         }
-                        t += dt;
+                        float invP = 1.0 / (float)P;
+                        acc *= invP; trans *= invP;
+
+                        // 低仰角淡出：8°~20° 这段是"柱状积分"最难看的地方（会拉成竖条纹）
+                        float hFade = smoothstep(0.08, 0.24, d.y);
+                        cloudAcc = acc * hFade;
+                        cloudT = lerp(1.0, trans, hFade);
                     }
-                    cloudT = T;
                 }
                 col = col * cloudT + cloudAcc;
                 col += nightCol * cloudT;      // 星/银河在云后

@@ -28,7 +28,7 @@ Material:
     - _CloudBand: 0.14
     - _CloudBase: 900
     - _CloudBaseDark: 0.55
-    - _CloudCover: 0.3
+    - _CloudCover: 0.38
     - _CloudDrift: 0.01
     - _CloudJitterIGN: 0
     - _CloudNoiseMode: 1
@@ -36,7 +36,7 @@ Material:
     - _CloudScale: 0.00042
     - _CloudShear: 0.006
     - _CloudSteps: 40
-    - _CloudTop: 2000
+    - _CloudTop: 3200
     - _CloudVertWarp: 0.003
     - _CloudWindDir: 200
     - _CloudWindSpeed: 100
