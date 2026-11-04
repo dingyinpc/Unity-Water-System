@@ -35,7 +35,7 @@ Material:
     - _DetailEnd: 40
     - _DetailScale: 7.6
     - _DetailStart: 2
-    - _DetailStrength: 1.4
+    - _DetailStrength: 0.5
     - _Eta: 1.33
     - _FoamLift: 0.03
     - _FresnelPow: 4

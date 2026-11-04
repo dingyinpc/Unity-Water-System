@@ -320,14 +320,33 @@ Shader "WaterProject/Water_Advanced"
                 return lerp(lerp(va, vb, u.x), lerp(vc, vd, u.x), u.y);
             }
 
-            // 噪声空间前向差分斜率（原解析 grad 在格边界归零 → 每格一个朝向 = 棋盘格）
+            // R102：2D 梯度噪声（Perlin）。value noise 的等值面天然是"格子的面"，
+            //   斜率在格内几乎恒定 ⇒ 水面高光破成一块块多边形（读作"玻璃格子/锡纸"）。
+            //   梯度噪声的斜率连续变化，水面才会是柔和的波纹。
+            float2 Grad2W(float2 i)
+            {
+                float h = Hash12(i) * 6.2831853;
+                return float2(cos(h), sin(h));
+            }
+            float PerlinW(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+                float a = dot(Grad2W(i),                f);
+                float b = dot(Grad2W(i + float2(1, 0)), f - float2(1, 0));
+                float c = dot(Grad2W(i + float2(0, 1)), f - float2(0, 1));
+                float e = dot(Grad2W(i + float2(1, 1)), f - float2(1, 1));
+                return lerp(lerp(a, b, u.x), lerp(c, e, u.x), u.y);
+            }
+
+            // 噪声空间前向差分斜率（用梯度噪声，避免 value noise 的"每格一个朝向"）
             float2 NoiseSlope(float2 worldXZ, float scale, float2 flow)
             {
                 float2 q = worldXZ * scale + flow;
                 const float eps = 0.25;
-                float n0 = ValueNoise(q);
-                float nx = ValueNoise(q + float2(eps, 0.0));
-                float nz = ValueNoise(q + float2(0.0, eps));
+                float n0 = PerlinW(q);
+                float nx = PerlinW(q + float2(eps, 0.0));
+                float nz = PerlinW(q + float2(0.0, eps));
                 return float2(nx - n0, nz - n0) / eps;
             }
 
