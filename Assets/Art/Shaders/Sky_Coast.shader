@@ -35,9 +35,12 @@ Shader "WaterProject/Sky_Coast"
         _CloudBase      ("云底高度(米)", Float) = 900
         _CloudTop       ("云顶高度(米)", Float) = 2000
         _CloudSteps     ("RayMarch 步数", Float) = 20
+        _CloudScale     ("云尺度(1/m，越大格子越小)", Float) = 0.00042
         _CloudJitterIGN ("抖动模式(0=白噪/1=IGN)", Range(0,1)) = 0
         // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
         _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
+        _CloudOptical   ("云光学厚度倍率(1=当前)", Range(0.1, 2)) = 1.0
+        _CloudNoiseMode ("云噪声(0=value/1=梯度)", Range(0,1)) = 0
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
@@ -76,6 +79,8 @@ Shader "WaterProject/Sky_Coast"
                 float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow, _CloudBaseDark;
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps, _CloudJitterIGN;
 float  _CloudBand;
+                float  _CloudOptical;
+                float  _CloudNoiseMode;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
@@ -112,13 +117,33 @@ float  _SkyDebug;
                 return lerp(lerp(a, b, u.x), lerp(c, e, u.x), u.y);
             }
             // 4 倍频（AtmosphereField 云影图**必须逐系数同构**，云影才和天上的云同形）
+            // R94：2D 梯度噪声（Perlin）—— value noise 的等值线天生是"圆角方格"，
+            //   云的轮廓因此读成"纸板方块"。梯度噪声的等值线是椭圆/菱形，fbm 后更像真云。
+            float2 Grad2(float2 i)
+            {
+                float h = Hash21(i) * 6.2831853;
+                return float2(cos(h), sin(h));
+            }
+            float Perlin2(float2 p)
+            {
+                float2 i = floor(p), f = frac(p);
+                float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+                float a = dot(Grad2(i),                   f);
+                float b = dot(Grad2(i + float2(1, 0)),    f - float2(1, 0));
+                float c = dot(Grad2(i + float2(0, 1)),    f - float2(0, 1));
+                float e = dot(Grad2(i + float2(1, 1)),    f - float2(1, 1));
+                return saturate(lerp(lerp(a, b, u.x), lerp(c, e, u.x), u.y) * 0.85 + 0.5);
+            }
             float Fbm(float2 p)
             {
                 float s = 0.0, amp = 0.5;
                 for (int k = 0; k < 4; k++)
                 {
-                    s += amp * ValueNoise(p);
-                    p = p * 2.07 + float2(13.1, 7.3) + k * 0.31;
+                    s += amp * (_CloudNoiseMode > 0.5 ? Perlin2(p) : ValueNoise(p));
+                    p = p * 2.07;
+                    // R91：每个倍频转 36.87°（cos=0.8/sin=0.6）—— 不转的话四层轴对齐，
+                    //   value noise 的方形格子会叠成"圆角方块"云。旋转后轮廓才有自然的碎边。
+                    p = float2(p.x * 0.8 - p.y * 0.6, p.x * 0.6 + p.y * 0.8) + float2(13.1, 7.3) + k * 0.31;
                     amp *= 0.5;
                 }
                 return s;
@@ -141,16 +166,23 @@ float IGN(float2 p)
     return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715))));
 }
 
-float CloudDensity(float3 p, float h)
+float CloudDensity(float3 p, float h, float viewDist)
             {
                 float covT = lerp(COVER_LO, COVER_HI, _CloudCover);
-                float2 q = (p.xz + WindOffset(h)) * CLOUD_SCALE;
+                float2 q = (p.xz + WindOffset(h)) * max(_CloudScale, 1e-6);
+                // R91：把坐标先转 23° —— 不转的话云轮廓就是噪声晶格的圆角方块，
+                //   而且格子轴与屏幕轴对齐，云的边看起来是笔直的竖线/横线。
+                q = float2(q.x * 0.9205 - q.y * 0.3907, q.x * 0.3907 + q.y * 0.9205);
                 // 原地翻腾（domain-warp 慢流动）：参考 S13 的云 3 秒窗内**全局位移为 0**
                 // （同窗互相关峰 0.71 落在原点）——"云速 0.84 %W/s"实为局部形态演化。
                 // ⚠ R36b 实测教训：原幅度 ±0.5、扫速 1.3/1.05 比风平移大一个量级，
                 //   云场读成"果冻弹动"（用户批词）——翻腾必须降为配角：
                 //   幅度 0.5→0.12、速度 1.3/1.05→0.28/0.22，风平移是主导运动。
                 //   保留小量慢翻腾只为云体内部演化，不再负责"动感"。
+                // R91：**静态**域扭曲（大）——把格子的直边揉成不规则团块。
+                //   与"慢翻腾"分开：静态扭曲不随时间变，不会重新引入 R36b 的"果冻弹动"。
+                q += (float2(ValueNoise(q * 0.55 + 3.7), ValueNoise(q * 0.55 + 11.3)) - 0.5) * 0.38;
+                // 慢翻腾（小，保持不变，只负责云体内部演化）
                 q += (float2(ValueNoise(q * 0.7 + _Time.y * 0.28),
                              ValueNoise(q * 0.7 + 3.3 - _Time.y * 0.22)) - 0.5) * 0.12;
                 float d = smoothstep(covT, covT + max(_CloudBand, 0.02), Fbm(q));
@@ -158,7 +190,14 @@ float CloudDensity(float3 p, float h)
                 float H = _CloudTop - _CloudBase;
                 d *= smoothstep(0.0, 120.0, h) * smoothstep(H, H * 0.40, h);
                 if (d > 0.004)
-                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.38);   // 细节侵蚀两级：云边碎化(R45 0.22→0.38 盲判"边缘过糊成雾团")
+                {
+                    // R94：远处（>2km）逐渐关掉高频侵蚀 —— 否则掠射角下细格子被压成一条麻点带。
+                    float lod = saturate((viewDist - 2000.0) * (-1.0/6000.0) + 1.0);
+                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.38 * lod);
+                    // R94：远处整体淡出 —— 20km 外的云格子只有 1~2 像素，必然走样成麻点。
+                    //   真实里那么远的云也被大气吃掉，直接按距离淡出最干净。
+                    d *= saturate((viewDist - 6000.0) * (-1.0/8000.0) + 1.0);
+                }   // 细节侵蚀两级：云边碎化(R45 0.22→0.38 盲判"边缘过糊成雾团")
                 return d;
             }
 
@@ -239,14 +278,14 @@ float CloudDensity(float3 p, float h)
                     {
                         float3 p = float3(camXZ.x, 0, camXZ.y) + d * t;
                         float h = (camH - _CloudBase) + t * d.y;     // 云层内相对高度 0..H
-                        float dens = CloudDensity(p, h);
+                        float dens = CloudDensity(p, h, length(p - float3(camXZ.x, camH, camXZ.y)));
                         if (dens > 0.004)
                         {
                             // R5#9 三 tap 太阳行进（180/420/900m 加权）——单 tap 给不出
                             // "云底暗、云顶亮"的立体明暗，是对比度 ×3 缺口的主因之一
-                            float dS1 = CloudDensity(p + sunDir * 180.0, h + sunDir.y * 180.0);
-                            float dS2 = CloudDensity(p + sunDir * 420.0, h + sunDir.y * 420.0);
-                            float dS3 = CloudDensity(p + sunDir * 900.0, h + sunDir.y * 900.0);
+                            float dS1 = CloudDensity(p + sunDir * 180.0, h + sunDir.y * 180.0, 3000.0);
+                            float dS2 = CloudDensity(p + sunDir * 420.0, h + sunDir.y * 420.0, 3000.0);
+                            float dS3 = CloudDensity(p + sunDir * 900.0, h + sunDir.y * 900.0, 3000.0);
                             float dSun = dS1 * 0.5 + dS2 * 0.35 + dS3 * 0.25;
                             // R32 云底阴影：_CloudBaseDark 把"云底亮多少"从常数变成可调——
                             // 参考厚云有明显暗底，旧常数 0.80/2.6/0.18 把底面托得太亮
@@ -265,7 +304,10 @@ float CloudDensity(float3 p, float h)
                             lit = lerp(lit, lit * float3(1.25, 0.86, 0.66),
                                        saturate(1.0 - sunDir.y * 2.2) * (1.0 - _NightAmount) * 0.5);
                             lit *= nightDim;
-                            float a = 1.0 - exp(-dens * dt * 0.0016);
+                            // R94：低仰角淡出 —— 掠射角下 t0 对像素极敏感，步进相位去相关，
+                            //   远处会压成一条麻点带。真实里地平线附近的云也被雾吃掉，直接淡出。
+                            float hFade = smoothstep(0.015, 0.085, d.y);
+                            float a = (1.0 - exp(-dens * dt * 0.0016 * _CloudOptical)) * hFade;
                             cloudAcc += T * a * lit;
                             T *= 1.0 - a;
                             if (T < 0.05) break;
@@ -326,6 +368,12 @@ float CloudDensity(float3 p, float h)
                 }
 
                 // R74 调试：把云参数直接输出成颜色，验证材质值是否真的进了 shader
+                // R91：真·云遮罩（白=有云）。用来判断"圆角方块"是密度场的问题还是打光的问题。
+                if (_SkyDebug > 3.5)
+                {
+                    float m = saturate(1.0 - cloudT);
+                    return half4(m, m, m, 1);
+                }
                 if (_SkyDebug > 1.5) return half4(saturate(_CloudCover), saturate(_CloudSteps / 48.0), saturate(_CloudBand), 1);
                 if (_SkyDebug > 0.5) return half4(saturate(_CloudCover), saturate(_NightAmount), saturate(_CloudBaseDark), 1);
                 return half4(col, 1.0);

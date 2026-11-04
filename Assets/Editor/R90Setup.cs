@@ -44,6 +44,33 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R90/90b 云抖动=白噪(旧)")]
         public static void JitterHash() => SetSky("_CloudJitterIGN", 0f, "90b");
 
+        [MenuItem("Tools/R92/90 云尺度=0.00042(当前)")]
+        public static void Scale42() => SetSky("_CloudScale", 0.00042f, "R92-90");
+
+        [MenuItem("Tools/R92/91 云尺度=0.00075")]
+        public static void Scale75() => SetSky("_CloudScale", 0.00075f, "R92-91");
+
+        [MenuItem("Tools/R92/92 云尺度=0.00110")]
+        public static void Scale110() => SetSky("_CloudScale", 0.00110f, "R92-92");
+
+        [MenuItem("Tools/R92/93 云尺度=0.00150")]
+        public static void Scale150() => SetSky("_CloudScale", 0.00150f, "R92-93");
+
+        [MenuItem("Tools/R91/90 天空调试=正常(0)")]
+        public static void Debug0() => SetSky("_SkyDebug", 0f, "R91-0");
+
+        [MenuItem("Tools/R91/91 天空调试=云遮罩(1)")]
+        public static void Debug1() => SetSky("_SkyDebug", 1f, "R91-1");
+
+        [MenuItem("Tools/R91/92 天空调试=云受光(2)")]
+        public static void Debug2() => SetSky("_SkyDebug", 2f, "R91-2");
+
+        [MenuItem("Tools/R91/93 天空调试=仅渐变(3)")]
+        public static void Debug3() => SetSky("_SkyDebug", 3f, "R91-3");
+
+        [MenuItem("Tools/R91/94 天空调试=云遮罩(4)")]
+        public static void Debug4() => SetSky("_SkyDebug", 4f, "R91-4");
+
         [MenuItem("Tools/R90/91 探针(云抖动/步数/云量)")]
         public static void Probe()
         {

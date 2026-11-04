@@ -68,7 +68,10 @@ Shader "WaterProject/AtmosphereField"
                 for (int k = 0; k < 4; k++)
                 {
                     s += amp * VNoise(p);
-                    p = p * 2.07 + float2(13.1, 7.3) + k * 0.31;
+                    p = p * 2.07;
+                    // R91：每个倍频转 36.87°（cos=0.8/sin=0.6）—— 不转的话四层轴对齐，
+                    //   value noise 的方形格子会叠成"圆角方块"云。旋转后轮廓才有自然的碎边。
+                    p = float2(p.x * 0.8 - p.y * 0.6, p.x * 0.6 + p.y * 0.8) + float2(13.1, 7.3) + k * 0.31;
                     amp *= 0.5;
                 }
                 return s;
@@ -87,7 +90,10 @@ Shader "WaterProject/AtmosphereField"
                 // 与 Sky_Coast.WindOffset(midH) 同式：windDir·(speed·t + h·shear)
                 float ra = radians(_AFWindDir);
                 float2 woff = float2(sin(ra), cos(ra)) * (_AFWindSpeed * _Time.y + midH * _AFShear);
-                float f = Fbm((proj + woff) * _AFCloudScale);
+                float2 q2 = (proj + woff) * _AFCloudScale;
+                // R91：与 Sky_Coast 同角度（23°）旋转，保证云影与天上的云同形
+                q2 = float2(q2.x * 0.9205 - q2.y * 0.3907, q2.x * 0.3907 + q2.y * 0.9205);
+                float f = Fbm(q2);
                 // 与 Sky_Coast.CloudDensity 同阈值（cover 映射 + 过渡带 0.18）
                 float cover = lerp(0.70, 0.24, _AFCloudCover);
                 float cloud = smoothstep(cover, cover + 0.18, f);
