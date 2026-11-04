@@ -63,6 +63,38 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R97/93 曝光+2.8 对比16 饱和-10(旧曝光)")]
         public static void G93() => Grade(2.8f, 16f, -10f, "93");
 
+
+        // R107：查"巨大白色光斑"——先把 Bloom 关掉，看它是不是放大器
+        [MenuItem("Tools/R107/90 Bloom=关")]
+        public static void BloomOff()
+        {
+            var prof = Profile();
+            if (prof == null) { P("R107/90 REFUSED: 无全局 Volume\n"); return; }
+            if (prof.TryGet<Bloom>(out var b)) { b.intensity.value = 0f; EditorUtility.SetDirty(b); P("R107/90 Bloom intensity -> 0\n"); }
+            else P("R107/90 Volume 没有 Bloom override\n");
+        }
+
+        [MenuItem("Tools/R107/91 Bloom=0.6(参考档)")]
+        public static void BloomOn()
+        {
+            var prof = Profile();
+            if (prof == null) { P("R107/91 REFUSED: 无全局 Volume\n"); return; }
+            if (prof.TryGet<Bloom>(out var b)) { b.intensity.value = 0.6f; EditorUtility.SetDirty(b); P("R107/91 Bloom intensity -> 0.6\n"); }
+        }
+
+        [MenuItem("Tools/R107/92 探针(Bloom/ToneMapping/其它)")]
+        public static void ProbePost()
+        {
+            var prof = Profile();
+            if (prof == null) { P("R107/92 无全局 Volume\n"); return; }
+            string s2 = $"R107 PROBE {prof.name}";
+            if (prof.TryGet<Bloom>(out var b))     s2 += $" bloom={b.intensity.value:F2}(thr={b.threshold.value:F2})";
+            if (prof.TryGet<Tonemapping>(out var t)) s2 += $" tonemap={t.mode.value}";
+            if (prof.TryGet<ColorAdjustments>(out var ca)) s2 += $" exp={ca.postExposure.value:F2}";
+            if (prof.TryGet<WhiteBalance>(out var wb)) s2 += $" temp={wb.temperature.value:F0}";
+            P(s2 + "\n");
+        }
+
         [MenuItem("Tools/R97/94 探针")]
         public static void Probe()
         {

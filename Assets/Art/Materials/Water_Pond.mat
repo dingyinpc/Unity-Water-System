@@ -53,10 +53,10 @@ Material:
     - _ScatterDither: 0
     - _ScatterGain: 2
     - _ScatterMaxDist: 6
-    - _ScatterMode: 2
+    - _ScatterMode: 0
     - _ScatterSigma: 1
     - _ScatterSteps: 14
-    - _ScatterStrength: 0.5
+    - _ScatterStrength: 0
     - _ShoreFoam: 0.28
     - _ShoreWidth: 0.55
     - _SkyReflect: 0.9
