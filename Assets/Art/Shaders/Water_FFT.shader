@@ -117,6 +117,10 @@ Shader "WaterProject/Water_FFT"
                 float4 g2 = _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2);
                 float2 grad = g0.xy * _FFTL0Info.w * w0 + g1.xy * _FFTL1Info.w * w1
                             + g2.xy * _FFTL2Info.w * w2;
+                // R124：坡度**限幅**。原来不加限制时，陡坡处 normalize(−grad,1,−grad) 会贴近水平，
+                //   菲涅尔直接跳到 1 ⇒ 整片按"镜面反射天空"算 ⇒ 边界处只要法线差一点点，
+                //   颜色就从"水体色"跳到"天空色"，读成一块块硬边方块（关掉太阳高光也还在，实锤）。
+                grad = clamp(grad, -1.20, 1.20);
                 float foam = saturate((g0.w * w0 + g1.w * w1 + g2.w * w2) * _FFTGlobal.y);
                 // R32：白沫成团——线性叠加偏"蕾丝网"，smoothstep 把中间密度推成
                 // 云絮状斑块（参考浪尖的沫是一团团的，不是均匀网）。
