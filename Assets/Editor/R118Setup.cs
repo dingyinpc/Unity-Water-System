@@ -1,0 +1,148 @@
+// R118Setup.cs — R118：AI 贴图的"一条龙"自动化
+//
+// 目标：把图丢进 `Assets/Art/Textures/AI/Raw/` 之后，一条菜单跑完：
+//   ① 调 Python 后处理（无缝检测/修复、法线推导、白底抠图）→ `AI/Proc/`
+//   ② 刷新并**批量设置导入参数**（法线图设成 NormalMap、关 sRGB、Repeat、各向异性）
+//   ③ 把岩石贴图接到岩石材质（三平面投影，礁石没有 UV 也能用）
+//
+// 可逆：90 处理+导入（不改场景） / 91 接岩石贴图 / 91b 还原 / 99 探针
+#if UNITY_EDITOR
+using System.Diagnostics;
+using System.IO;
+using UnityEditor;
+using UnityEngine;
+
+namespace WaterProject.EditorTools
+{
+    public static class R118Setup
+    {
+        const string RawDir  = "Assets/Art/Textures/AI/Raw";
+        const string ProcDir = "Assets/Art/Textures/AI/Proc";
+
+        static void P(string s)
+            => File.AppendAllText(Path.Combine(Application.dataPath, "../Logs/water_probe.txt"), s);
+
+        [MenuItem("Tools/R118/90 AI贴图 处理+导入(一条龙)")]
+        public static void ProcessAndImport()
+        {
+            var root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            var py = Path.Combine(root, "Tools/TexAI/texai.py");
+            if (!File.Exists(py)) { P("R118/90 REFUSED: 找不到 Tools/TexAI/texai.py\n"); return; }
+            if (!Directory.Exists(Path.Combine(root, RawDir))) { P($"R118/90 REFUSED: 没有 {RawDir}\n"); return; }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "python",
+                Arguments = $"-u \"{py}\" --in \"{RawDir}\" --out \"{ProcDir}\" --mode auto",
+                WorkingDirectory = root,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            using (var proc = Process.Start(psi))
+            {
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+                proc.WaitForExit();
+                P("R118/90 python 输出：\n" + stdout + (string.IsNullOrWhiteSpace(stderr) ? "" : "\n[stderr] " + stderr));
+            }
+
+            AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+
+            // 批量设导入参数
+            int n = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { ProcDir }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (AssetImporter.GetAtPath(path) is TextureImporter ti)
+                {
+                    bool isNormal = path.EndsWith("_normal.png");
+                    bool isRgba   = path.EndsWith("_rgba.png");
+
+                    ti.textureType = isNormal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+                    ti.sRGBTexture = !isNormal;
+                    ti.wrapMode = isRgba ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
+                    ti.alphaIsTransparency = isRgba;
+                    ti.mipmapEnabled = true;
+                    ti.anisoLevel = 8;
+                    ti.filterMode = FilterMode.Trilinear;
+                    ti.maxTextureSize = 2048;
+                    ti.SaveAndReimport();
+                    n++;
+                }
+            }
+            P($"R118/90 导入参数已设：{n} 张（normal→NormalMap/关sRGB，rgba→Clamp+alphaIsTransparency，其余 Repeat+aniso8）\n");
+        }
+
+        static Material RockMat()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet_RockDetail.mat");
+            if (m != null) return m;
+            return AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Ocean_RockDetail.mat");
+        }
+
+        [MenuItem("Tools/R118/91 岩石贴 AI 岩贴图(三平面, 强度0.7)")]
+        public static void ApplyRock()
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ProcDir}/Rock_Basalt_AI_albedo.png");
+            if (tex == null) { P("R118/91 REFUSED: 没有 Rock_Basalt_AI_albedo.png（先跑 90）\n"); return; }
+
+            int n = 0;
+            foreach (var path in new[]
+                     {
+                         "Assets/Art/Materials/Islet_RockDetail.mat",
+                         "Assets/Art/Materials/Ocean_RockDetail.mat",
+                         "Assets/Art/Materials/Ocean_CliffDetail.mat",
+                     })
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null) continue;
+                if (!m.HasProperty("_RockTex")) { P($"R118/91 跳过 {m.name}（shader 没有 _RockTex）\n"); continue; }
+                m.SetTexture("_RockTex", tex);
+                m.SetFloat("_RockTexScale", 1.2f);
+                m.SetFloat("_RockTexAmount", 0.7f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+                n++;
+            }
+            P($"R118/91 岩贴图已接到 {n} 个材质（密度 1.2，强度 0.7）\n");
+        }
+
+        [MenuItem("Tools/R118/91b 岩石贴图还原(强度0)")]
+        public static void RevertRock()
+        {
+            int n = 0;
+            foreach (var path in new[]
+                     {
+                         "Assets/Art/Materials/Islet_RockDetail.mat",
+                         "Assets/Art/Materials/Ocean_RockDetail.mat",
+                         "Assets/Art/Materials/Ocean_CliffDetail.mat",
+                     })
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || !m.HasProperty("_RockTexAmount")) continue;
+                m.SetFloat("_RockTexAmount", 0f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+                n++;
+            }
+            P($"R118/91b 岩贴图强度 -> 0（{n} 个材质）\n");
+        }
+
+        [MenuItem("Tools/R118/99 探针")]
+        public static void Probe()
+        {
+            P("R118 PROBE 处理产物：\n");
+            string procAbs = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ProcDir));
+            if (Directory.Exists(procAbs))
+                foreach (var f in Directory.GetFiles(procAbs, "*.png"))
+                    P($"   {Path.GetFileName(f)}  {new FileInfo(f).Length / 1024}KB\n");
+            var m = RockMat();
+            if (m != null)
+                P($"R118 PROBE 岩石材质={m.name} tex={(m.GetTexture("_RockTex") ? m.GetTexture("_RockTex").name : "null")} " +
+                  $"amount={(m.HasProperty("_RockTexAmount") ? m.GetFloat("_RockTexAmount") : -1):F2}\n");
+        }
+    }
+}
+#endif

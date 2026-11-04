@@ -32,6 +32,10 @@ Shader "WaterProject/IsletRockSplat"
         // 这里补 5~10 厘米级的麻点。默认 0 ⇒ 旧画面逐位不变。
         _MicroAmount ("岩面微颗粒强度(0=旧)", Range(0, 1)) = 0.0
         _FillLight   ("天光填充(假GI)", Float) = 0.20
+        // R118：AI 生成的岩石贴图（**三平面投影**，不需要 UV —— 程序化网格大多没有 UV）
+        _RockTex        ("岩贴图(AI)", 2D) = "white" {}
+        _RockTexScale   ("岩贴图密度(1/米)", Float) = 0.18
+        _RockTexAmount  ("岩贴图强度", Range(0,1)) = 0
         _AmbStrength ("环境光权重", Float) = 1.0
     }
 
@@ -54,9 +58,11 @@ Shader "WaterProject/IsletRockSplat"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+            TEXTURE2D(_RockTex); SAMPLER(sampler_RockTex);
             CBUFFER_START(UnityPerMaterial)
                 float4 _RockLo, _RockMid, _RockHi, _MossColor;
                 float  _HMin, _HMax, _MidPoint, _FillLight, _AmbStrength;
+                float  _RockTexScale, _RockTexAmount;
                 float  _MicroAmount;
             CBUFFER_END
 
@@ -148,6 +154,19 @@ Shader "WaterProject/IsletRockSplat"
                 float mossW = saturate(IN.col.r)
                             * (0.72 + 0.56 * VNoise(wxz * 2.2 + 13.7));
                 float3 albedo = lerp(rock, _MossColor.rgb, mossW);
+                // R118：AI 岩贴图（三平面投影，不需要 UV）。
+                // ⚠ 必须乘在 **albedo 之后**：程序化网格的顶点色 R=1 ⇒ mossW≈1 ⇒
+                //   albedo 基本等于 _MossColor，乘在 rock 上会被这一行完全覆盖（实测像素差 0.000%）。
+                if (_RockTexAmount > 0.001)
+                {
+                    float3 an = abs(normalize(nrm)) + 1e-3;
+                    float3 tc3 = SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, IN.posWS.zy * _RockTexScale).rgb * an.x
+                               + SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, IN.posWS.xz * _RockTexScale).rgb * an.y
+                               + SAMPLE_TEXTURE2D(_RockTex, sampler_RockTex, IN.posWS.xy * _RockTexScale).rgb * an.z;
+                    float tl = dot(tc3 / (an.x + an.y + an.z), float3(0.299, 0.587, 0.114));
+                    // 保持均值的明度调制：mean 取玄武岩亮度 0.32
+                    albedo *= 1.0 + (tl - 0.30) * 2.80 * _RockTexAmount;
+                }
 
                 Light L = GetMainLight();
                 float ndl = saturate(dot(nrm, L.direction));

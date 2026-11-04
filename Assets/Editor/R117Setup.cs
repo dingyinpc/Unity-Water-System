@@ -32,10 +32,12 @@ namespace WaterProject.EditorTools
             var m = SandMat();
             if (m == null) { P("R117/90 REFUSED: 找不到 Ocean_Sand\n"); return; }
 
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/AI/Sand_Fine_AI.jpg");
-            if (tex == null) { P("R117/90 REFUSED: 找不到 Sand_Fine_AI.jpg\n"); return; }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/AI/Proc/Sand_Fine_AI_albedo.png");
+            if (tex == null) tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/AI/Raw/Sand_Fine_AI.jpg");
+            if (tex == null) { P("R117/90 REFUSED: 找不到 Sand_Fine_AI_albedo.png（先跑 R118/90）\n"); return; }
 
             m.SetTexture("_SandTex", tex);
+            m.SetTexture("_SandNormal", null);
             m.SetFloat("_SandTexScale", 0.35f);
             m.SetFloat("_SandTexAmount", 0.75f);
             EditorUtility.SetDirty(m);
