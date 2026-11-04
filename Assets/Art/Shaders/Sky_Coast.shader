@@ -55,6 +55,9 @@ Shader "WaterProject/Sky_Coast"
         _CloudTexAmt   ("贴图权重(0=纯程序化 1=全贴图)", Range(0,1)) = 0
         _CloudTexWorld ("贴图铺开尺寸(米/格)", Float) = 8000
         _CloudTexLod   ("贴图 mip 偏置(越大越柔)", Range(0, 6)) = 3
+        _CloudBillow   ("花椰菜噪声(0=旧软团块 1=Worley球堆)", Range(0,1)) = 0
+        _BillowScale   ("花椰菜尺度(相对云细节)", Float) = 5.7
+        _BillowAmt     ("花椰菜侵蚀强度", Range(0, 2)) = 1.0
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
         // ── 夜空（P1-1 / 参考 S12）：全部由 DayNightCycle 写入，白天为 0 ──
@@ -99,6 +102,7 @@ float  _CloudBand;
                 float  _CloudVertWarp;
                 float  _CloudNoiseMode;
                 float  _CloudTexAmt, _CloudTexWorld, _CloudTexLod;
+                float  _CloudBillow, _BillowScale, _BillowAmt;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
                 float4 _MoonDir, _MoonColor;
@@ -282,6 +286,60 @@ float CloudDensity(float3 p, float h, float viewDist)
                 return s / max(norm, 1e-4);
             }
 
+            // ── R128：3D Worley（细胞）噪声 ──────────────────────────────────
+            // 为什么必须换它：Fbm（平滑随机起伏）做出来的边缘永远是"棉花糖"；
+            // 积云的边缘是**一颗颗小球堆出来的花椰菜**，天然对应 Worley 的"到最近特征点距离"。
+            // 性能：只用 2×2×2 = 8 格（标准近似），不是 27 格——本体在内循环里，27 格太贵。
+            float Hash31W(float3 q)
+            {
+                float3 p = frac(q * 0.1031);
+                p += dot(p, p.yzx + 33.33);
+                return frac((p.x + p.y) * p.z);
+            }
+
+            float Worley8(float3 p)
+            {
+                float3 ip = floor(p), f = frac(p);
+                float3 sgn = step(0.5, f) * 2.0 - 1.0;      // 指向查询点那一侧
+                float md = 8.0;
+                [unroll]
+                for (int k = 0; k < 8; k++)
+                {
+                    float3 g = float3((k & 1) ? 1.0 : 0.0, (k & 2) ? 1.0 : 0.0, (k & 4) ? 1.0 : 0.0) * sgn;
+                    float3 c = ip + g;
+                    float3 o = float3(Hash31W(c), Hash31W(c + 17.13), Hash31W(c + 41.77));
+                    float3 r = g + o - f;
+                    md = min(md, dot(r, r));
+                }
+                return sqrt(md);                            // 0=贴着特征点 1=最远
+            }
+
+            // 2D 版（轮廓层用，4 格）：我们是从下往上看云底，**轮廓**的球状感比内部细节更显眼
+            float Worley2(float2 p)
+            {
+                float2 ip = floor(p), f = frac(p);
+                float2 sgn = step(0.5, f) * 2.0 - 1.0;
+                float md = 8.0;
+                [unroll]
+                for (int k = 0; k < 4; k++)
+                {
+                    float2 g = float2((k & 1) ? 1.0 : 0.0, (k & 2) ? 1.0 : 0.0) * sgn;
+                    float2 c = ip + g;
+                    float2 o = float2(Hash21(c), Hash21(c + 17.13));
+                    float2 r = g + o - f;
+                    md = min(md, dot(r, r));
+                }
+                return sqrt(md);
+            }
+
+            // billow：1-Worley ⇒ 一颗颗圆球；两层不同尺度破掉单一晶格
+            float Billow(float3 p)
+            {
+                float b1 = 1.0 - Worley8(p);
+                float b2 = 1.0 - Worley8(p * 2.63 + 13.1);
+                return b1 * 0.68 + b2 * 0.32;
+            }
+
             // 这一列有多少云（fbm 取值天生挤在中间，必须窄 smoothstep 才出"一团一团"）
             float SkyColumnCoverage(float3 p, float3 wind)
             {
@@ -289,7 +347,22 @@ float CloudDensity(float3 p, float h, float viewDist)
                 //   SkyDensity 的模型是 d=(cover-h)/max(cover,0.2)，cover 被当成"云顶高度"读，
                 //   换成高频俯视图后每根柱子高矮不一 ⇒ 屏幕上是一根根竖条/锥形（三档铺开尺寸同一个病）。
                 //   所以轮廓继续用程序化 Fbm3，贴图只负责**表面细节侵蚀**（见 SkyDensity 的 det 项）。
-                float c = Fbm3(p * _CloudFreq + wind, 4);
+                float c;
+                if (_CloudBillow > 0.001)
+                {
+                    // 域扭曲（**保守版**）：仍然用原来那个 Fbm3、原来的频率 —— 只把采样坐标按细胞噪声推开。
+                    //   这样云量、云块尺寸、直方图全都保持不变，只有等值线从"平滑弧线"变成"一串小球"。
+                    //   ⚠ 上一版直接改用 2D Fbm 当形状源 ⇒ 频率对不上，云块一下涨了好几倍、变成大白墙，
+                    //     已推翻（R128 实测：像素差 42.9%，视觉不可用）。
+                    float2 q2 = p.xz * _CloudFreq + wind.xz;
+                    float2 w = float2(Worley2(q2 * 2.7), Worley2(q2 * 2.7 + 19.3)) - 0.5;
+                    float3 pw = p + float3(w.x, w.y, w.y) * (0.10 / max(_CloudFreq, 1e-6));
+                    c = Fbm3(pw * _CloudFreq + wind, 4);
+                }
+                else
+                {
+                    c = Fbm3(p * _CloudFreq + wind, 4);
+                }
                 float t = lerp(0.74, 0.40, _CloudCover);
                 return smoothstep(t, t + 0.16, c);
             }
@@ -306,7 +379,13 @@ float CloudDensity(float3 p, float h, float viewDist)
                 float d = saturate((cover - h) / max(cover, 0.20));
 
                 // 顶部侵蚀：越高处搅得越狠，底部几乎不动 ⇒ 下缘保持平
-                float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 0.6, 3);
+                float det = Fbm3(p * (_CloudFreq * _BillowScale) + wind * 0.6, 3);
+                // R128：把侵蚀噪声换成 Worley billow ⇒ 云边从"棉花糖"变成"小球堆"（花椰菜）
+                if (_CloudBillow > 0.001)
+                {
+                    float bw = Billow(p * (_CloudFreq * _BillowScale) + wind * 0.6);
+                    det = lerp(det, bw, _CloudBillow);
+                }
                 // R127：**AI 贴图在这里出力**——只做表面细节，不碰轮廓。
                 //   每层按高度错开采样，避免"同一张切片往上堆"（那会变成竖着的板）。
                 if (_CloudTexAmt > 0.001)
@@ -318,7 +397,8 @@ float CloudDensity(float3 p, float h, float viewDist)
                     det = lerp(det, ex, _CloudTexAmt);
                 }
                 float lod = 1.0 / (1.0 + dist * dist * 1.6e-9);
-                d += (det - 0.5) * _CloudDetail * (0.16 + 1.15 * h * h) * lod;
+                // R128：低处权重 0.16 → 0.34。我们基本是从下往上看，云底没结构就永远像"灰板"。
+                d += (det - 0.5) * _CloudDetail * _BillowAmt * (0.34 + 1.05 * h * h) * lod;
 
                 d *= smoothstep(0.0, 0.045, h);
                 return saturate(d);
