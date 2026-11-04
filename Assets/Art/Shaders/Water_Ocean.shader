@@ -137,6 +137,11 @@ Shader "WaterProject/Water_Ocean"
         // R47 全局画质：亮闪场是**世界固定频率**（格子约 15cm）。远处一个像素盖住几十个格子
         //   ⇒ 采样走样成"撒盐"白点（俯视机位实测六个场景都有）。按相机距离淡出。
         _SparkleFade ("亮闪距离淡出(近,远)", Vector) = (60, 260, 0, 0)
+        _SparkleAmt  ("亮闪强度(R125)", Range(0, 2)) = 1.0
+        _SparkleLOD  ("亮闪随距离变大(R125: 0=旧路径)", Range(0, 1)) = 1.0
+        _DetailLOD   ("细节可分辨性淡出(R125: 0=旧路径)", Range(0, 1)) = 1.0
+        _FoamHistLOD ("泡沫历史距离衰减(R125: 0=旧路径)", Range(0, 1)) = 1.0
+        _FoamHistRange ("泡沫历史衰减距离(近,远)", Vector) = (40, 200, 0, 0)
     }
 
     SubShader
@@ -194,6 +199,11 @@ Shader "WaterProject/Water_Ocean"
                 float  _SSRStrength, _SSRMaxDist, _SSRSteps, _SSRThickness, _SSREdgeFade, _SSRDebug;
                 float  _DebugMode;
                 float4 _SparkleFade;
+            float  _SparkleAmt;
+            float  _SparkleLOD;
+            float  _DetailLOD;
+            float  _FoamHistLOD;
+            float4 _FoamHistRange;
             CBUFFER_END
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
@@ -301,11 +311,20 @@ Shader "WaterProject/Water_Ocean"
                 return float2(ValueNoise(q + float2(eps, 0)) - n0,
                               ValueNoise(q + float2(0, eps)) - n0) / eps;
             }
+            // R125：**可分辨性淡出**。程序化噪声没有 mipmap，远处一个噪声周期只剩 1~2 个像素时，
+            //   逐像素采样出来就是**一片跳动的碎点**（看图放大 4 倍就是 1px 棋盘）——
+            //   这正是"水面像蒙了层纱窗/有点脏"的来源（隔离实验已排除亮闪：关掉亮闪三张图逐位相同）。
+            //   fwidth 给出"一个像素在世界里有多宽"，噪声周期比 4 个像素还小就直接撤掉。
             float3 SkinNormal(float3 wp, float t, float fineW)
             {
+                float px = max(length(fwidth(wp.xz)), 1e-4);              // 米/像素
                 float2 mid  = NoiseSlope(wp.xz, _DetailScale, float2(t * _DetailFlow, t * _DetailFlow * 0.7));
                 float2 fine = NoiseSlope(wp.xz, _RippleScale, float2(-t * _DetailFlow * 1.6, t * _DetailFlow * 1.2));
-                float2 tot  = mid * _DetailStrength + fine * (_RippleStrength * fineW);
+                float midFade  = saturate((1.0 / max(_DetailScale, 1e-4)) / (8.0 * px));
+                float fineFade = saturate((1.0 / max(_RippleScale, 1e-4)) / (8.0 * px));
+                midFade  = lerp(1.0, midFade,  _DetailLOD);
+                fineFade = lerp(1.0, fineFade, _DetailLOD);
+                float2 tot  = mid * _DetailStrength * midFade + fine * (_RippleStrength * fineW) * fineFade;
                 return normalize(float3(-tot.x, 1.0, -tot.y));
             }
 
@@ -316,11 +335,25 @@ Shader "WaterProject/Water_Ocean"
             float Sparkle(float3 wpos, float t, float3 N, float3 V, float3 sunDir)
             {
                 float2 xz = wpos.xz;
-                float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
-                float s = ValueNoise(q) * 0.7 + ValueNoise(q * 1.9 + 4.7) * 0.3;
-                float glint = smoothstep(0.960, 0.995, s);
-                // R47：距离淡出（见属性区注释）。远处没有单个耀斑是物理正确的，不是为了省事。
                 float d = distance(_WorldSpaceCameraPos, wpos);
+
+                // R125：**点的大小跟着距离走**——这是"水面点阵"的真凶。
+                //   原来远近都用同一个阈值（0.960~0.995）切噪声顶部：近处一个点是 8~10 像素（正常耀斑），
+                //   远处一个点落不到一个像素 ⇒ 采样成**规则的白色网点**（半调网纹），
+                //   整片海看上去像蒙了层纱窗。
+                //   现在随距离把阈值窗口往下放宽（点变大变柔）+ 幅度淡出 ⇒ 远处是"柔和光泽"而不是"点"。
+                float k = saturate((d - 18.0) / 70.0) * _SparkleLOD;   // 0=近 1=远（_SparkleLOD=0 复现旧路径）
+                float lo = lerp(0.960, 0.855, k);
+                float hi = lerp(0.995, 0.945, k);
+
+                // 两个倍频之间**旋转 37°**：同向晶格会在斜向叠出摩尔纹带，错开方向就散成随机点
+                const float2x2 ROT = float2x2(0.7986, -0.6018, 0.6018, 0.7986);
+                float2 q = xz * 6.5 + float2(t * 1.4, -t * 1.1);
+                float2 q2 = _SparkleLOD > 0.5 ? mul(ROT, q) : q;   // 旧路径不旋转（A/B 用）
+                float s = ValueNoise(q) * 0.7 + ValueNoise(q2 * 1.9 + 4.7) * 0.3;
+                float glint = smoothstep(lo, hi, s);
+
+                // R47：距离淡出（见属性区注释）。远处没有单个耀斑是物理正确的，不是为了省事。
                 float f = saturate(1.0 - (d - _SparkleFade.x) / max(_SparkleFade.y - _SparkleFade.x, 1.0));
                 f = f * f * (3.0 - 2.0 * f);
                 return glint * lerp(0.35, 1.4, saturate(dot(normalize(-V.xz + 1e-5), normalize(sunDir.xz + 1e-5)))) * f;
@@ -384,7 +417,22 @@ Shader "WaterProject/Water_Ocean"
                     // ⚠ 必须**卡一个阈值**再上：历史场里大片低密度泡沫一旦线性叠加，
                     //   整片海会糊成一张白纸（本轮实测 0.6 强度即如此）。只留丝缕/残留的强密度。
                     float hRaw = SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV, 0).r;
+                    // R125：泡沫历史是**分格场**（每个模拟格子一个值），拉到中远景就碎成一片马赛克斑点，
+                    //   关掉它水面高频能量直接掉 57%（隔离实验实测）——"水面像蒙了层脏纱"的真凶。
+                    //   两条处理：①四点柔化把格子边界抹开 ②按距离衰减（远处本来也看不清残留泡沫）
+                    float dFoam = distance(worldPos.xz, _WorldSpaceCameraPos.xz);
+                    float foamFade = saturate((_FoamHistRange.y - dFoam) / max(_FoamHistRange.y - _FoamHistRange.x, 1.0));
+                    if (_FoamHistLOD > 0.5)
+                    {
+                        float2 fw = fwidth(swUV) * 1.6;
+                        float hB = (SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV + float2(fw.x, 0), 0).r
+                                  + SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV - float2(fw.x, 0), 0).r
+                                  + SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV + float2(0, fw.y), 0).r
+                                  + SAMPLE_TEXTURE2D_LOD(_SWFoam, sampler_SWFoam, swUV - float2(0, fw.y), 0).r) * 0.25;
+                        hRaw = hRaw * 0.45 + hB * 0.55;
+                    }
                     flowFoamHist = saturate((hRaw - _FoamHistBias) / max(1.0 - _FoamHistBias, 1e-3)) * _FoamHistStrength;
+                    flowFoamHist *= lerp(1.0, foamFade, _FoamHistLOD);
                 }
                 float flowMag = length(flow);
                 float2 adv = flow * _FlowAdvect;               // 泡沫图案随水流位移（米）
@@ -401,7 +449,14 @@ Shader "WaterProject/Water_Ocean"
                 WaveOut w = Swell(worldPos, t, gain);
                 float3 skin = SkinNormal(worldPos, t, fineW);
                 float3 N = normalize(lerp(w.normal, skin, 0.5));
-                N = normalize(lerp(N, ShimmerN(worldPos.xz, t), _ShimmerAmt * 0.85));
+                // R125：微光也要按可分辨性淡出——它的周期只有 1/_ShimmerScale ≈ 0.7m，
+                //   拉到 200m 外只剩 3~4 个像素，逐像素采出来就是**远处海面那层跳动的碎点**。
+                {
+                    float shimPx = max(length(fwidth(worldPos.xz)), 1e-4);
+                    float shimFade = saturate((1.0 / max(_ShimmerScale, 1e-4)) / (8.0 * shimPx));
+                    shimFade = lerp(1.0, shimFade, _DetailLOD);
+                    N = normalize(lerp(N, ShimmerN(worldPos.xz, t), _ShimmerAmt * 0.85 * shimFade));
+                }
 
                 Light mainLight = GetMainLight();
 
@@ -585,7 +640,7 @@ Shader "WaterProject/Water_Ocean"
 
                 // 开了解析雾就不再叠一次 URP 雾（叠两次 => 水面比地形白，岸线断层）
                 if (_FogOn < 0.5) col = MixFog(col, IN.fogCoord);
-                col += mainLight.color * Sparkle(worldPos, t, N, V, mainLight.direction) * 2.2;
+                col += mainLight.color * Sparkle(worldPos, t, N, V, mainLight.direction) * 2.2 * _SparkleAmt;
                 return half4(col, alpha);
             }
             ENDHLSL

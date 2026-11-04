@@ -34,12 +34,14 @@ Material:
     - _CloudShadowStrength: 0.85
     - _DebugMode: 0
     - _DetailFlow: 0.3
+    - _DetailLOD: 1
     - _DetailScale: 0.9
     - _DetailStrength: 0.3
     - _FlowAdvect: 30
     - _FlowFoamGain: 60
     - _FlowFoamStrength: 0.35
-    - _FoamHistBias: 0.3
+    - _FoamHistBias: 0.5
+    - _FoamHistLOD: 1
     - _FoamHistStrength: 0.6
     - _FogBankAmount: 1.6
     - _FogBankDrift: 0.006
@@ -69,6 +71,8 @@ Material:
     - _ShoalRange: 7
     - _ShoreSlope: 0.055
     - _SkyReflect: 0.56
+    - _SparkleAmt: 1
+    - _SparkleLOD: 1
     - _SpecPower: 420
     - _SpecStrength: 0.7
     - _Steep: 0.68
@@ -86,6 +90,7 @@ Material:
     m_Colors:
     - _DeepColor: {r: 0.012, g: 0.075, b: 0.13, a: 1}
     - _FoamColor: {r: 0.94, g: 0.965, b: 0.975, a: 1}
+    - _FoamHistRange: {r: 40, g: 200, b: 0, a: 0}
     - _FogColor: {r: 0.945, g: 1, b: 1, a: 1}
     - _ShallowColor: {r: 0.15, g: 0.56, b: 0.58, a: 1}
     - _Shore: {r: -400, g: 0, b: 0, a: 0}
