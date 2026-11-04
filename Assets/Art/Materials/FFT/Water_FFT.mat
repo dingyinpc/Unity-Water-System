@@ -25,10 +25,15 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _FFTDebugLevel: 0
+    - _FoamCellAmt: 0
     - _FogEnd: 560
     - _FogStart: 160
-    - _SpecInt: 2.4
-    - _SpecPow: 640
+    - _GradBlur: 2
+    - _ReflGlintGain: 2
+    - _ReflGlintPow: 48
+    - _SpecInt: 1.2
+    - _SpecPow: 220
     m_Colors:
     - _DeepColor: {r: 0.02, g: 0.13, b: 0.18, a: 1}
     - _FoamColor: {r: 0.92, g: 0.96, b: 0.98, a: 1}

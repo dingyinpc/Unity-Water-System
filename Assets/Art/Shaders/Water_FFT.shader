@@ -16,6 +16,11 @@ Shader "WaterProject/Water_FFT"
         _SunColor     ("太阳色", Color) = (1.0, 0.93, 0.82, 1)
         _SpecPow      ("高光锐度", Range(16, 2048)) = 320
         _SpecInt      ("高光强度", Range(0, 8)) = 2.2
+        _FFTDebugLevel ("调试: 0=全部 1=只L0 2=只L1 3=只L2", Range(0,3)) = 0
+        _ReflGlintPow  ("反射耀斑锐度(R126)", Range(16, 512)) = 48
+        _ReflGlintGain ("反射耀斑强度(R126)", Range(0, 20)) = 1
+        _FoamCellAmt   ("泡沫逐格常数占比(R126: 0=去掉方块)", Range(0, 0.4)) = 0
+        _GradBlur      ("梯度贴图柔化(纹素)(R126: 0=关)", Range(0, 2)) = 2
         _FoamColor    ("泡沫色", Color) = (0.92, 0.96, 0.98, 1)
         _FogStart     ("雾起距离", Float) = 160
         _FogEnd       ("雾满距离", Float) = 560
@@ -44,6 +49,9 @@ Shader "WaterProject/Water_FFT"
 
             float4 _DeepColor, _ScatterColor, _HorizonColor, _ZenithColor, _SunColor, _FoamColor;
             float _SpecPow, _SpecInt, _FogStart, _FogEnd;
+float _FFTDebugLevel;
+float _ReflGlintPow, _ReflGlintGain;
+float _FoamCellAmt, _GradBlur;
 
             // R32 泡沫颗粒：J 场是平滑场，直接上屏是"糊白带"——用双倍频值噪声
             // 把沫侵蚀成碎粒/云絮（参考的沫有明确颗粒感）
@@ -61,8 +69,11 @@ Shader "WaterProject/Water_FFT"
                 float a = Hash21(i), b = Hash21(i + float2(1, 0));
                 float c = Hash21(i + float2(0, 1)), d = Hash21(i + float2(1, 1));
                 float n1 = lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+                // R126：这行 `n2` 是**每个格子一个常数**（不是插值的）——占 28% 权重，
+                //   等于往泡沫里叠了一层 1.2m 见方的**硬格子**：格子内是个常数，格子边界一刀切。
+                //   屏幕上这就是"白色方块"。改成可调，默认 0（去掉）。
                 float n2 = Hash21(i * 1.93 + 7.7);
-                return n1 * 0.72 + n2 * 0.28;
+                return n1 * (1.0 - _FoamCellAmt) + n2 * _FoamCellAmt;
             }
 
             struct v2f
@@ -106,15 +117,47 @@ Shader "WaterProject/Water_FFT"
                 float dist = distance(i.wp.xz, _WorldSpaceCameraPos.xz);
                 float3 vd = normalize(_WorldSpaceCameraPos - i.wp);
 
-                float w0 = LevelWeight(_FFTL0Info, dist);
-                float w1 = LevelWeight(_FFTL1Info, dist);
-                float w2 = LevelWeight(_FFTL2Info, dist);
+                // R126：调试层级（定位"方块到底来自哪一级"）。0=全部
+                float dbg0 = (_FFTDebugLevel < 0.5 || abs(_FFTDebugLevel - 1.0) < 0.5) ? 1.0 : 0.0;
+                float dbg1 = (_FFTDebugLevel < 0.5 || abs(_FFTDebugLevel - 2.0) < 0.5) ? 1.0 : 0.0;
+                float dbg2 = (_FFTDebugLevel < 0.5 || abs(_FFTDebugLevel - 3.0) < 0.5) ? 1.0 : 0.0;
+                float w0 = LevelWeight(_FFTL0Info, dist) * dbg0;
+                float w1 = LevelWeight(_FFTL1Info, dist) * dbg1;
+                float w2 = LevelWeight(_FFTL2Info, dist) * dbg2;
                 float2 uv0 = i.wp.xz / _FFTL0Info.x;
                 float2 uv1 = i.wp.xz / _FFTL1Info.x;
                 float2 uv2 = i.wp.xz / _FFTL2Info.x;
+                // R126：梯度贴图是**双线性**的（C0 连续、导数在纹素边界跳变），
+                //   而太阳耀斑是针尖状的瓣，会把这个折痕放大成一条条硬边。
+                //   这里做一个 5 点平均（中心 + 上下左右各 1 纹素），把折痕抹平。
+                //   L0 的 tile=250m/256 ⇒ 一格 0.98m，正是屏幕上"方块"的尺寸。
                 float4 g0 = _FFTL0Grad.Sample(sampler_FFTL0Grad, uv0);
                 float4 g1 = _FFTL1Grad.Sample(sampler_FFTL1Grad, uv1);
                 float4 g2 = _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2);
+                if (_GradBlur > 0.5)
+                {
+                    // R126：**模糊量随距离递增**。原来一刀切全画面模糊，近景跟着糊成一片白团。
+                    //   近处（<12m）保持清晰，70m 外才吃满 2 纹素 —— 和 Ocean 那轮"可分辨性淡出"同一个思路。
+                    float blurAmt = _GradBlur * saturate((dist - 12.0) / 58.0);
+                    float2 t0 = blurAmt * (0.00390625 * (250.0 / max(_FFTL0Info.x, 1.0)));
+                    float2 t1 = blurAmt * (0.00390625 * (250.0 / max(_FFTL1Info.x, 1.0)));
+                    float2 t2 = blurAmt * (0.00390625 * (250.0 / max(_FFTL2Info.x, 1.0)));
+                    g0 = (g0
+                        + _FFTL0Grad.Sample(sampler_FFTL0Grad, uv0 + float2(t0.x, 0))
+                        + _FFTL0Grad.Sample(sampler_FFTL0Grad, uv0 - float2(t0.x, 0))
+                        + _FFTL0Grad.Sample(sampler_FFTL0Grad, uv0 + float2(0, t0.y))
+                        + _FFTL0Grad.Sample(sampler_FFTL0Grad, uv0 - float2(0, t0.y))) * 0.2;
+                    g1 = (g1
+                        + _FFTL1Grad.Sample(sampler_FFTL1Grad, uv1 + float2(t1.x, 0))
+                        + _FFTL1Grad.Sample(sampler_FFTL1Grad, uv1 - float2(t1.x, 0))
+                        + _FFTL1Grad.Sample(sampler_FFTL1Grad, uv1 + float2(0, t1.y))
+                        + _FFTL1Grad.Sample(sampler_FFTL1Grad, uv1 - float2(0, t1.y))) * 0.2;
+                    g2 = (g2
+                        + _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2 + float2(t2.x, 0))
+                        + _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2 - float2(t2.x, 0))
+                        + _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2 + float2(0, t2.y))
+                        + _FFTL2Grad.Sample(sampler_FFTL2Grad, uv2 - float2(0, t2.y))) * 0.2;
+                }
                 float2 grad = g0.xy * _FFTL0Info.w * w0 + g1.xy * _FFTL1Info.w * w1
                             + g2.xy * _FFTL2Info.w * w2;
                 // R124：坡度**限幅**。原来不加限制时，陡坡处 normalize(−grad,1,−grad) 会贴近水平，
@@ -137,7 +180,11 @@ Shader "WaterProject/Water_FFT"
                 // 程序天空反射色：地平线→天顶 + 太阳方向光晕
                 float3 rd = reflect(-vd, n);
                 float3 sky = lerp(_HorizonColor.rgb, _ZenithColor.rgb, saturate(rd.y));
-                sky += _SunColor.rgb * pow(max(dot(rd, _FFTSunDir.xyz), 0.0), 320.0) * 12.0;
+                // R126：**耀斑锐度是"方块"的放大器**。原来 pow(...,320)×12 几乎是针尖：
+                //   梯度贴图是双线性插值（C0 连续但**导数在纹素边界跳变**），
+                //   这么窄的瓣会把这个折痕直接放大成一条条硬边 ⇒ 屏幕上就是大块白色多边形。
+                //   离实验：只开 L0 时方块最明显、只开 L2 时消失（R126/90~93 四档对照）。
+                sky += _SunColor.rgb * pow(max(dot(rd, _FFTSunDir.xyz), 0.0), _ReflGlintPow) * _ReflGlintGain;
 
                 // 水体色 + 浪背散射（波峰朝太阳时的透射感）
                 float hgt = g0.z * _FFTL0Info.w;

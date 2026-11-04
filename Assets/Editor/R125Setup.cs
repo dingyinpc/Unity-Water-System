@@ -243,6 +243,91 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R125/99d 泡沫历史强度=0.35")]
         public static void FoamStr35() => SetF("_FoamHistStrength", 0.35f);
 
+        // ── R126：FFT 三级隔离（定位方块来自哪一级）──
+        static Material FFTMat()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/FFT/Water_FFT.mat");
+            if (m == null) P("R126 REFUSED: 无 Water_FFT.mat\n");
+            return m;
+        }
+
+        static void SetFFT(string key, float v)
+        {
+            var m = FFTMat(); if (m == null) return;
+            m.SetFloat(key, v);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            P($"R126 Water_FFT.{key} = {v:F0}\n");
+        }
+
+        [MenuItem("Tools/R126/94 FFT 反射耀斑=旧(320,12)")]
+        public static void GlintOld()
+        {
+            var m = FFTMat(); if (m == null) return;
+            m.SetFloat("_ReflGlintPow", 320f); m.SetFloat("_ReflGlintGain", 12f);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            P("R126/94 耀斑 (320,12)\n");
+        }
+
+        [MenuItem("Tools/R126/94b FFT 反射耀斑=柔和(96,4)")]
+        public static void GlintSoft()
+        {
+            var m = FFTMat(); if (m == null) return;
+            m.SetFloat("_ReflGlintPow", 96f); m.SetFloat("_ReflGlintGain", 4f);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            P("R126/94b 耀斑 (96,4)\n");
+        }
+
+        [MenuItem("Tools/R126/94c FFT 反射耀斑=很柔(48,2)")]
+        public static void GlintSofter()
+        {
+            var m = FFTMat(); if (m == null) return;
+            m.SetFloat("_ReflGlintPow", 48f); m.SetFloat("_ReflGlintGain", 2f);
+            EditorUtility.SetDirty(m); AssetDatabase.SaveAssetIfDirty(m);
+            P("R126/94c 耀斑 (48,2)\n");
+        }
+
+        [MenuItem("Tools/R126/95 FFT 直射高光=旧(640)")]
+        public static void SpecOld() => SetFFT("_SpecPow", 640f);
+
+        [MenuItem("Tools/R126/95b FFT 直射高光=柔和(220)")]
+        public static void SpecSoft() => SetFFT("_SpecPow", 220f);
+
+        [MenuItem("Tools/R126/96 FFT 泡沫逐格常数=旧(0.28)")]
+        public static void FoamCellOld() => SetFFT("_FoamCellAmt", 0.28f);
+
+        [MenuItem("Tools/R126/96b FFT 泡沫逐格常数=0(去方块)")]
+        public static void FoamCellNew() => SetFFT("_FoamCellAmt", 0f);
+
+        [MenuItem("Tools/R126/97 FFT 梯度柔化=关(旧)")]
+        public static void GradBlurOff() => SetFFT("_GradBlur", 0f);
+
+        [MenuItem("Tools/R126/97b FFT 梯度柔化=1纹素")]
+        public static void GradBlurOn() => SetFFT("_GradBlur", 1f);
+
+        [MenuItem("Tools/R126/97c FFT 梯度柔化=2纹素")]
+        public static void GradBlur2() => SetFFT("_GradBlur", 2f);
+
+        [MenuItem("Tools/R126/98 FFT 高光强度=旧(2.4)")]
+        public static void SpecIntOld() => SetFFT("_SpecInt", 2.4f);
+
+        [MenuItem("Tools/R126/98b FFT 高光强度=1.7")]
+        public static void SpecInt17() => SetFFT("_SpecInt", 1.7f);
+
+        [MenuItem("Tools/R126/98c FFT 高光强度=1.2")]
+        public static void SpecInt12() => SetFFT("_SpecInt", 1.2f);
+
+        [MenuItem("Tools/R126/90 FFT 三级=全部")]
+        public static void FFTAll() => SetFFT("_FFTDebugLevel", 0f);
+
+        [MenuItem("Tools/R126/91 FFT 只看 L0(细)")]
+        public static void FFTL0() => SetFFT("_FFTDebugLevel", 1f);
+
+        [MenuItem("Tools/R126/92 FFT 只看 L1(中)")]
+        public static void FFTL1() => SetFFT("_FFTDebugLevel", 2f);
+
+        [MenuItem("Tools/R126/93 FFT 只看 L2(粗)")]
+        public static void FFTL2() => SetFFT("_FFTDebugLevel", 3f);
+
         [MenuItem("Tools/R125/92 探针: FFT 网格格子尺寸")]
         public static void ProbeGrid()
         {
