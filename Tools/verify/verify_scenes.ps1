@@ -46,6 +46,9 @@ foreach ($name in $Scenes) {
         $t0 = Get-Date
         Run-Menu $menuOf[$name]
         Start-Sleep -Seconds 6
+        # R122：先应用"验收机位"，否则构图会随上次保存的相机状态漂移（基线就失去可比性）
+        Run-Menu 'Tools/R122/91 应用验收机位(读 cameras.txt)'
+        Start-Sleep -Seconds 1
         Run-Menu 'Tools/Play/90 进入播放(显式，已在播则不动)'
         Start-Sleep -Seconds $WaitPlay
         Run-Menu 'Tools/Ocean/108 冻结(暂停波浪+流场)'
