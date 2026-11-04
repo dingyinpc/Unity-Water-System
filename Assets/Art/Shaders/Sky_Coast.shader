@@ -35,6 +35,7 @@ Shader "WaterProject/Sky_Coast"
         _CloudBase      ("云底高度(米)", Float) = 900
         _CloudTop       ("云顶高度(米)", Float) = 2000
         _CloudSteps     ("RayMarch 步数", Float) = 20
+        _CloudJitterIGN ("抖动模式(0=白噪/1=IGN)", Range(0,1)) = 0
         // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
         _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
@@ -73,7 +74,7 @@ Shader "WaterProject/Sky_Coast"
             CBUFFER_START(UnityPerMaterial)
                 float4 _HorizonColor, _ZenithColor, _GroundColor, _CloudColor, _CloudShadow;
                 float  _CloudCover, _CloudScale, _CloudDrift, _SunGlow, _CloudBaseDark;
-                float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps;
+                float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps, _CloudJitterIGN;
 float  _CloudBand;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
@@ -133,7 +134,14 @@ float  _SkyDebug;
             #define COVER_HI 0.24
             
 
-            float CloudDensity(float3 p, float h)
+            // R90：交错梯度噪声（IGN）——原来是 Hash21 逐像素白噪，云边缘读成"椒盐点"。
+//   IGN 在同一片区域内的取值是渐进变化的，抖动看起来是"细颗粒"而不是"噪点"。
+float IGN(float2 p)
+{
+    return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715))));
+}
+
+float CloudDensity(float3 p, float h)
             {
                 float covT = lerp(COVER_LO, COVER_HI, _CloudCover);
                 float2 q = (p.xz + WindOffset(h)) * CLOUD_SCALE;
@@ -223,7 +231,8 @@ float  _SkyDebug;
                     float2 camXZ = _WorldSpaceCameraPos.xz;
                     int N = (int)clamp(_CloudSteps, 8, 48);
                     float dt = (t1 - t0) / N;
-                    float t = t0 + dt * Hash21(IN.positionCS.xy);   // 抖动起点去条带
+                    float jit = lerp(Hash21(IN.positionCS.xy), IGN(IN.positionCS.xy), _CloudJitterIGN);
+                    float t = t0 + dt * jit;   // R90：可逆 A/B（0=旧白噪）
                     float T = 1.0;
                     float nightDim = lerp(1.0, 0.24, _NightAmount);
                     for (int i = 0; i < N; i++)

@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
@@ -30,9 +30,10 @@ Material:
     - _CloudBaseDark: 0.75
     - _CloudCover: 0.15
     - _CloudDrift: 0.01
+    - _CloudJitterIGN: 0
     - _CloudScale: 0.9
     - _CloudShear: 0.006
-    - _CloudSteps: 32
+    - _CloudSteps: 40
     - _CloudTop: 2000
     - _CloudWindDir: 200
     - _CloudWindSpeed: 100
@@ -42,6 +43,7 @@ Material:
     - _MoonPhase: 0.62
     - _MoonSize: 0.03
     - _NightAmount: 0
+    - _SkyDebug: 0
     - _SkyDeep: 0.52
     - _StarBright: 2.4
     - _StarGrid: 320
