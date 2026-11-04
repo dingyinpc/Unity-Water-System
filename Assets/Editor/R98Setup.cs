@@ -148,6 +148,46 @@ namespace WaterProject.EditorTools
             P($"R98/91b 岬角还原 改了 {SwapBack(m, "Ocean_Cliff")} 个渲染器\n");
         }
 
+
+        // R110：Islet 的礁石（Islet_ReefRock）换程序化岩。珊瑚礁的调子偏"暖灰 + 苔绿"，
+        //   不是 Ocean 那种冷灰；高度范围也压小（礁石都贴水面）。
+        [MenuItem("Tools/R110/90 Islet 礁石→程序化岩(可逆)")]
+        public static void IsletRocks()
+        {
+            var sh = Shader.Find(ShaderName);
+            if (sh == null) { P("R110/90 REFUSED: 找不到 shader\n"); return; }
+
+            string path = "Assets/Art/Materials/Islet_ReefRockDetail.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(sh) { name = "Islet_ReefRockDetail" };
+                AssetDatabase.CreateAsset(m, path);
+            }
+            m.SetColor("_RockLo",    new Color(0.150f, 0.150f, 0.140f, 1f));
+            m.SetColor("_RockMid",   new Color(0.245f, 0.240f, 0.220f, 1f));
+            m.SetColor("_RockHi",    new Color(0.330f, 0.320f, 0.295f, 1f));
+            m.SetColor("_MossColor", new Color(0.175f, 0.230f, 0.130f, 1f));   // 苔绿
+            m.SetFloat("_HMin", -1.0f);
+            m.SetFloat("_HMax", 4.0f);
+            m.SetFloat("_MidPoint", 0.5f);
+            m.SetFloat("_FillLight", 0.85f);
+            m.SetFloat("_AmbStrength", 1.0f);
+            m.SetFloat("_MicroAmount", 1.0f);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+
+            P($"R110/90 Islet 礁石 改了 {SwapTo("Islet_ReefRock", m)} 个渲染器\n");
+        }
+
+        [MenuItem("Tools/R110/90b Islet 礁石还原")]
+        public static void IsletRocksBack()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet_ReefRockDetail.mat");
+            if (m == null) { P("R110/90b 没有 Islet_ReefRockDetail\n"); return; }
+            P($"R110/90b Islet 礁石还原 改了 {SwapBack(m, "Islet_ReefRock")} 个渲染器\n");
+        }
+
         [MenuItem("Tools/R98/99 探针(岩石/岬角材质)")]
         public static void Probe()
         {

@@ -32,8 +32,8 @@ Material:
     - _MicroAmount: 1
     - _MidPoint: 0.35
     m_Colors:
-    - _MossColor: {r: 0.10, g: 0.215, b: 0.135, a: 1}
-    - _RockHi: {r: 0.32, g: 0.32, b: 0.33, a: 1}
-    - _RockLo: {r: 0.16, g: 0.16, b: 0.17, a: 1}
-    - _RockMid: {r: 0.24, g: 0.24, b: 0.25, a: 1}
+    - _MossColor: {r: 0.22, g: 0.30, b: 0.17, a: 1}
+    - _RockHi: {r: 0.46, g: 0.455, b: 0.435, a: 1}
+    - _RockLo: {r: 0.28, g: 0.275, b: 0.26, a: 1}
+    - _RockMid: {r: 0.38, g: 0.375, b: 0.355, a: 1}
   m_BuildTextureStacks: []
