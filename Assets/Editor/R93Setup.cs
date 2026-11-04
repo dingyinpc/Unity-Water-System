@@ -91,6 +91,19 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R94/95 云量=0.15(当前)")]
         public static void Cover15() => Set("_CloudCover", 0.15f, "R94-95");
 
+
+        [MenuItem("Tools/R100/90 垂直变化=0(旧)")]
+        public static void Vert0() => Set("_CloudVertWarp", 0f, "R100-90");
+
+        [MenuItem("Tools/R100/91 垂直变化=0.0015")]
+        public static void Vert15() => Set("_CloudVertWarp", 0.0015f, "R100-91");
+
+        [MenuItem("Tools/R100/92 垂直变化=0.0030")]
+        public static void Vert30() => Set("_CloudVertWarp", 0.0030f, "R100-92");
+
+        [MenuItem("Tools/R100/93 垂直变化=0.0050")]
+        public static void Vert50() => Set("_CloudVertWarp", 0.0050f, "R100-93");
+
         [MenuItem("Tools/R94/90 云噪声=value(旧)")]
         public static void NoiseValue() => Set("_CloudNoiseMode", 0f, "R94-90");
 

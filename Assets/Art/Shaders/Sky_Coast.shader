@@ -40,6 +40,7 @@ Shader "WaterProject/Sky_Coast"
         // R56：云边过渡带（原来写死 #define 0.08，太硬 ⇒ 云像"灰色板块"）
         _CloudBand      ("云边过渡带", Range(0.02, 0.30)) = 0.08
         _CloudOptical   ("云光学厚度倍率(1=当前)", Range(0.1, 2)) = 1.0
+        _CloudVertWarp ("垂直变化(0=每层同形)", Float) = 0.0
         _CloudNoiseMode ("云噪声(0=value/1=梯度)", Range(0,1)) = 0
         _SkyDebug       ("调试 0关/1输出云参/2输出云密度", Float) = 0
 
@@ -80,6 +81,7 @@ Shader "WaterProject/Sky_Coast"
                 float  _CloudWindDir, _CloudWindSpeed, _CloudShear, _CloudBase, _CloudTop, _CloudSteps, _CloudJitterIGN;
 float  _CloudBand;
                 float  _CloudOptical;
+                float  _CloudVertWarp;
                 float  _CloudNoiseMode;
 float  _SkyDebug;
                 float  _NightAmount, _StarGrid, _StarBright, _GalaxyAmount;
@@ -193,7 +195,10 @@ float CloudDensity(float3 p, float h, float viewDist)
                 {
                     // R94：远处（>2km）逐渐关掉高频侵蚀 —— 否则掠射角下细格子被压成一条麻点带。
                     float lod = saturate((viewDist - 2000.0) * (-1.0/6000.0) + 1.0);
-                    d = saturate(d - (ValueNoise(q * 6.3) + ValueNoise(q * 12.9) * 0.5) * 0.38 * lod);
+                    // R100：侵蚀噪声按**高度**位移 —— 原来每层切片用同一张 2D 噪声，
+                    //   云体垂直方向长得一模一样，掠射看过去就是"竖着的板"。
+                    float hv = h * _CloudVertWarp;
+                    d = saturate(d - (ValueNoise(q * 6.3 + hv) + ValueNoise(q * 12.9 + hv * 1.7) * 0.5) * 0.38 * lod);
                     // R94：远处整体淡出 —— 20km 外的云格子只有 1~2 像素，必然走样成麻点。
                     //   真实里那么远的云也被大气吃掉，直接按距离淡出最干净。
                     d *= saturate((viewDist - 6000.0) * (-1.0/8000.0) + 1.0);
