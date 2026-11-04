@@ -349,7 +349,14 @@ float CloudDensity(float3 p, float h, float viewDist)
 
             half4 frag(Varyings IN) : SV_Target
             {
-                float3 d = normalize(IN.dir);
+                // R115：方向向量必须**逐像素重建**。
+                //   原来用 `normalize(IN.dir)` —— dir 由天空盒立方体的顶点插值而来，
+                //   在立方体的**面边界**上，两侧插值出来的方向对不上 ⇒ 天上一道竖向硬缝，
+                //   云这种高频内容一放大就非常明显。
+                //   这里用"屏幕 UV + 远平面深度"反投影出世界坐标，再减相机位置，几何上精确。
+                float2 sUV = IN.positionCS.xy / _ScreenParams.xy;
+                float3 wposFar = ComputeWorldSpacePosition(sUV, UNITY_RAW_FAR_CLIP_VALUE, UNITY_MATRIX_I_VP);
+                float3 d = normalize(wposFar - _WorldSpaceCameraPos);
                 if (d.y < 0.0) return half4(_GroundColor.rgb, 1.0);
 
                 float3 sunDir = GetMainLight().direction;

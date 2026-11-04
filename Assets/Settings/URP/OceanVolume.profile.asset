@@ -55,10 +55,10 @@ MonoBehaviour:
   active: 1
   postExposure:
     m_OverrideState: 1
-    m_Value: -0.45
+    m_Value: -0.55
   contrast:
     m_OverrideState: 1
-    m_Value: 26
+    m_Value: 28
   colorFilter:
     m_OverrideState: 1
     m_Value: {r: 1, g: 1, b: 1, a: 1}
@@ -67,7 +67,7 @@ MonoBehaviour:
     m_Value: 0
   saturation:
     m_OverrideState: 1
-    m_Value: 10
+    m_Value: 14
 --- !u!114 &-1492879272726746085
 MonoBehaviour:
   m_ObjectHideFlags: 3
