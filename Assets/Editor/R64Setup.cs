@@ -22,6 +22,8 @@ namespace WaterProject.EditorTools
         // 归一化屏幕点（0~1，左下原点）。默认取"平板"所在的几个点。
         static readonly Vector2[] Points =
         {
+            new Vector2(0.50f, 0.55f),   // R105：Pool 中间那个黑色人影
+            new Vector2(0.50f, 0.72f),   // R105：Pool 上方那个球
             new Vector2(0.46f, 0.815f),   // R103：Main 中间那块黑巨石
             new Vector2(0.30f, 0.72f),    // R103：黑巨石左侧
             new Vector2(0.15f, 0.22f),
