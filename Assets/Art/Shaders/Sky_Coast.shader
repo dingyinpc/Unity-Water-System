@@ -311,7 +311,10 @@ float CloudDensity(float3 p, float h, float viewDist)
                             lit *= nightDim;
                             // R94：低仰角淡出 —— 掠射角下 t0 对像素极敏感，步进相位去相关，
                             //   远处会压成一条麻点带。真实里地平线附近的云也被雾吃掉，直接淡出。
-                            float hFade = smoothstep(0.015, 0.085, d.y);
+                            // R112：低仰角淡出范围加大。原来的 0.015~0.085 只挡住贴地平线那一小条，
+                            //   而 8°~20° 这一段是"云层柱状积分"最难看的地方 —— 会拉成一排竖条纹。
+                            //   真实里这一段本来就被大气雾吃掉，直接按仰角淡出最干净。
+                            float hFade = smoothstep(0.10, 0.26, d.y);
                             float a = (1.0 - exp(-dens * dt * 0.0016 * _CloudOptical)) * hFade;
                             cloudAcc += T * a * lit;
                             T *= 1.0 - a;

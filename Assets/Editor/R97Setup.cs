@@ -67,6 +67,17 @@ namespace WaterProject.EditorTools
         // R107：查"巨大白色光斑"——先把 Bloom 关掉，看它是不是放大器
 
         // R111：温和 Bloom —— 只让"太阳"这类真正超过 1.3 的高光发光，不把整幅画面糊掉
+
+        // R112：Ocean 的"平"—— 对比/饱和各提一档（参考 51.2 / 124.3，我们是 40.8 / 107）
+        [MenuItem("Tools/R112/90 Ocean 对比26 饱和+2")]
+        public static void OceanGradeA() => Grade(-0.30f, 26f, 2f, "R112-90");
+
+        [MenuItem("Tools/R112/91 Ocean 对比32 饱和+8")]
+        public static void OceanGradeB() => Grade(-0.35f, 32f, 8f, "R112-91");
+
+        [MenuItem("Tools/R112/92 Ocean 对比20 饱和-2(原档)")]
+        public static void OceanGradeBack() => Grade(-0.30f, 18f, -5f, "R112-92");
+
         [MenuItem("Tools/R111/90 Bloom 温和档(阈值1.30/强度0.30)")]
         public static void BloomGentle()
         {
