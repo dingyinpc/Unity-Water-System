@@ -136,6 +136,16 @@ Shader "WaterProject/Beach_Sand"
                 float3 base = lerp(_DryColor.rgb, _WetColor.rgb, wet);
                 base *= 1.0 + (rip - 0.5) * _RippleTint * saturate(1.0 - up * 0.05);
 
+                // R99：大尺度色斑。原来整片沙滩只有一个低频沙纹，远处读成一块纯色塑料板。
+                //   两级（48m / 133m）叠一点明度和色温起伏 —— 就是真实沙滩上"哪块干、哪块湿、
+                //   哪块贝壳碎屑多"的宏观差异。幅度压到 ±9%，不许读成"脏"。
+                float blotA = ValueNoise(IN.worldPos.xz * 0.021);
+                float blotB = ValueNoise(IN.worldPos.xz * 0.0075 + 31.7);
+                float blot  = blotA * 0.65 + blotB * 0.35;
+                base *= 1.0 + (blot - 0.5) * 0.18;
+                // 色温也跟着走：偏"新沙"的地方略冷，偏"陈沙"的地方略暖
+                base *= lerp(float3(0.99, 1.00, 1.02), float3(1.03, 1.00, 0.96), blot);
+
                 // 沙粒（G6 免费细节）：两级高频噪声 ≈ 1.8cm / 6mm。
                 // 湿沙被水膜糊平 ⇒ 按 wet 衰减；_GrainAmount=0 时这一整块等于没写。
                 // R47：**加距离 LOD**。细粒（1.8cm）在 40m 外一个像素盖住 3~10 个格子，
