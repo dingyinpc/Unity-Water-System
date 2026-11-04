@@ -82,6 +82,23 @@ namespace WaterProject.EditorTools
             P("R105/90b 天空盒 -> Default-Skybox\n");
         }
 
+
+        // R108：列出当前场景里**所有非 URP/Lit/Unlit 的渲染器**（体积光/特效用自定义 shader，
+        //   排查"光束硬边/虚线"这类问题时，先看它们是哪些物体、用的什么材质）
+        [MenuItem("Tools/R108/90 列出所有非 Lit 渲染器")]
+        public static void ListNonLit()
+        {
+            P($"R108 场景={EditorSceneManager.GetActiveScene().name}\n");
+            foreach (var r in Object.FindObjectsOfType<Renderer>())
+            {
+                var m = r.sharedMaterial;
+                if (m == null || m.shader == null) continue;
+                string sh = m.shader.name;
+                if (sh == "Universal Render Pipeline/Lit" || sh == "Universal Render Pipeline/Unlit") continue;
+                P($"   {r.name,-28} mat={m.name,-22} shader={sh}  enabled={r.enabled}\n");
+            }
+        }
+
         [MenuItem("Tools/R105/91 探针")]
         public static void Probe()
         {

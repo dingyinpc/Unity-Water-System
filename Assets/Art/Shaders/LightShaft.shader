@@ -59,8 +59,10 @@ Shader "WaterProject/LightShaft"
                 // 原先用 pow(uv.y, 1.4)：uv.y=0.2 处只剩 0.11 的权重，柱体下半段几乎不发光，
                 // 画面上就只剩树冠底下那一小截亮斑，读不出"一根柱子插到地上"。
                 // 换成两端软、中段平直的包络，顶部再轻微收一点。
+                // R108：顶端必须**完全淡出**。原来到 uv.y=1 还剩 0.70 的亮度，
+                //   于是四边形的上边缘是一条硬直线 —— 画面里读成"三角形光板"。
                 float along = smoothstep(0.0, 0.18, IN.uv.y)
-                            * (1.0 - 0.30 * smoothstep(0.72, 1.0, IN.uv.y));
+                            * (1.0 - smoothstep(0.62, 1.0, IN.uv.y));
 
                 float flick = 1.0 + _Flicker * sin(_Time.y * 0.7 + IN.uv.y * 3.0);
 
