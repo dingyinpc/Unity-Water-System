@@ -56,6 +56,38 @@ namespace WaterProject.EditorTools
             P("R117/90b Ocean_Sand: 贴图强度 -> 0（回到纯程序化）\n");
         }
 
+
+        // R121：换成"细沙粒+贝壳碎屑"那一版（原图接缝 1.64/2.00，已被 texai.py 自动修到 1.04/1.16）
+        [MenuItem("Tools/R121/90 沙滩换成细沙2(贝壳碎屑版)")]
+        public static void ApplySand2()
+        {
+            var m = SandMat();
+            if (m == null) { P("R121/90 REFUSED\n"); return; }
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/AI/Proc/Sand_Fine2_AI_albedo.png");
+            if (tex == null) { P("R121/90 REFUSED: 没有 Sand_Fine2_AI_albedo.png（先跑 R118/90）\n"); return; }
+            m.SetTexture("_SandTex", tex);
+            m.SetFloat("_SandTexScale", 0.55f);
+            m.SetFloat("_SandTexAmount", 0.75f);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P("R121/90 Ocean_Sand -> Sand_Fine2_AI（密度 0.55 强度 0.75）\n");
+        }
+
+        [MenuItem("Tools/R121/91 沙滩换回细沙1")]
+        public static void ApplySand1()
+        {
+            var m = SandMat();
+            if (m == null) return;
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Textures/AI/Proc/Sand_Fine_AI_albedo.png");
+            if (tex == null) { P("R121/91 REFUSED\n"); return; }
+            m.SetTexture("_SandTex", tex);
+            m.SetFloat("_SandTexScale", 0.35f);
+            m.SetFloat("_SandTexAmount", 0.75f);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P("R121/91 Ocean_Sand -> Sand_Fine_AI（密度 0.35 强度 0.75）\n");
+        }
+
         [MenuItem("Tools/R117/91 抗重复：贴图密度=0.18(更大)")]
         public static void Scale18()
         {
