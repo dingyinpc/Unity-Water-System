@@ -19,6 +19,11 @@ Shader "WaterProject/DistantLand"
         _HazeSoft   ("雾色过渡(米)", Float) = 26
         _NoiseScale ("斑驳尺度(1/米)", Float) = 0.06
         _NoiseAmount("斑驳强度", Range(0, 1)) = 0.35
+        // R119：AI 岩石贴图（三平面投影）。远景山体一件几百米，贴图尺度必须放到 ~250m/周期，
+        //   否则一个屏幕像素盖几十个纹素，mip 一平均就回到"平灰"（R118 在小礁石上实测过）。
+        _RockTex        ("岩贴图(AI)", 2D) = "white" {}
+        _RockTexScale   ("岩贴图密度(1/米)", Float) = 0.004
+        _RockTexAmount  ("岩贴图强度", Range(0,1)) = 0
         _BaseY      ("基准高度(世界Y)", Float) = 0
     }
 
@@ -37,9 +42,11 @@ Shader "WaterProject/DistantLand"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+            TEXTURE2D(_RockTex); SAMPLER(sampler_RockTex);
             CBUFFER_START(UnityPerMaterial)
                 float4 _LowColor, _HighColor, _HazeColor;
                 float  _HazeHeight, _HazeSoft, _NoiseScale, _NoiseAmount, _BaseY;
+                float  _RockTexScale, _RockTexAmount;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
@@ -86,6 +93,19 @@ Shader "WaterProject/DistantLand"
                 float n = VNoise(i.positionWS.xz * _NoiseScale) * 0.65
                         + VNoise(i.positionWS.xz * _NoiseScale * 3.7) * 0.35;
                 albedo *= lerp(1.0, 0.7 + 0.6 * n, _NoiseAmount);
+
+                // R119：三平面采样（山体没有 UV）。只取明度结构、保持均值。
+                if (_RockTexAmount > 0.001)
+                {
+                    float3 an = abs(normalize(i.normalWS)) + 1e-3;
+                    // 强制采粗 mip（LOD 5 ≈ 32x32）—— 远景只要层理/大块明暗，
+                    //   高频麻点在 1.4 米/像素的距离上会变成一层白霜（实测）。
+                    float3 tc3 = SAMPLE_TEXTURE2D_LOD(_RockTex, sampler_RockTex, i.positionWS.zy * _RockTexScale, 5).rgb * an.x
+                               + SAMPLE_TEXTURE2D_LOD(_RockTex, sampler_RockTex, i.positionWS.xz * _RockTexScale, 5).rgb * an.y
+                               + SAMPLE_TEXTURE2D_LOD(_RockTex, sampler_RockTex, i.positionWS.xy * _RockTexScale, 5).rgb * an.z;
+                    float tl = dot(tc3 / (an.x + an.y + an.z), float3(0.299, 0.587, 0.114));
+                    albedo *= 1.0 + (tl - 0.30) * 1.80 * _RockTexAmount;
+                }
 
                 Light L = GetMainLight();
                 float ndl = saturate(dot(normalize(i.normalWS), L.direction));

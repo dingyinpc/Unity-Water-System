@@ -22,7 +22,11 @@ Material:
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
-    m_TexEnvs: []
+    m_TexEnvs:
+    - _RockTex:
+        m_Texture: {fileID: 2800000, guid: 2c5ecd84cbc0db348a41943b9b003fc7, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _BaseY: 0
@@ -30,6 +34,8 @@ Material:
     - _HazeSoft: 26
     - _NoiseAmount: 0.35
     - _NoiseScale: 0.06
+    - _RockTexAmount: 0.85
+    - _RockTexScale: 0.004
     m_Colors:
     - _HazeColor: {r: 0.58, g: 0.66, b: 0.76, a: 1}
     - _HighColor: {r: 0.34, g: 0.39, b: 0.46, a: 1}

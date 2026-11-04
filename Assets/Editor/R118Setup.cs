@@ -130,6 +130,72 @@ namespace WaterProject.EditorTools
             P($"R118/91b 岩贴图强度 -> 0（{n} 个材质）\n");
         }
 
+
+        // R119：大物体（崖体/远景山）贴 AI 岩贴图。
+        //   小礁石上贴图看不出是**频率失配**（R118 实测），大物体分辨率才够。
+        [MenuItem("Tools/R119/90 崖体贴 AI 岩贴图(250m/周期)")]
+        public static void CliffTex()
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ProcDir}/Rock_Basalt_AI_albedo.png");
+            if (tex == null) { P("R119/90 REFUSED: 没有 Rock_Basalt_AI_albedo.png（先跑 R118/90）\n"); return; }
+
+            int n = 0;
+            foreach (var path in new[]
+                     {
+                         "Assets/Art/Materials/Ocean_FarLand.mat",
+                         "Assets/Art/Materials/Ocean_Cliff_Far.mat",
+                     })
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null) { P($"R119/90 跳过（不存在）{path}\n"); continue; }
+                if (!m.HasProperty("_RockTex")) { P($"R119/90 跳过 {m.name}（shader 没有 _RockTex）\n"); continue; }
+                m.SetTexture("_RockTex", tex);
+                m.SetFloat("_RockTexScale", 0.004f);
+                m.SetFloat("_RockTexAmount", 0.85f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+                n++;
+                P($"R119/90 {m.name} 贴图密度 0.004（250m/周期）强度 0.85\n");
+            }
+            P($"R119/90 共 {n} 个材质\n");
+        }
+
+        [MenuItem("Tools/R119/90b 崖体贴图还原")]
+        public static void CliffTexBack()
+        {
+            int n = 0;
+            foreach (var path in new[]
+                     {
+                         "Assets/Art/Materials/Ocean_FarLand.mat",
+                         "Assets/Art/Materials/Ocean_Cliff_Far.mat",
+                     })
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || !m.HasProperty("_RockTexAmount")) continue;
+                m.SetFloat("_RockTexAmount", 0f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+                n++;
+            }
+            P($"R119/90b 崖体贴图强度 -> 0（{n} 个材质）\n");
+        }
+
+        [MenuItem("Tools/R119/91 崖体贴图密度=0.010(100m/周期)")]
+        public static void CliffTexDense()
+        {
+            int n = 0;
+            foreach (var path in new[] { "Assets/Art/Materials/Ocean_FarLand.mat", "Assets/Art/Materials/Ocean_Cliff_Far.mat" })
+            {
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || !m.HasProperty("_RockTexScale")) continue;
+                m.SetFloat("_RockTexScale", 0.010f);
+                EditorUtility.SetDirty(m);
+                AssetDatabase.SaveAssetIfDirty(m);
+                n++;
+            }
+            P($"R119/91 崖体贴图密度 -> 0.010（{n} 个材质）\n");
+        }
+
         [MenuItem("Tools/R118/99 探针")]
         public static void Probe()
         {
