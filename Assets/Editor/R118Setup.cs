@@ -242,6 +242,83 @@ namespace WaterProject.EditorTools
               $"detail={m.GetFloat("_DetailAmount"):F2} frondVar={m.GetFloat("_FrondVar"):F2}\n");
         }
 
+
+        // R123：树干树皮（AI）。原贴图是 512² 近白（均值 228），树干颜色全靠 _BaseColor 撑；
+        //   AI 树皮已归一化到相近亮度（均值 197），所以换上去色调不会跳。
+        [MenuItem("Tools/R123/90 树干贴 AI 树皮")]
+        public static void BarkAI()
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ProcDir}/Bark_Palm_AI_norm.png");
+            if (tex == null) { P("R123/90 REFUSED: 没有 Bark_Palm_AI_norm.png\n"); return; }
+
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmBark.mat");
+            if (m == null) { P("R123/90 REFUSED: 找不到 Islet_PalmBark\n"); return; }
+
+            var prev = m.GetTexture("_BaseMap");
+            EditorPrefs.SetString("R123.barkPrev", prev != null ? AssetDatabase.GetAssetPath(prev) : "");
+            m.SetTexture("_BaseMap", tex);
+            m.SetTextureScale("_BaseMap", new Vector2(1f, 3f));   // 树干纵向拉长（模型 UV 是 0..3）
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P($"R123/90 Islet_PalmBark._BaseMap = {tex.name}（原 {prev?.name}）平铺 (1,3)\n");
+        }
+
+        [MenuItem("Tools/R123/90b 树皮还原")]
+        public static void BarkBack()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmBark.mat");
+            if (m == null) return;
+            string path = EditorPrefs.GetString("R123.barkPrev", "");
+            var tex = string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex == null) { P("R123/90b 没有记录原贴图\n"); return; }
+            m.SetTexture("_BaseMap", tex);
+            m.SetTextureScale("_BaseMap", Vector2.one);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P($"R123/90b Islet_PalmBark._BaseMap 还原为 {tex.name}\n");
+        }
+
+        [MenuItem("Tools/R123/91 树皮平铺=(1,1)")]
+        public static void BarkTile1()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Materials/Islet/Islet_PalmBark.mat");
+            if (m == null) return;
+            m.SetTextureScale("_BaseMap", Vector2.one);
+            EditorUtility.SetDirty(m);
+            AssetDatabase.SaveAssetIfDirty(m);
+            P("R123/91 树皮平铺 -> (1,1)\n");
+        }
+
+
+        // R123/92：临时把相机放到"看得见树干"的位置（验证完用 R122/91 还原验收机位）
+        [MenuItem("Tools/R123/92 机位=看树干(临时)")]
+        public static void CamTrunk()
+        {
+            var cam = Camera.main;
+            if (cam == null) { P("R123/92 REFUSED\n"); return; }
+
+            // 找最近的一棵棕榈，把相机放到离它 4.5 米、抬头 8° 的位置
+            GameObject best = null;
+            float bestD = float.MaxValue;
+            foreach (var go in GameObject.FindObjectsOfType<GameObject>())
+            {
+                if (!go.name.ToLower().Contains("palm")) continue;
+                var r = go.GetComponent<Renderer>();
+                if (r == null) continue;
+                float d = Vector3.Distance(r.bounds.center, cam.transform.position);
+                if (d < bestD) { bestD = d; best = go; }
+            }
+            if (best == null) { P("R123/92 REFUSED: 没找到棕榈\n"); return; }
+
+            var b = best.GetComponent<Renderer>().bounds;
+            Vector3 look = new Vector3(b.center.x, b.min.y + b.size.y * 0.25f, b.center.z);
+            Vector3 eye = look + new Vector3(-3.2f, 1.2f, -3.0f);
+            cam.transform.position = eye;
+            cam.transform.LookAt(look);
+            cam.fieldOfView = 45f;
+            P($"R123/92 机位 -> 看 {best.name} 树干  eye=({eye.x:F1},{eye.y:F1},{eye.z:F1}) look=({look.x:F1},{look.y:F1},{look.z:F1})\n");
+        }
+
         [MenuItem("Tools/R118/99 探针")]
         public static void Probe()
         {
