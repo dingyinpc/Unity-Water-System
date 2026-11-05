@@ -100,6 +100,8 @@ Shader "WaterProject/Water_Lagoon"
         // ── 环境 ──
         _AmbientStrength  ("环境光强度", Float) = 0.55
         _DepthSource      ("水深来源 0深度纹理 1解析地面", Range(0,1)) = 0
+        _PatchAmt         ("水底斑块强度(R137: 0=旧均匀)", Range(0,1)) = 0
+        _WaveRotate       ("波纹第二层错向(R137: 0=旧)", Range(0,1)) = 0
         // R49 域外过渡：足印边界原来是硬跳变（俯视是"黑楔"）。这两个值把跳变拉成渐变。
         _DomainFade       ("域外过渡宽度(米)", Float) = 60
         _DeepDepth        ("域外深水深度(米)", Float) = 14
@@ -168,6 +170,7 @@ Shader "WaterProject/Water_Lagoon"
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
                 float  _DomainFade, _DeepDepth, _FloorBlur;
+            float  _PatchAmt, _WaveRotate;
                 float  _RadialDepth, _RadialShallow, _RadialDeep, _EdgeFade;
                 float4 _RadialCenter;
                 float4 _SparkleFade;
@@ -312,7 +315,11 @@ Shader "WaterProject/Water_Lagoon"
             float4 SkinGrad(float3 wp, float t, float fineW)
             {
                 float2 mid = NoiseSlope(wp.xz, _SlopeScale, float2(t * _FlowSpeed, t * _FlowSpeed * 0.7)) * _SlopeStrength;
-                float2 cap = NoiseSlope(wp.xz, _CapScale,   float2(-t * _FlowSpeed * 1.7, t * _FlowSpeed * 1.1)) * (_CapStrength * fineW);
+                // R137：第二层**旋转 37°**。两层同向、只差焦距 ⇒ 规则摩尔纹（水面上那层"灯芯绒"）。
+                float2 qc = wp.xz * _CapScale;
+                if (_WaveRotate > 0.5)
+                    qc = float2(qc.x * 0.7986 - qc.y * 0.6018, qc.x * 0.6018 + qc.y * 0.7986);
+                float2 cap = NoiseSlope(qc, 1.0, float2(-t * _FlowSpeed * 1.7, t * _FlowSpeed * 1.1)) * (_CapStrength * fineW);
                 return float4(mid + cap, mid + cap * _CapToNg);
             }
 
@@ -477,6 +484,25 @@ Shader "WaterProject/Water_Lagoon"
                 // 0.55→0.35（2026-10-04 轮）：解析深度接通后 sandMix 在全场都有
                 // 0.4~0.7，原系数把 G/B 一起抬超目标 ~20%；实测三带同步收敛。
                 col += _SandReturn.rgb * sandMix * (ambient * 0.5 + mainLight.color * ndl) * 0.35;
+
+                // R137：**水底斑块**。参考帧里潟湖不是一整片均匀青绿——
+                //   有亮沙洲、有深色海草/珊瑚斑、有明暗过渡；我们原来只有"按水深渐变"，
+                //   而潟湖底本来就平 ⇒ 全场一个色。这里用两级低频噪声造出"分块"。
+                if (_PatchAmt > 0.001)
+                {
+                    float p1 = ValueNoise(worldPos.xz * 0.031 + 3.1);          // ~32m 大块
+                    float p2 = ValueNoise(worldPos.xz * 0.115 + 11.7);         // ~8.7m 中块
+                    // ⚠ 本文件的 ValueNoise 是**带符号**的（≈±0.7）——直接拿去比 0.44 永远不成立
+                    //   （AGENTS 第 18 条的老坑，这是第三次踩）。必须先归一化到 0..1。
+                    float pmix = (p1 * 0.66 + p2 * 0.34) * 0.5 + 0.5;
+                    // ⚠ 第一版把深色斑乘了 (1 - depthMix)（"只在浅水"），结果潟湖深度 2~4m
+                    //   时 depthMix≈0.75 ⇒ 系数≈0.1 ⇒ 像素差 0.00%（等于没做）。
+                    //   海草/珊瑚在 2~4m 也有，所以**不按水深门控**。
+                    float dark = smoothstep(0.44, 0.66, pmix);
+                    float bright = smoothstep(0.52, 0.78, pmix) * (0.45 + 0.55 * sandMix);
+                    col = lerp(col, col * 0.55, dark * _PatchAmt);
+                    col += _SandReturn.rgb * bright * _PatchAmt * 0.34;
+                }
 
                 // ── ② 折射：真的把水底搬上来（浅水才搬）──
                 // 参考帧里沙洲之所以看得见，是因为水底**有形状有明暗**，

@@ -29,7 +29,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Absorb: 0.46
+    - _Absorb: 0.55
     - _AmbientStrength: 0.4
     - _BottomBlend: 0.45
     - _CapScale: 6.5
@@ -52,11 +52,12 @@ Material:
     - _GlitterStrength: 1.7
     - _MaxUVOffset: 0.022
     - _Opacity: 0.94
+    - _PatchAmt: 1
     - _RadialDeep: 420
     - _RadialDepth: 20
     - _RadialShallow: 120
     - _RefractStrength: 0.16
-    - _SandAbsorb: 0.22
+    - _SandAbsorb: 0.34
     - _SheenPow: 60
     - _SheenStrength: 0.18
     - _SkyReflect: 1
@@ -65,6 +66,7 @@ Material:
     - _SwellAmp: 0.055
     - _SwellScale: 1
     - _SwellSpeed: 0.35
+    - _WaveRotate: 1
     - _WaveSpeedA: 0.16
     - _WaveSpeedB: 0.3
     - _WaveStrength: 0.55
