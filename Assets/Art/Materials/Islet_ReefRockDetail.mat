@@ -30,7 +30,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _AmbStrength: 1
-    - _FillLight: 0.85
+    - _FillLight: 1.26
     - _HMax: 4
     - _HMin: -1
     - _MicroAmount: 1
