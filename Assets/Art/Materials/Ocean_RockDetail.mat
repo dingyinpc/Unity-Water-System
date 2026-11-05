@@ -30,16 +30,19 @@ Material:
     m_Ints: []
     m_Floats:
     - _AmbStrength: 1
-    - _FillLight: 0.75
+    - _FillLight: 0.95
     - _HMax: 6
     - _HMin: -1.5
     - _MicroAmount: 1
     - _MidPoint: 0.45
+    - _MossAmount: 0.3
     - _RockTexAmount: 0.7
     - _RockTexScale: 1.2
+    - _StrataAmt: 1
+    - _StrataWobble: 0
     m_Colors:
     - _MossColor: {r: 0.185, g: 0.186, b: 0.192, a: 1}
-    - _RockHi: {r: 0.3, g: 0.301, b: 0.31, a: 1}
-    - _RockLo: {r: 0.14, g: 0.141, b: 0.148, a: 1}
-    - _RockMid: {r: 0.22, g: 0.221, b: 0.23, a: 1}
+    - _RockHi: {r: 0.40500003, g: 0.40635002, b: 0.4185, a: 1}
+    - _RockLo: {r: 0.18900001, g: 0.19035001, b: 0.1998, a: 1}
+    - _RockMid: {r: 0.297, g: 0.29835, b: 0.31050003, a: 1}
   m_BuildTextureStacks: []
