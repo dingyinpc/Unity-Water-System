@@ -59,6 +59,15 @@ namespace WaterProject.EditorTools
         [MenuItem("Tools/R133/94c 密度下限=0(旧)")]
         public static void Floor0() => Set("_DensityFloor", 0f, "94c 0");
 
+        [MenuItem("Tools/R133/95 阴影步数=8")]
+        public static void Shade8() => Set("_ShadeSteps", 8f, "95 阴影8");
+
+        [MenuItem("Tools/R133/95b 阴影步数=12")]
+        public static void Shade12() => Set("_ShadeSteps", 12f, "95b 阴影12");
+
+        [MenuItem("Tools/R133/95c 阴影步数=4(旧)")]
+        public static void Shade4() => Set("_ShadeSteps", 4f, "95c 阴影4");
+
         [MenuItem("Tools/R133/92 探针")]
         public static void Probe()
         {
