@@ -88,6 +88,7 @@ Shader "WaterProject/Water_Lagoon"
         // R47 白点根因：碎闪锐度 420 = 只有法线**几乎完全对准**太阳的像素才亮 ⇒ 远处法线
         //   是亚像素采样，随机命中 ⇒ 整片水面"撒盐"。按距离淡出（近处保留闪，远处不撒）。
         _GlitterFade      ("碎闪距离淡出(近,远)", Vector) = (18, 75, 0, 0)
+        _GlitterFix       ("碎闪去摩尔纹(R131: 0=旧)", Range(0,1)) = 0
         _SheenPow         ("日光盘锐度", Float) = 60.0
         _SheenStrength    ("日光盘强度", Float) = 0.35
 
@@ -162,6 +163,7 @@ Shader "WaterProject/Water_Lagoon"
                 float4 _SunColor;
                 float  _GlitterPow, _GlitterStrength, _GlitterBand, _SheenPow, _SheenStrength;
                 float4 _GlitterFade;
+            float  _GlitterFix;
                 float4 _FoamColor;
                 float  _FoamBand, _FoamStrength;
                 float  _AmbientStrength, _DebugMode, _DepthSource;
@@ -263,7 +265,12 @@ Shader "WaterProject/Water_Lagoon"
             float3 ShimmerN(float2 xz, float t, float scale)
             {
                 float2 q1 = xz * scale + float2(t * 0.13, t * 0.08);
-                float2 q2 = xz * scale * 1.73 - float2(t * 0.10, t * 0.14);
+                // R131：**第二层要旋转 37°**。原来两层同向、只差 1.73 倍焦距 ——
+                //   两个同向晶格叠在一起就是经典摩尔纹：水面上那排"等距小逗号"就是它。
+                //   错开方向后，峰值的落点变得随机，碎闪才是"碎"的。
+                const float2x2 GLROT = float2x2(0.7986, -0.6018, 0.6018, 0.7986);
+                float2 q2b = _GlitterFix > 0.5 ? mul(GLROT, xz * scale * 1.73) : xz * scale * 1.73;
+                float2 q2 = q2b - float2(t * 0.10, t * 0.14);
                 q1 += 0.30 * sin(q2.yx * 2.3 + t * 0.27);
                 q2 += 0.30 * sin(q1.yx * 1.9 - t * 0.21);
                 float2 e = float2(0.30, 0.0);
@@ -520,6 +527,13 @@ Shader "WaterProject/Water_Lagoon"
                 float aaF = saturate(fp * 90.0);                     // 0=近景锐利 1=远景糊化
                 float glPow = lerp(lerp(_GlitterPow, 80.0, saturate(glDist / max(_GlitterFade.y, 1.0))), 20.0, aaF);
                 float gl = pow(saturate(dot(Ns, Hs)), glPow);
+                if (_GlitterFix > 0.5)
+                {
+                    // 真实水面的碎闪是**成片**的：一片亮、一片暗，而不是均匀撒点。
+                    // 用低频噪声做斑块（尺度 ~3m），只压不抬，均值保持 1 附近避免整体变暗。
+                    float patch = 0.55 + 0.9 * ValueNoise(worldPos.xz * 0.33 + float2(t * 0.11, -t * 0.07));
+                    gl *= lerp(1.0, patch, _GlitterFix);
+                }
                 col += _SunColor.rgb * gl * _GlitterStrength * glF;
                 // 日光盘：低锐度高强度的一层，给碎闪带一个底
                 col += _SunColor.rgb * pow(saturate(dot(reflDir, mainLight.direction)), _SheenPow)
