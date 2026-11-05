@@ -38,6 +38,8 @@ Shader "WaterProject/IsletRockSplat"
         _RockTexScale   ("岩贴图密度(1/米)", Float) = 0.18
         _RockTexAmount  ("岩贴图强度", Range(0,1)) = 0
         _AmbStrength ("环境光权重", Float) = 1.0
+        _StrataWobble ("层理起伏(R139: 0=水平直线)", Range(0,1)) = 0
+        _StrataAmt    ("层理强度", Range(0, 1.5)) = 1.0
     }
 
     SubShader
@@ -63,6 +65,7 @@ Shader "WaterProject/IsletRockSplat"
             CBUFFER_START(UnityPerMaterial)
                 float4 _RockLo, _RockMid, _RockHi, _MossColor;
             float _MossAmount;
+float _StrataWobble, _StrataAmt;
                 float  _HMin, _HMax, _MidPoint, _FillLight, _AmbStrength;
                 float  _RockTexScale, _RockTexAmount;
                 float  _MicroAmount;
@@ -128,9 +131,20 @@ Shader "WaterProject/IsletRockSplat"
                 // ── 层理条带：三个尺度都只随高度变，水平方向缓慢倾斜漂移 ──
                 // （岩层近似水平 ⇒ 条带天然横贯；漂移让它不至于像等高线）
                 float drift = (wxz.x + wxz.y) * 0.018 + sin(h01 * 9.4) * 0.35;
-                float strata = 0.055 * sin(h01 * 220.0 + drift)
-                             + 0.075 * sin(h01 * 71.0 + drift * 1.7 + 2.1)
-                             + 0.060 * sin(h01 * 23.0 + drift * 0.6 + 4.4);
+                // R139：**层理必须起伏**。原来 strata 只随高度变化 ⇒ 屏幕上是一圈圈**水平直线**，
+                //   53m 高的巨岩读成"一摞薄饼"。真实岩层是波浪状、还会被竖向裂隙切断。
+                //   做法：把用于取样的"高度"先按世界 XZ 噪声扰动（±0.06 ≈ ±3m，约 1.4 个条带），
+                //   再叠一点低频倾斜，条带就会跟着地形走。
+                float hStrata = h01;
+                if (_StrataWobble > 0.001)
+                {
+                    float wob = (VNoise(wxz * 0.30 + 3.7) - 0.5) * 0.115
+                              + (VNoise(wxz * 1.15 + 11.3) - 0.5) * 0.045;
+                    hStrata = h01 + wob * _StrataWobble;
+                }
+                float strata = 0.055 * sin(hStrata * 220.0 + drift) * _StrataAmt
+                             + 0.075 * sin(hStrata * 71.0 + drift * 1.7 + 2.1) * _StrataAmt
+                             + 0.060 * sin(hStrata * 23.0 + drift * 0.6 + 4.4) * _StrataAmt;
                 // ── 风化斑：两倍频 fbm（大面积渍 + 小麻点）──
                 float blot = (VNoise(wxz * 0.55) - 0.5) * 0.13
                            + (VNoise(wxz * 2.30) - 0.5) * 0.07;
@@ -147,7 +161,7 @@ Shader "WaterProject/IsletRockSplat"
 
                 // 离色：每个中尺度条带内"上缘干灰(B↑G↓)/下缘湿暗"，±4% ——
                 // 纯明度条带没有颜色变化时读成塑料刻线
-                float bandPh = frac(h01 * 23.0 + drift * 0.6);
+                float bandPh = frac(hStrata * 23.0 + drift * 0.6);
                 rock *= lerp(float3(0.965, 0.985, 1.045), float3(1.030, 1.015, 0.960),
                              smoothstep(0.0, 1.0, bandPh));
 

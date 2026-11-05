@@ -38,6 +38,8 @@ Material:
     - _MossAmount: 0.15
     - _RockTexAmount: 0.5
     - _RockTexScale: 0.18
+    - _StrataAmt: 1
+    - _StrataWobble: 0.5
     m_Colors:
     - _MossColor: {r: 0.22, g: 0.3, b: 0.17, a: 1}
     - _RockHi: {r: 0.6, g: 0.59, b: 0.565, a: 1}
