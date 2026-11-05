@@ -47,5 +47,5 @@ Material:
     - _CloudShade: {r: 0.26, g: 0.46, b: 0.66, a: 1}
     - _GroundColor: {r: 0.58, g: 0.68, b: 0.78, a: 1}
     - _HorizonColor: {r: 0.6, g: 0.76, b: 0.93, a: 1}
-    - _ZenithColor: {r: 0.01, g: 0.42, b: 0.8, a: 1}
+    - _ZenithColor: {r: 0.004, g: 0.168, b: 0.32000002, a: 1}
   m_BuildTextureStacks: []
