@@ -43,11 +43,11 @@ Material:
     - _SwashSpeed: 0.13
     - _WetGloss: 0.55
     m_Colors:
-    - _DryColor: {r: 0.36, g: 0.285, b: 0.18, a: 1}
+    - _DryColor: {r: 0.42, g: 0.39, b: 0.36, a: 1}
     - _FoamColor: {r: 0.94, g: 0.965, b: 0.975, a: 1}
     - _Shore: {r: -400, g: 0, b: 0, a: 0}
     - _ShoreA: {r: 22, g: 9, b: 3.2, a: 0}
     - _ShoreB: {r: 0.0033333334, g: 0.008333334, b: 0.022222223, a: 0}
-    - _WetColor: {r: 0.3, g: 0.265, b: 0.215, a: 1}
+    - _WetColor: {r: 0.26, g: 0.24, b: 0.22, a: 1}
     - _WindDir: {r: -0.175, g: 0, b: -0.985, a: 0}
   m_BuildTextureStacks: []
