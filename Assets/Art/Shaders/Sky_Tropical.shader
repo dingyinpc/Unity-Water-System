@@ -69,6 +69,7 @@ Shader "WaterProject/Sky_Tropical"
         // ⚠ 默认 **1 = 与加这个属性之前完全一致**，由调用方显式抬，
         //   免得共享这份 shader 的别处被静默改掉。
         _MarchPasses  ("云积分平均相位", Range(1, 4)) = 1
+        _DensityFloor ("云的密度下限(R133 去椒盐点)", Range(0, 0.2)) = 0
         // 体积云不能靠"看图猜"：密度场空不空、受光对不对、渐变本身合不合格，
         // 三件事混在一张图里永远分不开。先证明通道通，再解释数值（《06》附 B）。
         _SkyDebug     ("调试(0正常/1云遮罩/2云受光/3仅渐变)", Range(0, 3)) = 0
@@ -95,6 +96,7 @@ Shader "WaterProject/Sky_Tropical"
                 float4 _CloudDrift;
                 float  _Extinct, _SunPow, _SilverLining, _SunGlow;
                 float  _Steps, _ShadeSteps, _MarchPasses;
+            float  _DensityFloor;
                 float  _GradPow;
                 float  _GradNorm;
                 float  _SkyDebug;
@@ -184,6 +186,11 @@ Shader "WaterProject/Sky_Tropical"
 
                 // 层底再给一点软着陆，否则底边是一条硬直线、像贴了胶带
                 d *= smoothstep(0.0, 0.045, h);
+                // R133：**密度下限**。云的侵蚀项会让边缘像素的密度落在 1e-2 量级，
+                //   这些像素"算有云、又几乎没有"，逐像素随机翻转 ⇒ 天空上撒一层 1~2 像素的深色小点
+                //   （实测：云量=0 时天空完全干净，所以确实是云造成的）。
+                //   这里把临界值以下整体压到 0，云体（d≈0.3~1）几乎不受影响。
+                d = saturate((d - _DensityFloor) / max(1.0 - _DensityFloor, 1e-3));
                 return saturate(d);
             }
 

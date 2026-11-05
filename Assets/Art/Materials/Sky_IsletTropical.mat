@@ -30,14 +30,15 @@ Material:
     - _CloudDetail: 1
     - _CloudFreq: 0.00042
     - _CloudTop: 4200
+    - _DensityFloor: 0
     - _Extinct: 0.0028
     - _GradNorm: 0.4
     - _GradPow: 1.4
-    - _MarchPasses: 3
+    - _MarchPasses: 4
     - _ShadeSteps: 4
     - _SilverLining: 0.55
     - _SkyDebug: 0
-    - _Steps: 48
+    - _Steps: 32
     - _SunGlow: 0.45
     - _SunPow: 2.6
     m_Colors:
