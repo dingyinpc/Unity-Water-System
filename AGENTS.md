@@ -216,3 +216,22 @@ python Tools/Video/segment_report.py --start 3000 --end 3450 --region sky
     （R121 实测：一次是"沙滩在下"的平视，一次是"沿海滩斜看"的低角度）。
     现在机位写在 `Tools/verify/cameras.txt`，`verify_scenes.ps1` 会在**开场景之后、进 Play 之前**
     自动调 `Tools/R122/91` 应用它。**换展示机位时：摆好 → `R122/90 记录` → 再跑验收**。
+
+26. **RendererFeature 里读相机颜色，注入点必须在 MSAA 已解析之后**（R135 踩的）：
+    `AfterRenderingSkybox` 时相机颜色还是 4× MSAA 纹理，`Blitter.BlitCameraTexture(cam, rt)`
+    拷出来是**全黑**，天空整片被抹黑（亮度 131→49）。用 `RenderPassEvent.BeforeRenderingPostProcessing`。
+
+27. **材质属性会盖掉全局同名 uniform**（R135）：shader 里若在 `Properties{}` 声明了 `_X`，
+    运行时 `Shader.SetGlobalFloat("_X")` 是**无效的**（材质自带默认值优先）。
+    要么改材质 `material.SetFloat`，要么把这个参数**只做成全局**（不在 Properties 里声明）。
+
+28. **Play 中保存渲染器/材质资产会触发重导入 ⇒ 运行中的实例被换掉**（R135）：
+    菜单里改 `rendererFeatures[i].strength` 再 `SaveAssetIfDirty`，Play 中"看着写了却不生效"。
+    办法：把运行时参数放到**静态字段**，每帧从静态字段读；资产里的值只作为进 Play 前的初值。
+
+29. **shader 里改函数前先 grep 调用点**（R127）：`CloudDensity()` 是**死代码**（真正生效的是
+    `SkyColumnCoverage`/`SkyDensity`），改了半天画面纹丝不动。改之前先确认"这个函数有没有人调"。
+
+30. **同一套"低分辨率数据 + 针尖高光"会重复出方块**（R125/R126）：
+    Ocean 的分格泡沫场 + 亮闪 ⇒ 马赛克点阵；FFT 的 0.98m 纹素格 + `pow(...,320)` 耀斑 ⇒ 白方块。
+    修法固定两条：**①数据按距离柔化 ②高光别用针尖**（或按像素足迹采样）。
