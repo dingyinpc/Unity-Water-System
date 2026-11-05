@@ -109,18 +109,31 @@ namespace WaterProject.EditorTools
         }
 
         // 把 src 的顶点逐轴缩放到 targetBounds 的尺寸，并把中心对齐
+        //
+        // ⚠ **关键：高度轴必须转到 Z**。`Islet_Rock_Splat` 用 `IN.posZ` 当"高度"分三档灰，
+        //   而 Blender 导出的（bakeAxisConversion）高度在 **Y** ⇒ 分档全错、整块发白（R144 的教训）。
+        //   这里先绕 X 轴转 -90°（(x,y,z) → (x, z, -y)），让高度落到 Z，再按原包围盒逐轴缩放。
         static Mesh BakeToBounds(Mesh src, Bounds target, string name)
         {
             var sv = src.vertices;
-            var sb = src.bounds;
-            float sx = sb.size.x > 1e-5f ? target.size.x / sb.size.x : 1f;
-            float sy = sb.size.y > 1e-5f ? target.size.y / sb.size.y : 1f;
-            float sz = sb.size.z > 1e-5f ? target.size.z / sb.size.z : 1f;
-
-            var outV = new Vector3[sv.Length];
+            var rot = new Vector3[sv.Length];
+            var rb = new Bounds();
             for (int i = 0; i < sv.Length; i++)
             {
-                var p = sv[i] - sb.center;
+                var v = sv[i];
+                var p = new Vector3(v.x, v.z, -v.y);     // 高度 Y → Z
+                rot[i] = p;
+                rb.Encapsulate(p);
+            }
+
+            float sx = rb.size.x > 1e-5f ? target.size.x / rb.size.x : 1f;
+            float sy = rb.size.y > 1e-5f ? target.size.y / rb.size.y : 1f;
+            float sz = rb.size.z > 1e-5f ? target.size.z / rb.size.z : 1f;
+
+            var outV = new Vector3[rot.Length];
+            for (int i = 0; i < rot.Length; i++)
+            {
+                var p = rot[i] - rb.center;
                 outV[i] = new Vector3(p.x * sx + target.center.x,
                                       p.y * sy + target.center.y,
                                       p.z * sz + target.center.z);
