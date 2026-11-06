@@ -26,6 +26,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _CloudBase: 1400
+    - _CloudBreak: 0
     - _CloudCover: 0.3
     - _CloudDetail: 1
     - _CloudFreq: 0.00042

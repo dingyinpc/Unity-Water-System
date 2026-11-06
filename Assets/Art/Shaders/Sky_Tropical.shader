@@ -70,6 +70,7 @@ Shader "WaterProject/Sky_Tropical"
         //   免得共享这份 shader 的别处被静默改掉。
         _MarchPasses  ("云积分平均相位", Range(1, 4)) = 1
         _DensityFloor ("云的密度下限(R133 去椒盐点)", Range(0, 0.2)) = 0
+        _CloudBreak   ("柱状破除(R146: 0=旧)", Range(0,1)) = 0
         // 体积云不能靠"看图猜"：密度场空不空、受光对不对、渐变本身合不合格，
         // 三件事混在一张图里永远分不开。先证明通道通，再解释数值（《06》附 B）。
         _SkyDebug     ("调试(0正常/1云遮罩/2云受光/3仅渐变)", Range(0, 3)) = 0
@@ -97,6 +98,7 @@ Shader "WaterProject/Sky_Tropical"
                 float  _Extinct, _SunPow, _SilverLining, _SunGlow;
                 float  _Steps, _ShadeSteps, _MarchPasses;
             float  _DensityFloor;
+float  _CloudBreak;
                 float  _GradPow;
                 float  _GradNorm;
                 float  _SkyDebug;
@@ -183,6 +185,17 @@ Shader "WaterProject/Sky_Tropical"
                 float det = Fbm3(p * (_CloudFreq * 5.7) + wind * 0.6, 3);   // R40: 1.7→0.6 细节翻腾降档(E 超带根因,与 R36b 同族)
                 float lod = 1.0 / (1.0 + dist * dist * 1.6e-9);
                 d += (det - 0.5) * _CloudDetail * (0.16 + 1.15 * h * h) * lod;
+
+                // R146：**破除柱状**。
+                //   `d = (cover - h)` 的本质是"每一列有一根云柱，柱子高度=cover"——
+                //   垂直方向天然连贯，所以掠射角看过去是一道道**竖向拉丝**。
+                //   这里叠一层**真正的三维**噪声（三个轴都在变），把柱子打碎成团。
+                //   只乘不加减，均值≈1，云量基本不变。
+                if (_CloudBreak > 0.001)
+                {
+                    float n3 = Fbm3(p * (_CloudFreq * 3.1) + wind * 1.3 + 11.7, 3);
+                    d *= lerp(1.0, saturate(0.35 + 1.30 * n3), _CloudBreak);
+                }
 
                 // 层底再给一点软着陆，否则底边是一条硬直线、像贴了胶带
                 d *= smoothstep(0.0, 0.045, h);
